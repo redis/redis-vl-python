@@ -3,7 +3,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
-from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 if TYPE_CHECKING:
@@ -162,64 +162,14 @@ class CohereTextVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
-        import cohere
-
-        try:
-            from cohere.core.api_error import ApiError
-        except ImportError:
-            ApiError = None  # cohere<5 has no core.api_error module
-
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check", input_type="search_document")
             return len(embedding)
-        except (ValueError, RetryError) as e:
-            # _embed()/_embed_many() are @retry-decorated with
-            # retry_if_not_exception_type(TypeError), so the ValueError they
-            # raise on a permanent failure (bad credentials, unknown model...)
-            # is itself retried until tenacity gives up and raises RetryError.
-            # Unwrap that first, then unwrap the ValueError it wraps, to reach
-            # the real SDK exception either way.
-            root: BaseException = e
-            if isinstance(root, RetryError):
-                root = root.last_attempt.exception() or root
-            # _embed()/_embed_many() wrap the SDK's own exception in a ValueError,
-            # so dispatch on the wrapped cause instead of the wrapper -- catching
-            # the provider SDK's exception type here would never fire otherwise.
-            cause = root.__cause__ or root.__context__ or root
-            if isinstance(cause, (KeyError, IndexError)):
-                raise ValueError(
-                    f"Unexpected response from the Cohere API: {str(cause)}"
-                ) from e
-            # UnauthorizedError/NotFoundError only exist in cohere>=5; the
-            # package still supports cohere>=4.44, so guard the attribute
-            # lookup rather than referencing them unconditionally.
-            unauthorized_error = getattr(cohere, "UnauthorizedError", None)
-            not_found_error = getattr(cohere, "NotFoundError", None)
-            if unauthorized_error and isinstance(cause, unauthorized_error):
-                raise ValueError(
-                    f"Cohere rejected the credentials used while determining embedding "
-                    f"dimensions for model '{self.model}'. Check the api_key given in "
-                    f"api_config, or the COHERE_API_KEY environment variable: {str(cause)}"
-                ) from e
-            if not_found_error and isinstance(cause, not_found_error):
-                raise ValueError(
-                    f"Cohere does not recognize the embedding model '{self.model}'. Check "
-                    f"the model name against the provider's current model list: {str(cause)}"
-                ) from e
-            if ApiError and isinstance(cause, ApiError):
-                raise ValueError(
-                    f"The Cohere API returned an error while determining embedding "
-                    f"dimensions for model '{self.model}': {str(cause)}"
-                ) from e
-            raise ValueError(
-                f"Error setting embedding model dimensions for Cohere model "
-                f"'{self.model}': {str(e)}"
-            ) from e
         except Exception as e:  # pylint: disable=broad-except
             raise ValueError(
                 f"Error setting embedding model dimensions for Cohere model "
-                f"'{self.model}': {str(e)}"
+                f"'{self.model}': {e}"
             ) from e
 
     def _get_cohere_embedding_type(self, dtype: str) -> list[str]:

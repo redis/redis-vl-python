@@ -3,7 +3,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
-from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 if TYPE_CHECKING:
@@ -228,61 +228,14 @@ class VertexAIVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
-        from google.api_core.exceptions import (
-            GoogleAPICallError,
-            NotFound,
-            PermissionDenied,
-            Unauthenticated,
-        )
-
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
-        except (ValueError, RetryError) as e:
-            # _embed()/_embed_many() are @retry-decorated with
-            # retry_if_not_exception_type(TypeError), so the ValueError they
-            # raise on a permanent failure (bad credentials, unknown model...)
-            # is itself retried until tenacity gives up and raises RetryError.
-            # Unwrap that first, then unwrap the ValueError it wraps, to reach
-            # the real SDK exception either way.
-            root: BaseException = e
-            if isinstance(root, RetryError):
-                root = root.last_attempt.exception() or root
-            # _embed()/_embed_many() wrap the SDK's own exception in a ValueError,
-            # so dispatch on the wrapped cause instead of the wrapper -- catching
-            # the provider SDK's exception type here would never fire otherwise.
-            cause = root.__cause__ or root.__context__ or root
-            if isinstance(cause, (KeyError, IndexError)):
-                raise ValueError(
-                    f"Unexpected response from the VertexAI API: {str(cause)}"
-                ) from e
-            if isinstance(cause, (PermissionDenied, Unauthenticated)):
-                raise ValueError(
-                    f"Google Cloud rejected the credentials used while determining embedding "
-                    f"dimensions for model '{self.model}'. Check "
-                    f"GOOGLE_APPLICATION_CREDENTIALS and that the service account holds the "
-                    f"Vertex AI User role: {str(cause)}"
-                ) from e
-            if isinstance(cause, NotFound):
-                raise ValueError(
-                    f"Vertex AI could not find the embedding model '{self.model}' in the "
-                    f"configured project and location. Check the model name, GCP_PROJECT_ID "
-                    f"and GCP_LOCATION: {str(cause)}"
-                ) from e
-            if isinstance(cause, GoogleAPICallError):
-                raise ValueError(
-                    f"The Vertex AI API returned an error while determining embedding "
-                    f"dimensions for model '{self.model}': {str(cause)}"
-                ) from e
-            raise ValueError(
-                f"Error setting embedding model dimensions for Vertex AI model "
-                f"'{self.model}': {str(e)}"
-            ) from e
         except Exception as e:  # pylint: disable=broad-except
             raise ValueError(
                 f"Error setting embedding model dimensions for Vertex AI model "
-                f"'{self.model}': {str(e)}"
+                f"'{self.model}': {e}"
             ) from e
 
     @retry(

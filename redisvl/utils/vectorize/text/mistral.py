@@ -2,7 +2,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
-from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 if TYPE_CHECKING:
@@ -153,45 +153,14 @@ class MistralAITextVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
-        from mistralai.models import SDKError
-
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
-        except (ValueError, RetryError) as e:
-            # _embed()/_embed_many() are @retry-decorated with
-            # retry_if_not_exception_type(TypeError), so the ValueError they
-            # raise on a permanent failure (bad credentials, unknown model...)
-            # is itself retried until tenacity gives up and raises RetryError.
-            # Unwrap that first, then unwrap the ValueError it wraps, to reach
-            # the real SDK exception either way.
-            root: BaseException = e
-            if isinstance(root, RetryError):
-                root = root.last_attempt.exception() or root
-            # _embed()/_embed_many() wrap the SDK's own exception in a ValueError,
-            # so dispatch on the wrapped cause instead of the wrapper -- catching
-            # the provider SDK's exception type here would never fire otherwise.
-            cause = root.__cause__ or root.__context__ or root
-            if isinstance(cause, (KeyError, IndexError)):
-                raise ValueError(
-                    f"Unexpected response from the MISTRAL API: {str(cause)}"
-                ) from e
-            if isinstance(cause, SDKError):
-                raise ValueError(
-                    f"The Mistral API returned an error while determining embedding "
-                    f"dimensions for model '{self.model}'. If this is an authentication "
-                    f"failure check the api_key given in api_config or the MISTRAL_API_KEY "
-                    f"environment variable; if it is a 404 check the model name: {str(cause)}"
-                ) from e
-            raise ValueError(
-                f"Error setting embedding model dimensions for Mistral model "
-                f"'{self.model}': {str(e)}"
-            ) from e
         except Exception as e:  # pylint: disable=broad-except
             raise ValueError(
                 f"Error setting embedding model dimensions for Mistral model "
-                f"'{self.model}': {str(e)}"
+                f"'{self.model}': {e}"
             ) from e
 
     @deprecated_argument("text", "content")
