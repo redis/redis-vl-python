@@ -367,6 +367,19 @@ def _find_range_end(rendered: str, position: int) -> int | None:
     return None
 
 
+def _span_holds_unescaped_pipe(rendered: str, start: int, end: int) -> bool:
+    """Report whether `rendered[start:end]` holds a `|` that is not escaped."""
+    position = start
+    while position < end:
+        if rendered[position] == "\\":
+            position += 2
+            continue
+        if rendered[position] == "|":
+            return True
+        position += 1
+    return False
+
+
 def _reject_escapable_filter(caller: FilterExpression) -> None:
     """Refuse a caller filter whose rendering could break out of a locked AND.
 
@@ -400,10 +413,17 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
         if character == "[":
             # A numeric range is bounds, not structure: an exclusive bound
             # renders as `[(5 +inf]`, where `(` is a marker rather than a group.
-            # Skip the whole span so those parens are never counted. Values
-            # inside are numbers, so no `|` can hide here.
+            # Skipping the span keeps those parens out of the depth count -- but
+            # suppressing paren depth is the *only* reason to skip, so `|`
+            # detection has to stay active inside it. A legitimate numeric or geo
+            # range holds numbers, so a `|` in here means a value reached the
+            # query string raw, which is exactly the case this backstop exists
+            # to catch; skipping past it would let a union hide behind brackets.
             end = _find_range_end(rendered, position + 1)
             if end is None:
+                escaped = True
+                break
+            if _span_holds_unescaped_pipe(rendered, position + 1, end):
                 escaped = True
                 break
             position = end + 1

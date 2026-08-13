@@ -299,6 +299,10 @@ def test_merge_locked_filter_ands_a_multi_value_tag_in_caller_filter():
         # A literal backslash does NOT escape what follows it, so this `|` is a
         # real union. Looking back one character would misread it as escaped.
         ("literal backslash then pipe", "@category:{a}\\\\|@category:{secret}"),
+        # The `[...]` span is skipped so an exclusive bound's `(` is not counted
+        # as a group. Skipping the span wholesale would also skip a `|` inside it,
+        # letting a union hide behind brackets.
+        ("pipe hidden inside a range span", "@rating:[4 | @category:{secret}]"),
     ],
 )
 def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
@@ -378,3 +382,26 @@ def test_merge_locked_filter_returns_each_side_unchanged_when_the_other_is_absen
     assert merge_locked_filter(None, "@category:{open}") == "@category:{open}"
     # A lock with no caller filter applies on its own.
     assert merge_locked_filter(locked, None) is locked
+
+
+@pytest.mark.parametrize(
+    ("label", "rendered"),
+    [
+        # The reason the span is skipped at all: `(` here is an exclusive-bound
+        # marker, not a group, so counting it would reject a legitimate range.
+        ("exclusive lower bound", "@rating:[(5 +inf]"),
+        ("exclusive upper bound", "@rating:[-inf (5]"),
+        ("plain inclusive range", "@rating:[4 +inf]"),
+    ],
+)
+def test_merge_locked_filter_still_accepts_legitimate_range_bounds(label, rendered):
+    """Narrowing the range skip to parens must not start rejecting real ranges."""
+    del label
+    locked = parse_filter(
+        {"field": "category", "op": "eq", "value": "science"}, _schema()
+    )
+
+    merged = merge_locked_filter(locked, FilterExpression(rendered))
+
+    assert isinstance(merged, FilterExpression)
+    assert "@category:{science}" in str(merged)
