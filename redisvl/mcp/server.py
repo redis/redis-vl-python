@@ -319,19 +319,22 @@ class RedisVLMCPServer(FastMCP):
         registered: list[str] = []
 
         # Discovery is on by default so clients can enumerate indexes.
-        if enabled("list-indexes"):
+        discovery_enabled = enabled("list-indexes")
+        if discovery_enabled:
             register_list_indexes_tool(self)
             registered.append("list-indexes")
+
+        # `index` is required once several bindings exist, and without discovery
+        # the logical ids cannot be learned any other way -- so every tool that
+        # requires one has to name them inline instead of deferring to a tool that
+        # is not published. Computed once so the two cannot drift apart.
+        unlisted_index_ids = (
+            sorted(self._bindings)
+            if len(self._bindings) > 1 and not discovery_enabled
+            else None
+        )
+
         if enabled("search-records"):
-            # Without discovery the caller cannot learn the logical ids, so the
-            # description has to name them rather than pointing at a tool that is
-            # not published. Only relevant when the schema is ambiguous, which is
-            # exactly the multi-binding case.
-            unlisted_index_ids = (
-                sorted(self._bindings)
-                if search_schema is None and "list-indexes" not in registered
-                else None
-            )
             register_search_tool(self, search_schema, index_ids=unlisted_index_ids)
             registered.append("search-records")
         # Expose upsert only when at least one binding is writable. A binding is
@@ -341,7 +344,7 @@ class RedisVLMCPServer(FastMCP):
         if enabled("upsert-records") and any(
             not rt.effective_read_only for rt in self._bindings.values()
         ):
-            register_upsert_tool(self)
+            register_upsert_tool(self, index_ids=unlisted_index_ids)
             registered.append("upsert-records")
 
         self._warn_on_unusable_tool_surface(registered)
@@ -365,19 +368,26 @@ class RedisVLMCPServer(FastMCP):
             )
             return
 
-        # `search-records`'s multi-index description tells clients to call
-        # list-indexes first, so disabling discovery leaves them unable to learn
-        # the logical ids the tool requires.
+        # Both `search-records` and `upsert-records` require an `index` once
+        # several bindings exist, so either one is affected by losing discovery --
+        # naming them in the descriptions keeps the contract satisfiable, but an
+        # operator who disabled discovery on a multi-index server probably did not
+        # intend to. Checking only search would leave a write-only surface silent.
+        index_requiring = sorted(
+            {"search-records", "upsert-records"}.intersection(registered)
+        )
         if (
             len(self._bindings) > 1
-            and "search-records" in registered
+            and index_requiring
             and "list-indexes" not in registered
         ):
             logger.warning(
-                "MCP server has %d indexes and exposes search-records, but "
-                "list-indexes is disabled: clients cannot discover the logical "
-                "index ids that search-records requires.",
+                "MCP server has %d indexes and exposes %s, but list-indexes is "
+                "disabled: clients cannot discover the logical index ids those "
+                "tools require, so the ids are named inline in each tool "
+                "description instead.",
                 len(self._bindings),
+                ", ".join(index_requiring),
             )
 
     @asynccontextmanager

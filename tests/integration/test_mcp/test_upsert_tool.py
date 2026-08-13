@@ -506,7 +506,7 @@ async def test_read_only_mode_excludes_upsert_tool(
 
     called: list[bool] = []
 
-    def fake_register_upsert_tool(server: Any) -> None:
+    def fake_register_upsert_tool(server: Any, index_ids: Any = None) -> None:
         called.append(server.mcp_settings.read_only)
 
     monkeypatch.setattr(

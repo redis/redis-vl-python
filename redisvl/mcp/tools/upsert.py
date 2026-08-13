@@ -360,11 +360,24 @@ async def upsert_records(
         raise map_exception(exc) from exc
 
 
-def register_upsert_tool(server: Any) -> None:
-    """Register the MCP upsert tool on a server-like object."""
+def register_upsert_tool(server: Any, *, index_ids: list[str] | None = None) -> None:
+    """Register the MCP upsert tool on a server-like object.
+
+    ``index_ids`` is supplied only when discovery is unavailable on a multi-index
+    server. ``index`` is required there, and with ``list-indexes`` withheld the
+    logical ids cannot be learned any other way, so naming them inline is what
+    keeps the published contract satisfiable.
+    """
     description = (
         server.mcp_settings.tool_upsert_description or DEFAULT_UPSERT_DESCRIPTION
     )
+    if index_ids:
+        description = (
+            description.strip() + " Multiple indexes are configured and discovery "
+            "is disabled: pass one of these index ids as the `index` argument: "
+            + ", ".join(index_ids)
+            + "."
+        )
 
     async def upsert_records_tool(
         records: list[dict[str, Any]],

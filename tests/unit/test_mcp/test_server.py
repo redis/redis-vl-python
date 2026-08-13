@@ -429,7 +429,9 @@ async def test_server_registers_tools_with_effective_schema(monkeypatch):
     monkeypatch.setattr(
         "redisvl.mcp.server.register_search_tool", fake_register_search_tool
     )
-    monkeypatch.setattr("redisvl.mcp.server.register_upsert_tool", lambda server: None)
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_upsert_tool", lambda server, index_ids=None: None
+    )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_list_indexes_tool", lambda server: None
     )
