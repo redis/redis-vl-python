@@ -60,11 +60,16 @@ jobs:
     needs: service-tests
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
+      REDIS_IMAGE: ${{ matrix.redis-image }}
+      REDIS_PY_VERSION: ${{ matrix.redis-py-version }}
+      # Required: without it `uv run` re-syncs the venv to uv.lock and reverts
+      # the redis-py pin set below.
+      UV_NO_SYNC: "1"
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        redis-py-version: ["5.x", "6.x", "7.x"]
+        redis-py-version: ["6.x", "7.x"]
         redis-image: ["redis:8.2", "redis:8.4", "redis:latest"]
     steps:
       - name: Check out repository
@@ -93,50 +98,97 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras
+          set -euo pipefail
 
-          # Install right redis version based on redis py
-          if [[ "${{ matrix.redis-py-version }}" == "5.x" ]]; then
-            uv pip install "redis>=5,<6"
-          elif [[ "${{ matrix.redis-py-version }}" == "6.x" ]]; then
-            uv pip install "redis>=6,<7"
-          else
-            uv pip install "redis>=7,<8"
-          fi
+          uv sync --all-extras --frozen
 
-      - name: Set Redis image name
-        run: |
-          echo "REDIS_IMAGE=${{ matrix.redis-image }}" >> $GITHUB_ENV
+          # Must cover every redis-py-version matrix value; unhandled values fail.
+          case "$REDIS_PY_VERSION" in
+            "6.x") spec="redis>=6,<7" ;;
+            "7.x") spec="redis>=7,<8" ;;
+            *)
+              echo "::error title=Unhandled redis-py-version::Matrix value '${REDIS_PY_VERSION}' has no install rule -- add a case branch in .github/workflows/test.yml."
+              exit 1
+              ;;
+          esac
+
+          uv pip install "$spec"
+          uv run python -c 'import redis; print("redis-py:", redis.__version__)'
 
       - name: Run tests
-        env:
-          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           make test
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
-        if: (
-            matrix.redis-py-version == '7.x' &&
-            matrix.redis-image == 'redis:8.4' &&
-            matrix.python-version == '3.11' &&
-            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-          )
+  notebooks:
+    name: Notebook Validation
+    runs-on: ubuntu-latest
+    needs: service-tests
+    # Needs API-key secrets, unavailable to fork PRs. Keep in sync with
+    # service-tests.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Cache HuggingFace Models
+        uses: actions/cache@v4
         with:
-          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --frozen
+
+      - name: Start Redis
+        run: |
+          set -euo pipefail
+          # Wait for readiness: `make test-notebooks` probes Redis for SVS
+          # support and silently skips 09_svs_vamana.ipynb if it can't connect.
+          # Probe over the same host-to-published-port path the notebooks use.
+          docker run -d --name redis -p 6379:6379 redis:8.4
+          probe() {
+            uv run --no-sync python -c "import redis; redis.Redis.from_url('redis://localhost:6379').ping()"
+          }
+          ready=0
+          for _ in $(seq 1 30); do
+            if probe 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            # Unsuppressed retry: distinguishes an unreachable server from a
+            # broken venv or import.
+            echo "Final probe attempt, stderr shown:"
+            probe || true
+            echo "::error title=Redis not ready::redis:8.4 never accepted a connection on localhost:6379 after 30 attempts"
+            docker logs redis || true
+            exit 1
+          fi
+          docker exec redis redis-cli INFO server | grep redis_version
 
       - name: Run notebooks
-        if: (
-            matrix.redis-py-version == '7.x' &&
-            matrix.redis-image == 'redis:8.4' &&
-            matrix.python-version == '3.11' &&
-            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-          )
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
@@ -148,7 +200,6 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          docker run -d --name redis -p 6379:6379 redis:8.4
           make test-notebooks
 
   docs:
