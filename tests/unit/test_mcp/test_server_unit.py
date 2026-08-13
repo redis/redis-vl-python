@@ -155,7 +155,7 @@ def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[st
     )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_search_tool",
-        lambda server, schema: registered.append("search-records"),
+        lambda server, schema, index_ids=None: registered.append("search-records"),
     )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_upsert_tool",
@@ -165,6 +165,7 @@ def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[st
     server = RedisVLMCPServer.__new__(RedisVLMCPServer)
     server._bindings = bindings
     server._tools_registered = False
+    server._registered_tool_fingerprint = ""
     server.tool = object()
     server.config = config
     server.mcp_settings = SimpleNamespace(read_only=False)
@@ -307,4 +308,93 @@ def test_register_tools_stays_quiet_when_discovery_is_disabled_on_one_index(
         record.message
         for record in caplog.records
         if "cannot discover" in record.message
+    ]
+
+
+def test_register_tools_names_index_ids_when_discovery_is_disabled(monkeypatch):
+    """A multi-index description must not point at a tool the server withholds."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_list_indexes_tool", lambda server: None
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server, schema, index_ids=None: captured.update(index_ids=index_ids),
+    )
+    monkeypatch.setattr("redisvl.mcp.server.register_upsert_tool", lambda server: None)
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {
+        "knowledge": _binding_runtime("knowledge"),
+        "tickets": _binding_runtime("tickets"),
+    }
+    server._tools_registered = False
+    server._registered_tool_fingerprint = ""
+    server.tool = object()
+    server.config = _config_with(builtin_tools={"list-indexes": "disabled"})
+    server.mcp_settings = SimpleNamespace(read_only=False)
+
+    server._register_tools()
+
+    # Without discovery these ids are otherwise unlearnable, and `index` is
+    # required on a multi-index server.
+    assert captured["index_ids"] == ["knowledge", "tickets"]
+
+
+def test_register_tools_omits_index_ids_when_discovery_is_available(monkeypatch):
+    """With list-indexes published, the description should defer to it as before."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_list_indexes_tool", lambda server: None
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server, schema, index_ids=None: captured.update(index_ids=index_ids),
+    )
+    monkeypatch.setattr("redisvl.mcp.server.register_upsert_tool", lambda server: None)
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {
+        "knowledge": _binding_runtime("knowledge"),
+        "tickets": _binding_runtime("tickets"),
+    }
+    server._tools_registered = False
+    server._registered_tool_fingerprint = ""
+    server.tool = object()
+    server.config = None
+    server.mcp_settings = SimpleNamespace(read_only=False)
+
+    server._register_tools()
+
+    assert captured["index_ids"] is None
+
+
+def test_register_tools_warns_when_builtin_config_changed_after_registration(
+    monkeypatch, caplog
+):
+    """Tools register once per process, so an edited config cannot take effect."""
+    registered = _register_tools_with(
+        monkeypatch,
+        {"knowledge": _binding_runtime("knowledge")},
+        config=_config_with(),
+    )
+    assert "upsert-records" in registered
+
+    # Simulate a stop/start that reloaded a config which now disables upsert.
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {"knowledge": _binding_runtime("knowledge")}
+    server.tool = object()
+    server._tools_registered = True
+    server._registered_tool_fingerprint = ""
+    server.config = _config_with(builtin_tools={"upsert-records": "disabled"})
+
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        server._register_tools()
+
+    # The dangerous direction: an operator disables a tool, restarts, and believes
+    # it is gone while the old tool set is still what clients see.
+    assert [
+        r.message
+        for r in caplog.records
+        if "changed since tools were registered" in r.message
     ]

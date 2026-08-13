@@ -62,7 +62,9 @@ def _startup_config(indexes=None):
         server=SimpleNamespace(
             redis_url="redis://localhost:6379",
             # Mirrors MCPServerConfig: every built-in is enabled unless a config
-            # explicitly disables it.
+            # explicitly disables it, and the map itself is read when the server
+            # fingerprints its registered tool surface.
+            builtin_tools={},
             builtin_tool_enabled=lambda _name: True,
         ),
         indexes=indexes or {"knowledge": _binding_namespace()},
@@ -412,7 +414,7 @@ async def test_server_registers_tools_with_effective_schema(monkeypatch):
 
     registered_schemas = []
 
-    def fake_register_search_tool(server, schema):
+    def fake_register_search_tool(server, schema, index_ids=None):
         registered_schemas.append(schema)
 
     async def fake_disconnect(self):

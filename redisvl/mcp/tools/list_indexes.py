@@ -49,13 +49,20 @@ def _binding_limits(binding_runtime: BindingRuntime) -> dict[str, int]:
     }
 
 
-def _describe_binding(binding_runtime: BindingRuntime) -> dict[str, Any]:
+def _describe_binding(
+    binding_runtime: BindingRuntime, *, upsert_tool_available: bool = True
+) -> dict[str, Any]:
     """Build the deterministic discovery payload for a single binding."""
     entry: dict[str, Any] = {"id": binding_runtime.binding_id}
     if binding_runtime.binding.description is not None:
         entry["description"] = binding_runtime.binding.description
-    # Reflects both global read-only and the per-index read_only policy.
-    entry["upsert_available"] = not binding_runtime.effective_read_only
+    # Reflects global read-only, the per-index read_only policy, and whether the
+    # tool is published at all. A writable binding on a server that disabled
+    # `upsert-records` still cannot be written to, so reporting availability from
+    # read-only state alone would advertise a tool the client cannot call.
+    entry["upsert_available"] = (
+        upsert_tool_available and not binding_runtime.effective_read_only
+    )
     entry["fields"] = _binding_fields(binding_runtime)
     limits = _binding_limits(binding_runtime)
     if limits:
@@ -73,9 +80,15 @@ def list_indexes(server: "RedisVLMCPServer") -> dict[str, Any]:
     # client could misread as "no indexes configured".
     if not server._bindings:
         raise RuntimeError("MCP server has not been started")
+    config = getattr(server, "config", None)
+    upsert_tool_available = config is None or config.server.builtin_tool_enabled(
+        "upsert-records"
+    )
     return {
         "indexes": [
-            _describe_binding(binding_runtime)
+            _describe_binding(
+                binding_runtime, upsert_tool_available=upsert_tool_available
+            )
             for binding_runtime in server._bindings.values()
         ],
     }

@@ -68,6 +68,7 @@ class RedisVLMCPServer(FastMCP):
         self._bindings: dict[str, BindingRuntime] = {}
         self._semaphore: asyncio.Semaphore | None = None
         self._tools_registered = False
+        self._registered_tool_fingerprint = ""
 
         # Lifecycle management
         self._lifecycle_state = _LifecycleState.INITIAL  # Server lifecycle
@@ -270,9 +271,32 @@ class RedisVLMCPServer(FastMCP):
 
         return hasattr(client.ft(index.schema.index.name), "hybrid_search")
 
+    @staticmethod
+    def _tool_surface_fingerprint(config: Any) -> str:
+        """Summarize the config that a registered tool set baked in."""
+        if config is None:
+            return ""
+        return repr(sorted(config.server.builtin_tools.items()))
+
     def _register_tools(self) -> None:
         """Register MCP tools once every binding is ready."""
         if self._tools_registered or not hasattr(self, "tool"):
+            # Registration is deliberately once-per-process, since re-registering
+            # the same names on the FastMCP object is not valid. Built-in tool
+            # closures resolve their binding per call, so they survive a restart
+            # unchanged -- but which built-ins exist is now a function of config,
+            # and `startup()` re-reads that file. A stop/start against an edited
+            # config therefore keeps the old tool set, and the dangerous direction
+            # is an operator disabling a tool and believing the restart applied it.
+            if self._tools_registered:
+                current = self._tool_surface_fingerprint(getattr(self, "config", None))
+                if current != self._registered_tool_fingerprint:
+                    logger.warning(
+                        "MCP built-in tool configuration changed since tools were "
+                        "registered, but tools register once per process. The "
+                        "previously registered tool set is still in effect; "
+                        "restart the process to apply the new configuration."
+                    )
             return
 
         # The search description advertises schema-specific filter hints, which
@@ -299,7 +323,16 @@ class RedisVLMCPServer(FastMCP):
             register_list_indexes_tool(self)
             registered.append("list-indexes")
         if enabled("search-records"):
-            register_search_tool(self, search_schema)
+            # Without discovery the caller cannot learn the logical ids, so the
+            # description has to name them rather than pointing at a tool that is
+            # not published. Only relevant when the schema is ambiguous, which is
+            # exactly the multi-binding case.
+            unlisted_index_ids = (
+                sorted(self._bindings)
+                if search_schema is None and "list-indexes" not in registered
+                else None
+            )
+            register_search_tool(self, search_schema, index_ids=unlisted_index_ids)
             registered.append("search-records")
         # Expose upsert only when at least one binding is writable. A binding is
         # read-only under global read-only mode or its own read_only policy, both
@@ -312,6 +345,7 @@ class RedisVLMCPServer(FastMCP):
             registered.append("upsert-records")
 
         self._warn_on_unusable_tool_surface(registered)
+        self._registered_tool_fingerprint = self._tool_surface_fingerprint(config)
         self._tools_registered = True
 
     def _warn_on_unusable_tool_surface(self, registered: list[str]) -> None:
