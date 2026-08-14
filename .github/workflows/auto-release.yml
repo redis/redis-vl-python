@@ -16,7 +16,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
-  UV_VERSION: "0.7.13"
+  UV_VERSION: "0.12.3"
   AUTO_VERSION: "11.3.6"
   RELEASE_BOT_NAME: "applied-ai-releases[bot]"
   RELEASE_BOT_EMAIL: "applied-ai-releases[bot]@users.noreply.github.com"
@@ -108,7 +108,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -268,7 +268,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
