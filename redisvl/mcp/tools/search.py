@@ -7,6 +7,7 @@ from redisvl.mcp.config import reserved_score_metadata_field_names
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.mcp.filters import parse_filter
 from redisvl.query import AggregateHybridQuery, HybridQuery, TextQuery, VectorQuery
+from redisvl.query.filter import FilterExpression
 from redisvl.schema import IndexSchema
 
 DEFAULT_SEARCH_DESCRIPTION = "Search records in the configured Redis index."
@@ -106,12 +107,18 @@ def _validate_request(
     return_fields: list[str] | None,
     runtime: Any,
     schema: Any,
+    limit_cap: int | None = None,
 ) -> tuple[int, list[str]]:
     """Validate a `search-records` request and resolve default projection.
 
     The MCP caller can only supply query text, pagination, filters, and return
     fields. Search mode and tuning are sourced from the selected binding's
     config, so this validation step focuses only on the public request contract.
+
+    ``limit_cap`` is a server-supplied ceiling from a custom tool profile. It has
+    to be applied here rather than in the caller, because an omitted ``limit``
+    resolves to the binding default at this point -- capping only the explicit
+    value would let the default sail past the cap.
     """
 
     if not isinstance(query, str) or not query.strip():
@@ -121,7 +128,20 @@ def _validate_request(
             retryable=False,
         )
 
-    effective_limit = runtime.default_limit if limit is None else limit
+    if limit is None:
+        # An unspecified limit is bounded silently: the caller never named a
+        # number, so there is nothing to reject.
+        effective_limit = runtime.default_limit
+        if limit_cap is not None:
+            effective_limit = min(effective_limit, limit_cap)
+    else:
+        effective_limit = limit
+        if limit_cap is not None and effective_limit > limit_cap:
+            raise RedisVLMCPError(
+                f"limit must be less than or equal to {limit_cap}",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
     if not isinstance(effective_limit, int) or effective_limit <= 0:
         raise RedisVLMCPError(
             "limit must be greater than 0",
@@ -350,6 +370,148 @@ def _build_fallback_hybrid_kwargs(
     }
 
 
+def _find_range_end(rendered: str, position: int) -> int | None:
+    """Return the index of the `]` closing a numeric range, or None if unclosed."""
+    while position < len(rendered):
+        if rendered[position] == "\\":
+            position += 2
+            continue
+        if rendered[position] == "]":
+            return position
+        position += 1
+    return None
+
+
+def _span_holds_unescaped_pipe(rendered: str, start: int, end: int) -> bool:
+    """Report whether `rendered[start:end]` holds a `|` that is not escaped."""
+    position = start
+    while position < end:
+        if rendered[position] == "\\":
+            position += 2
+            continue
+        if rendered[position] == "|":
+            return True
+        position += 1
+    return False
+
+
+def _reject_escapable_filter(caller: FilterExpression) -> None:
+    """Refuse a caller filter whose rendering could break out of a locked AND.
+
+    A well-formed expression built from escaped values cannot escape, so anything
+    this rejects means a value reached the query string unescaped. It is a
+    backstop, not the primary defense -- see ``merge_locked_filter``.
+    """
+    # Braces scope as much as parens do: a tag clause holds its alternatives in
+    # braces, so `@category:{sports|health}` is one scoped clause rather than a
+    # union. Counting parens alone would reject the most ordinary narrowing
+    # filter a caller can send.
+    openers = {"(", "{"}
+    closers = {")", "}"}
+
+    rendered = str(caller)
+    position = 0
+    depth = 0
+    escaped = False
+
+    while position < len(rendered):
+        character = rendered[position]
+
+        if character == "\\":
+            # Consume the pair. Checking whether the *previous* character was a
+            # backslash instead would misread `\\` -- a literal backslash -- as
+            # protecting whatever follows it, and a real delimiter after one
+            # would slip through unnoticed.
+            position += 2
+            continue
+
+        if character == "[":
+            # A numeric range is bounds, not structure: an exclusive bound
+            # renders as `[(5 +inf]`, where `(` is a marker rather than a group.
+            # Skipping the span keeps those parens out of the depth count -- but
+            # suppressing paren depth is the *only* reason to skip, so `|`
+            # detection has to stay active inside it. A legitimate numeric or geo
+            # range holds numbers, so a `|` in here means a value reached the
+            # query string raw, which is exactly the case this backstop exists
+            # to catch; skipping past it would let a union hide behind brackets.
+            end = _find_range_end(rendered, position + 1)
+            if end is None:
+                escaped = True
+                break
+            if _span_holds_unescaped_pipe(rendered, position + 1, end):
+                escaped = True
+                break
+            position = end + 1
+            continue
+
+        if character in openers:
+            depth += 1
+        elif character in closers:
+            depth -= 1
+            if depth < 0:
+                # Closed more than was opened, which would terminate the locked
+                # group early and leave the rest as bare syntax.
+                escaped = True
+                break
+        elif character == "]":
+            # Only reachable outside a range span, so the brackets are unbalanced.
+            escaped = True
+            break
+        elif character == "|" and depth == 0:
+            # Under DIALECT 2, `|` binds looser than the implicit intersection,
+            # so one at the top level turns `locked AND caller` into a union and
+            # the lock stops constraining anything.
+            escaped = True
+            break
+
+        position += 1
+
+    # Leftover depth means an unclosed group, which would swallow whatever the
+    # AND appends after it.
+    if escaped or depth != 0:
+        raise RedisVLMCPError(
+            "filter could not be safely combined with this tool's locked filter",
+            code=MCPErrorCode.INVALID_FILTER,
+            retryable=False,
+        )
+
+
+def merge_locked_filter(
+    locked: FilterExpression | None,
+    caller: str | FilterExpression | None,
+) -> str | FilterExpression | None:
+    """AND-combine an author-locked filter with a caller-supplied one.
+
+    The locked expression always applies, so a caller can only narrow within it
+    and never widen past it. That rests on two things: the caller's expression
+    rendering nested inside the AND, and every value staying inside its own
+    clause (which ``_parse_text_expression`` escaping provides).
+    """
+    if locked is None:
+        return caller
+    if caller is None:
+        return locked
+
+    if not isinstance(caller, FilterExpression):
+        # Strings skip the DSL's field validation and have no safe composition
+        # with an expression -- combining them means concatenation, where a
+        # crafted value can close the locked group and escape it.
+        raise RedisVLMCPError(
+            "filter must be an object when this tool locks a filter; "
+            "raw string filters cannot be combined with a locked filter",
+            code=MCPErrorCode.INVALID_FILTER,
+            retryable=False,
+        )
+
+    # Structure is necessary but not sufficient, so check the rendering too.
+    _reject_escapable_filter(caller)
+
+    # `__and__` wraps the pair and parenthesizes each compound side, so a
+    # caller's `or`/`not` cannot hoist itself to the top level. (Single clauses
+    # render bare; only compound sides could otherwise escape.)
+    return locked & caller
+
+
 async def _build_query(
     *,
     rt: Any,
@@ -358,6 +520,7 @@ async def _build_query(
     offset: int,
     filter_value: str | dict[str, Any] | None,
     return_fields: list[str],
+    locked_filter: FilterExpression | None = None,
 ) -> tuple[Any, str, str, str]:
     """Build the RedisVL query object from the binding's search mode and params.
 
@@ -367,7 +530,9 @@ async def _build_query(
     runtime = rt.binding.runtime
     search_type, search_params = _get_configured_search(rt)
     num_results = limit + offset
-    filter_expression = parse_filter(filter_value, rt.schema)
+    filter_expression = merge_locked_filter(
+        locked_filter, parse_filter(filter_value, rt.schema)
+    )
 
     if search_type == "vector":
         if runtime.vector_field_name is None:
@@ -461,6 +626,8 @@ async def search_records(
     offset: int = 0,
     filter: str | dict[str, Any] | None = None,
     return_fields: list[str] | None = None,
+    locked_filter: FilterExpression | None = None,
+    limit_cap: int | None = None,
 ) -> dict[str, Any]:
     """Execute `search-records` against the selected Redis index binding.
 
@@ -468,6 +635,12 @@ async def search_records(
     one binding is configured (preserving single-index behavior) and required
     when multiple bindings exist. The resolved logical id is echoed back in the
     response so multi-index clients can confirm routing.
+
+    ``locked_filter`` and ``limit_cap`` are server-supplied and never reach the
+    model: they are how a caller in-process pins an author-locked expression and
+    result ceiling onto this tool. The filter is AND-combined with ``filter`` so
+    a caller can only narrow within it, and the cap bounds the effective limit
+    whether the caller named one or fell through to the binding default.
     """
     try:
         rt = server.resolve_binding(index)
@@ -478,6 +651,7 @@ async def search_records(
             return_fields=return_fields,
             runtime=rt.binding.runtime,
             schema=rt.schema,
+            limit_cap=limit_cap,
         )
         built_query, score_field, score_type, search_type = await _build_query(
             rt=rt,
@@ -486,6 +660,7 @@ async def search_records(
             offset=offset,
             filter_value=filter,
             return_fields=effective_return_fields,
+            locked_filter=locked_filter,
         )
         raw_results = await server.run_guarded(
             "search-records",

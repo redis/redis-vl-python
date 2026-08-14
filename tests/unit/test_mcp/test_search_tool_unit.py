@@ -16,6 +16,7 @@ from redisvl.mcp.tools.search import (
     search_records,
 )
 from redisvl.query import VectorQuery
+from redisvl.query.filter import Tag
 from redisvl.schema import IndexSchema
 
 
@@ -948,3 +949,105 @@ def test_empty_default_projection_still_yields_a_return_clause():
     assert "RETURN" in rendered
     # And what it returns is the score, not the embedding.
     assert "embedding" not in rendered.split("RETURN", 1)[1]
+
+
+# --------------------------------------------------------------------------
+# Server-supplied narrowing: `limit_cap` and `locked_filter`
+#
+# Both are passed in-process rather than by the model. They are exercised here
+# at the `search_records` boundary so the contract holds regardless of which
+# caller supplies them.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_an_explicit_limit_above_the_cap():
+    server = FakeServer()
+
+    with pytest.raises(RedisVLMCPError, match="less than or equal to 2") as exc:
+        await search_records(server, query="science", limit=3, limit_cap=2)
+
+    assert exc.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_caps_an_omitted_limit_instead_of_rejecting(monkeypatch):
+    """The binding default must not sail past the cap just because it is implicit."""
+    # default_limit is 2 and the cap is 1, so a cap applied only to explicit
+    # limits would let this request through at 2.
+    server = FakeServer()
+    built_queries = []
+
+    class FakeVectorQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.VectorQuery", FakeVectorQuery)
+
+    await search_records(server, query="science", limit_cap=1)
+
+    # No exception: the caller never named a number, so there is nothing to
+    # reject -- but the window is still bounded by the cap.
+    assert built_queries[0]["num_results"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_records_leaves_the_limit_alone_when_no_cap_is_supplied(
+    monkeypatch,
+):
+    server = FakeServer()
+    built_queries = []
+
+    class FakeVectorQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.VectorQuery", FakeVectorQuery)
+
+    await search_records(server, query="science", limit=3)
+
+    assert built_queries[0]["num_results"] == 3
+
+
+@pytest.mark.asyncio
+async def test_search_records_ands_a_locked_filter_under_the_caller_filter(monkeypatch):
+    server = FakeServer()
+    built_queries = []
+
+    class FakeVectorQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.VectorQuery", FakeVectorQuery)
+
+    await search_records(
+        server,
+        query="science",
+        filter={"field": "rating", "op": "gte", "value": 4},
+        locked_filter=Tag("category") == "resolved",
+    )
+
+    rendered = str(built_queries[0]["filter_expression"])
+    # Both clauses survive, and the caller's is nested rather than replacing the
+    # lock.
+    assert "@category:{resolved}" in rendered
+    assert "@rating:[4 +inf]" in rendered
+
+
+@pytest.mark.asyncio
+async def test_search_records_refuses_a_raw_string_filter_under_a_locked_filter():
+    server = FakeServer()
+
+    with pytest.raises(RedisVLMCPError) as exc:
+        await search_records(
+            server,
+            query="science",
+            filter="@category:{open}",
+            locked_filter=Tag("category") == "resolved",
+        )
+
+    # Strings bypass the DSL's field validation and cannot be safely composed.
+    assert exc.value.code == MCPErrorCode.INVALID_FILTER
