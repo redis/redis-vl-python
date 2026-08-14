@@ -14,6 +14,7 @@ from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
     CREATE_INDEX_OVERWRITE_CONFLICT,
     ENTRY_ID_FIELD_NAME,
+    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
     INSERTED_AT_FIELD_NAME,
     METADATA_FIELD_NAME,
     PROMPT_FIELD_NAME,
@@ -308,12 +309,28 @@ class SemanticCache(BaseLLMCache):
 
     def delete(self) -> None:
         """Delete the cache and its index entirely."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.delete(drop=True)
 
     async def adelete(self) -> None:
         """Async delete the cache and its index entirely."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         aindex = await self._get_async_index()
         await aindex.delete(drop=True)
+
+    def clear(self) -> None:
+        """Clear all cache keys when RedisVL manages the index lifecycle."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        super().clear()
+
+    async def aclear(self) -> None:
+        """Async clear all cache keys when RedisVL manages the index lifecycle."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        await super().aclear()
 
     def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
         """Drop specific entries from the cache by ID or Redis key.

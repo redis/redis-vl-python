@@ -40,3 +40,11 @@ CREATE_INDEX_OVERWRITE_CONFLICT: str = (
     "RedisVL to drop and recreate the index, which it cannot do when it is told "
     "not to manage the index at all."
 )
+
+# Raised when an extension attached to an externally managed index is asked to
+# perform an index-wide destructive operation.
+EXTERNAL_INDEX_LIFECYCLE_CONFLICT: str = (
+    "Cannot delete or clear an index when create_index=False because RedisVL "
+    "does not manage that index's lifecycle. Use the externally managed "
+    "provisioning path to perform index-wide destructive operations."
+)

@@ -201,7 +201,7 @@ The command-to-category mapping below was measured against live servers rather t
 | `index.delete()`, `rvl index delete`, `rvl index destroy` | `FT.DROPINDEX` | Yes | Yes |
 | Enumerating indexes (see below) | `FT._LIST` | **No** | **No** |
 
-Every `Yes` above assumes key patterns that cover the index prefix — see [Key permissions](#key-permissions) — and `-@dangerous` layered on the second column additionally denies `FT.DROPINDEX`, so `index.delete()` becomes `No`. An SVS-VAMANA schema needs more than `FT.CREATE`: `index.create()` first probes capabilities with `INFO` (`@slow @dangerous`) and `MODULE LIST` (`@admin @slow @dangerous`), so both `-@admin` and `-@dangerous` policies break creation for those schemas.
+Except for `FT.CREATE`, every `Yes` above assumes key patterns that cover the index prefix — see [Key permissions](#key-permissions). `FT.CREATE` is not checked against those patterns, so a credential can create an index it cannot query. Adding `-@dangerous` to the second column additionally denies `FT.DROPINDEX`, so `index.delete()` becomes `No`. An SVS-VAMANA schema needs more than `FT.CREATE`: `index.create()` first probes capabilities with `INFO` (`@slow @dangerous`) and `MODULE LIST` (`@admin @slow @dangerous`), so both `-@admin` and `-@dangerous` policies break creation for those schemas.
 
 Two of the rows above deserve their own explanation.
 
@@ -217,7 +217,7 @@ User <name> has no permissions to run the 'FT._LIST' command
 
 ### Roles built from `@read` and `@write`
 
-`FT.INFO` is in neither `@read` nor `@write` — its only category is `@search` — and `FT.CREATE` is the same. So an application role assembled from `+@read +@write` — a natural least-privilege shape — can query and load, but cannot ask whether an index exists and cannot create one. Note that subtracting `@dangerous` is not what causes this: `+@all -@dangerous` permits both. The commands are simply never granted.
+`FT.INFO` is in neither `@read` nor `@write` — its only category is `@search` — and `FT.CREATE` is the same. So an application role assembled from `+@read +@write -@dangerous` — a natural least-privilege shape for a runtime that must query and load but must not manage indexes — can query and load, but cannot ask whether an index exists and cannot create or drop one. Subtracting `@dangerous` is not what denies `FT.INFO` or `FT.CREATE`: `+@all -@dangerous` permits both. Those commands are simply never granted by `@read` or `@write`.
 
 Every extension constructor checks whether its index exists, so under such a credential all of them fail while being constructed:
 
@@ -248,11 +248,11 @@ The flag also skips the SVS-VAMANA capability probe described above, since that 
 
 `SemanticRouter` with `create_index=False` writes nothing at all: not the reference vectors for its routes, and not the stored route config that `SemanticRouter.from_existing()` reads. Preparing a router for this mode therefore means constructing it once with a privileged credential — a hand-written `FT.CREATE` is not enough, because the reference vectors have to be embedded and written too. Without them the router matches nothing, which looks like a distance-threshold problem rather than an empty index.
 
-Afterwards, `SemanticRouter.from_existing(name, create_index=False)` is the way to attach to it: it recovers the routes and thresholds with `JSON.GET` and needs no `FT.INFO`. Pass the full route set. Each route's distance threshold is applied from the local list, so a partial set silently narrows matching — and `add_route()` and `remove_route()` rewrite the stored config from that same list, so attaching with a subset and then adding a route drops the rest from the config every other client reads.
+Afterwards, `SemanticRouter.from_existing(name, create_index=False)` is the way to attach to it: it recovers the routes and thresholds with `JSON.GET` and needs no `FT.INFO`. The stored config must contain the full route set. Each route's distance threshold is applied from that recovered list, so an incomplete stored config silently narrows matching — and `add_route()` and `remove_route()` rewrite the stored config from the same list, so mutating an incomplete config permanently drops the omitted routes from the config every other client reads.
 
 ### When the schema diverges
 
-With `create_index=False` nothing verifies that the live index matches the schema you described. Some mismatches are loud on first use, and two are silent:
+With `create_index=False` nothing verifies that the live index matches the schema you described. Some mismatches are loud on first use, and several are silent:
 
 | Mismatch | What happens |
 |---|---|
@@ -264,7 +264,7 @@ With `create_index=False` nothing verifies that the live index matches the schem
 
 For the silent cases the tell is `FT.INFO`'s `key_type`, `prefixes` and `attributes` — not `hash_indexing_failures`, which stays `0` because those keys were never indexing candidates. Diagnosing it therefore needs a credential that can run `FT.INFO`.
 
-`create_index=False` restrains construction only, so `delete()` and `clear()` are as destructive as ever. Note that `clear()` differs across the extensions: `SemanticCache.clear()` is a `SCAN` plus `DEL` and works under any role that can write, while `MessageHistory`, `SemanticMessageHistory` and `SemanticRouter` delegate to `SearchIndex.clear()`, which calls `info()` first and therefore needs `FT.INFO`.
+An extension constructed with `create_index=False` refuses index-wide `delete()` and `clear()` operations (and their async cache equivalents). This protects an externally managed index — including an index reached through an alias — from being destroyed through an attach-only instance. Targeted operations such as dropping a specific cache entry or message remain available. Perform lifecycle-wide destructive operations through the privileged provisioning path that owns the index.
 
 ### Key permissions
 

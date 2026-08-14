@@ -4,6 +4,7 @@ from redis import Redis
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
+    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
     ID_FIELD_NAME,
     METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
@@ -94,10 +95,14 @@ class MessageHistory(BaseMessageHistory):
 
     def clear(self) -> None:
         """Clears the conversation message history."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.clear()
 
     def delete(self) -> None:
         """Clear all conversation keys and remove the search index."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.delete(drop=True)
 
     def drop(self, id: str | None = None) -> None:

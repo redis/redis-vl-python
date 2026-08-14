@@ -40,21 +40,22 @@ def _client() -> MagicMock:
 
 
 def _build(kind, client, vectorizer, **kwargs):
+    name = kwargs.pop("name", kind)
     if kind == "cache":
         return SemanticCache(
-            name="cache", vectorizer=vectorizer, redis_client=client, **kwargs
+            name=name, vectorizer=vectorizer, redis_client=client, **kwargs
         )
     if kind == "history":
-        return MessageHistory(name="history", redis_client=client, **kwargs)
+        return MessageHistory(name=name, redis_client=client, **kwargs)
     if kind == "semantic_history":
         return SemanticMessageHistory(
-            name="semantic_history",
+            name=name,
             vectorizer=vectorizer,
             redis_client=client,
             **kwargs,
         )
     return SemanticRouter(
-        name="router",
+        name=name,
         routes=[ROUTE],
         vectorizer=vectorizer,
         redis_client=client,
@@ -142,6 +143,43 @@ class TestContradictoryArguments:
             _build(kind, _client(), vectorizer, create_index=False, overwrite=True)
 
 
+class TestExternalIndexLifecycle:
+    @pytest.mark.parametrize("kind", ALL_KINDS)
+    @pytest.mark.parametrize("method", ["clear", "delete"])
+    def test_index_wide_mutation_is_rejected(self, kind, method, vectorizer):
+        client = _client()
+        extension = _build(
+            kind,
+            client,
+            vectorizer,
+            create_index=False,
+            name="production_alias",
+        )
+
+        with pytest.raises(ValueError, match="does not manage.*lifecycle"):
+            getattr(extension, method)()
+
+        assert client.mock_calls == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["aclear", "adelete"])
+    async def test_async_cache_index_wide_mutation_is_rejected(
+        self, method, vectorizer
+    ):
+        client = _client()
+        cache = SemanticCache(
+            name="production_alias",
+            vectorizer=vectorizer,
+            redis_client=client,
+            create_index=False,
+        )
+
+        with pytest.raises(ValueError, match="does not manage.*lifecycle"):
+            await getattr(cache, method)()
+
+        assert client.mock_calls == []
+
+
 class TestRouterWithoutRoutes:
     def test_empty_routes_raises_a_useful_error_when_matching(self, vectorizer):
         # The guard is unconditional -- `routes=[]` is legal on either path, and
@@ -160,6 +198,14 @@ class TestRouterWithoutRoutes:
 
 
 class TestFromExisting:
+    @pytest.mark.parametrize("with_client", [False, True])
+    def test_from_existing_rejects_create_index_false_with_overwrite(self, with_client):
+        kwargs = {"redis_client": _client()} if with_client else {}
+        with pytest.raises(ValueError, match="contradict"):
+            SemanticRouter.from_existing(
+                "router", create_index=False, overwrite=True, **kwargs
+            )
+
     def test_from_existing_issues_no_index_command(self, vectorizer, monkeypatch):
         # SemanticRouter.from_existing reads the stored config with JSON.GET, so
         # with the flag threaded it needs no FT.INFO -- which makes it the way to

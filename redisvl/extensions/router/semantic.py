@@ -9,6 +9,7 @@ from redis.exceptions import ResponseError
 
 from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
+    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
     ROUTE_VECTOR_FIELD_NAME,
 )
 from redisvl.extensions.router.schema import (
@@ -167,6 +168,9 @@ class SemanticRouter(BaseModel):
         # Pulled out before the split below, which retains only SearchIndex init
         # kwargs and would otherwise hand this to the Redis client constructor.
         create_index = kwargs.pop("create_index", True)
+        overwrite = kwargs.pop("overwrite", False)
+        if not create_index and overwrite:
+            raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
         init_kwargs, connection_kwargs = _split_from_existing_kwargs(
             dict(kwargs),
             nested_connection_keys=("connection_kwargs",),
@@ -213,6 +217,7 @@ class SemanticRouter(BaseModel):
                 redis_client=redis_client,
                 connection_kwargs=connection_kwargs or None,
                 create_index=create_index,
+                overwrite=overwrite,
                 _index_kwargs={**init_kwargs, **index_kwargs} or None,
             )
         except Exception:
@@ -667,6 +672,8 @@ class SemanticRouter(BaseModel):
 
     def delete(self) -> None:
         """Delete the semantic router index and its persisted route config."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.delete(drop=True)
         # The route config is stored as a standalone JSON key that is not
         # tracked by the search index, so it must be removed explicitly.
@@ -674,6 +681,8 @@ class SemanticRouter(BaseModel):
 
     def clear(self) -> None:
         """Flush all routes from the semantic router index."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.clear()
         self.routes = []
 
