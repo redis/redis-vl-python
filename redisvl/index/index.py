@@ -14,6 +14,7 @@ from typing import (
     Generator,
     Iterable,
     Iterator,
+    NoReturn,
     Sequence,
     cast,
 )
@@ -89,7 +90,7 @@ from redisvl.schema.fields import (
     VectorIndexAlgorithm,
 )
 from redisvl.utils.log import get_logger
-from redisvl.utils.redis_protocol import get_protocol_version
+from redisvl.utils.redis_protocol import effective_protocol, get_protocol_version
 
 logger = get_logger(__name__)
 
@@ -127,6 +128,40 @@ def _parse_batch_search_result(
 
 
 _HYBRID_SEARCH_ERROR_MESSAGE = "Hybrid search is not available in this version of redis-py. Please upgrade to redis-py >= 7.1.0."
+
+_SQL_QUERY_RESP3_ERROR_MESSAGE = (
+    "This SQL query failed because the installed sql-redis cannot read RESP3 "
+    "replies. It reads FT.SEARCH and FT.AGGREGATE replies positionally, which "
+    "only holds under RESP2; RESP3 delivers them as maps. Either upgrade "
+    "sql-redis, if a release now handles RESP3, or build the client with "
+    "protocol=2, which is what RedisVL's own connection factory does. "
+    "Upstream: https://github.com/redis-developer/sql-redis"
+)
+
+
+def _explain_sql_query_failure(client: Any, error: KeyError) -> NoReturn:
+    """Re-raise a sql-redis ``KeyError`` with the connection named, if relevant.
+
+    sql-redis reads search replies positionally, so on a RESP3 connection every
+    query dies on a ``KeyError`` raised from inside the dependency, naming a
+    missing index or slice and pointing at nothing useful. Measured against
+    Redis 8.4.6 with sql-redis 0.7.1: the search path raises ``KeyError: 2``
+    and the aggregate path ``KeyError: slice(1, None, None)``, across plain
+    selects, ``SELECT *``, aggregates and ``ORDER BY``.
+
+    This adds the missing context rather than refusing the query up front,
+    which matters because sql-redis is expected to gain RESP3 support. A
+    pre-flight check on the connection alone cannot tell a fixed sql-redis from
+    a broken one, so it would start refusing queries that work. Wrapping the
+    failure instead costs one round trip and goes quiet by itself: once the
+    dependency parses RESP3, the query succeeds and this is never reached.
+
+    On a RESP2 connection a ``KeyError`` means something else entirely, so it
+    propagates untouched.
+    """
+    if effective_protocol(client) != 3:
+        raise error
+    raise RedisSearchError(_SQL_QUERY_RESP3_ERROR_MESSAGE) from error
 
 
 REQUIRED_MODULES_FOR_INTROSPECTION = [
@@ -1715,7 +1750,13 @@ class SearchIndex(BaseSearchIndex):
 
         Raises:
             ImportError: If sql-redis package is not installed.
+            RedisSearchError: If the installed sql-redis could not read the
+                reply because the connection speaks RESP3. Upgrade sql-redis
+                or build the client with ``protocol=2``.
         """
+        # Import before touching `_redis_client`, which can open a connection.
+        # A caller who has not installed the extra should learn that without
+        # paying for a round trip first.
         try:
             from sql_redis import create_executor
         except ImportError:
@@ -1733,7 +1774,10 @@ class SearchIndex(BaseSearchIndex):
                 self._sql_executors[cache_key] = executor
 
         # Execute the query with any params
-        result = executor.execute(sql_query.sql, params=sql_query.params)
+        try:
+            result = executor.execute(sql_query.sql, params=sql_query.params)
+        except KeyError as e:
+            _explain_sql_query_failure(self._redis_client, e)
 
         return _convert_and_drop_empty_rows(result.rows, "SQL")
 
@@ -3146,7 +3190,13 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Raises:
             ImportError: If sql-redis package is not installed.
+            RedisSearchError: If the installed sql-redis could not read the
+                reply because the connection speaks RESP3. Upgrade sql-redis
+                or build the client with ``protocol=2``.
         """
+        # Import before acquiring the client, which can open a connection. A
+        # caller who has not installed the extra should learn that without
+        # paying for a round trip first.
         try:
             from sql_redis import create_async_executor
         except ImportError:
@@ -3156,6 +3206,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
 
         client = await self._get_client()
+
         sql_redis_options = _get_sql_redis_options(sql_query)
         cache_key = _sql_executor_cache_key(sql_redis_options)
 
@@ -3174,7 +3225,10 @@ class AsyncSearchIndex(BaseSearchIndex):
                 executor = await create_async_executor(client, **sql_redis_options)
                 self._sql_executors[cache_key] = executor
         # Execute the query with any params asynchronously
-        result = await executor.execute(sql_query.sql, params=sql_query.params)
+        try:
+            result = await executor.execute(sql_query.sql, params=sql_query.params)
+        except KeyError as e:
+            _explain_sql_query_failure(client, e)
 
         return _convert_and_drop_empty_rows(result.rows, "SQL")
 

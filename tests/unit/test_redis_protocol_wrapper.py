@@ -5,9 +5,11 @@ Unit tests for the redis_protocol wrapper.
 from unittest.mock import Mock
 
 import pytest
+from redis import Redis
 from redis.cluster import ClusterPipeline
+from redis.connection import DEFAULT_RESP_VERSION
 
-from redisvl.utils.redis_protocol import get_protocol_version
+from redisvl.utils.redis_protocol import effective_protocol, get_protocol_version
 
 
 def test_get_protocol_version_handles_missing_nodes_manager():
@@ -69,3 +71,50 @@ def test_protocol_version_affects_never_decode():
     # When protocol is None, NEVER_DECODE should be set
     assert protocol is None
     assert NEVER_DECODE in options
+
+
+def _client(protocol):
+    """A real client carrying (or omitting) an explicit protocol.
+
+    Built rather than mocked because redis-py's ``get_protocol_version`` is
+    ``isinstance``-gated and reads ``connection_pool``, an attribute set in
+    ``__init__``. A ``Mock`` fails the first check and ``Mock(spec=Redis)``
+    lacks the second, so either would test the stand-in and not the helper.
+    Constructing a client opens no socket.
+    """
+    kwargs = {} if protocol is None else {"protocol": protocol}
+    return Redis.from_url("redis://localhost:6379", **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        (2, 2),
+        # A URL query string yields a str on redis-py < 8, an int from 8.0 on,
+        # so both spellings have to resolve to the same number.
+        ("2", 2),
+        (3, 3),
+        ("3", 3),
+    ],
+)
+def test_effective_protocol_coerces_an_explicit_setting(configured, expected):
+    assert effective_protocol(_client(configured)) == expected
+
+
+def test_effective_protocol_defers_to_redis_py_when_unset():
+    """An absent kwarg means redis-py's default, which 8.0 flipped from 2 to 3.
+
+    Asserted against redis-py's own constant rather than a literal, because the
+    point of reading ``DEFAULT_RESP_VERSION`` is that RedisVL stops encoding a
+    fact about redis-py's release history.
+    """
+    assert effective_protocol(_client(None)) == DEFAULT_RESP_VERSION
+
+
+def test_effective_protocol_survives_an_unreadable_client():
+    """A ClusterPipeline with no nodes_manager must not crash the caller."""
+    mock_pipeline = Mock(spec=ClusterPipeline)
+    if hasattr(mock_pipeline, "nodes_manager"):
+        delattr(mock_pipeline, "nodes_manager")
+
+    assert effective_protocol(mock_pipeline) == DEFAULT_RESP_VERSION
