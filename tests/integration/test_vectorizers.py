@@ -659,3 +659,119 @@ def test_deprecated_text_parameter_warning():
         embeddings = vectorizer.embed_many(texts=TEST_TEXTS)
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(TEST_TEXTS)
+
+
+# --- VoyageAI model-routing tests (mocked, no API key required) ---
+
+
+def _fake_voyage_clients(dims=4):
+    """Build mocked sync/async VoyageAI clients returning fixed-size embeddings.
+
+    Each endpoint returns exactly one embedding per requested input so tests can
+    assert that batching never collapses multiple inputs into a single request.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    def _ctx_embed(inputs, model, input_type=None, **kwargs):
+        resp = MagicMock()
+        # contextualized_embed returns one result per input document, each with
+        # a list of per-chunk embeddings.
+        resp.results = [
+            MagicMock(index=i, embeddings=[[0.1] * dims]) for i in range(len(inputs))
+        ]
+        return resp
+
+    def _embed(texts, model=None, input_type=None, truncation=True, **kwargs):
+        resp = MagicMock()
+        resp.embeddings = [[0.1] * dims for _ in texts]
+        return resp
+
+    def _mm_embed(inputs, model, input_type=None, truncation=True, **kwargs):
+        resp = MagicMock()
+        resp.embeddings = [[0.1] * dims for _ in inputs]
+        return resp
+
+    client = MagicMock()
+    client.contextualized_embed.side_effect = _ctx_embed
+    client.embed.side_effect = _embed
+    client.multimodal_embed.side_effect = _mm_embed
+
+    aclient = MagicMock()
+    aclient.contextualized_embed = AsyncMock(side_effect=_ctx_embed)
+    aclient.embed = AsyncMock(side_effect=_embed)
+    aclient.multimodal_embed = AsyncMock(side_effect=_mm_embed)
+
+    return client, aclient
+
+
+def _build_voyage_vectorizer(model):
+    from unittest.mock import patch
+
+    client, aclient = _fake_voyage_clients()
+    with (
+        patch("voyageai.Client", return_value=client),
+        patch("voyageai.AsyncClient", return_value=aclient),
+    ):
+        vectorizer = VoyageAIVectorizer(model=model, api_config={"api_key": "test"})
+    return vectorizer, client, aclient
+
+
+def test_voyageai_context_model_detection():
+    """voyage-context-* models are detected as contextualized models."""
+    ctx_vectorizer, _, _ = _build_voyage_vectorizer("voyage-context-4")
+    assert ctx_vectorizer.is_context is True
+    assert ctx_vectorizer.is_multimodal is False
+
+    plain_vectorizer, _, _ = _build_voyage_vectorizer("voyage-3-large")
+    assert plain_vectorizer.is_context is False
+
+
+def test_voyageai_context_embed_many_uses_contextualized_api():
+    """Context models route to contextualized_embed with auto-chunking enabled."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = vectorizer.embed_many(
+        contents=["chunk one", "chunk two", "chunk three"], input_type="document"
+    )
+
+    # One embedding per input, no collapsing.
+    assert len(embeddings) == 3
+
+    _, kwargs = client.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["chunk one", "chunk two", "chunk three"]
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+    # contextualized_embed does not accept truncation.
+    assert "truncation" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_voyageai_context_aembed_many_uses_contextualized_api():
+    """Async context models route to contextualized_embed with auto-chunking."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = await vectorizer.aembed_many(
+        contents=["chunk one", "chunk two"], input_type="document"
+    )
+
+    assert len(embeddings) == 2
+    _, kwargs = aclient.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["chunk one", "chunk two"]
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+
+
+def test_voyageai_multimodal_embed_many_does_not_collapse_inputs():
+    """Multimodal embed_many sends each content as its own input (no collapsing)."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-multimodal-3.5")
+
+    embeddings = vectorizer.embed_many(
+        contents=["Ocean waves", "Forest trees"], input_type="document"
+    )
+
+    # Two requested contents must yield two embeddings.
+    assert len(embeddings) == 2
+
+    args, _ = client.multimodal_embed.call_args
+    # Each item is wrapped as its own single-part multimodal input.
+    assert args[0] == [["Ocean waves"], ["Forest trees"]]

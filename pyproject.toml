@@ -47,7 +47,7 @@ mcp = [
 mistralai = ["mistralai>=1.0.0,<2"]
 openai = ["openai>=1.1.0"]
 cohere = ["cohere>=4.44"]
-voyageai = ["voyageai>=0.2.2"]
+voyageai = ["voyageai>=0.5.0"]
 sentence-transformers = ["sentence-transformers>=3.4.0,<4"]
 langcache = ["langcache>=0.11.0"]
 # Legacy Google backend for the deprecated VertexAIVectorizer. The <2.0.0 cap is
@@ -77,7 +77,7 @@ all = [
     "mistralai>=1.0.0,<2",
     "openai>=1.1.0",
     "cohere>=4.44",
-    "voyageai>=0.2.2",
+    "voyageai>=0.5.0",
     "sentence-transformers>=3.4.0,<4",
     "langcache>=0.11.0",
     "google-cloud-aiplatform>=1.26,<2.0.0",

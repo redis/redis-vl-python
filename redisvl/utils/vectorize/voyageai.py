@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -47,6 +47,17 @@ class VoyageAIVectorizer(BaseVectorizer):
         )
         doc_embeddings = vectorizer.embed_many(
             contents=["your document text", "more document text"],
+            input_type="document"
+        )
+
+        # Contextualized embeddings (voyage-context-* models) - requires voyageai>=0.5.0
+        # Each input document is embedded with awareness of the others in the batch.
+        context_vectorizer = VoyageAIVectorizer(
+            model="voyage-context-4",
+            api_config={"api_key": "your-voyageai-api-key"}
+        )
+        context_embeddings = context_vectorizer.embed_many(
+            contents=["chunk one", "chunk two", "chunk three"],
             input_type="document"
         )
 
@@ -130,6 +141,11 @@ class VoyageAIVectorizer(BaseVectorizer):
     def is_multimodal(self) -> bool:
         """Whether a multimodal model has been configured."""
         return "multimodal" in self.model
+
+    @property
+    def is_context(self) -> bool:
+        """Whether a contextualized-embedding model (voyage-context-*) has been configured."""
+        return "context" in self.model
 
     def embed_image(self, image_path: str, **kwargs) -> list[float] | bytes:
         """Embed an image (from its path on disk) using VoyageAI's multimodal API. Requires pillow to be installed."""
@@ -343,10 +359,19 @@ class VoyageAIVectorizer(BaseVectorizer):
         try:
             embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
+                if self.is_context:
+                    embeddings.extend(
+                        self._embed_context_batch(batch, input_type, **kwargs)
+                    )
+                    continue
                 response = self._embed_fn(
                     (
-                        [batch] if self.is_multimodal else batch
-                    ),  # Multimodal requires a list of lists/dicts
+                        # Multimodal wraps each item as its own single-part input
+                        # so one embedding is returned per requested content.
+                        [[item] for item in batch]
+                        if self.is_multimodal
+                        else batch
+                    ),
                     model=self.model,
                     input_type=input_type,
                     truncation=truncation,
@@ -358,6 +383,52 @@ class VoyageAIVectorizer(BaseVectorizer):
             raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
+
+    def _embed_context_batch(
+        self, batch: list[str], input_type: str | None, **kwargs
+    ) -> list[list[float]]:
+        """Embed a batch with a contextualized (voyage-context-*) model.
+
+        The batch is passed as a flat ``list[str]`` with auto-chunking enabled
+        and a large ``chunk_size`` so each input document resolves to a single
+        chunk, yielding exactly one embedding per requested content.
+        """
+        # contextualized_embed is only present on recent voyageai clients; the
+        # attr-defined ignore keeps mypy happy without vendored stubs.
+        response = self._client.contextualized_embed(  # type: ignore[attr-defined]
+            inputs=batch,
+            model=self.model,
+            input_type=input_type,
+            enable_auto_chunking=True,
+            chunk_size=32000,
+            **kwargs,
+        )
+        # Take the first chunk per document to keep one embedding per input.
+        return cast(
+            "list[list[float]]",
+            [result.embeddings[0] for result in response.results],
+        )
+
+    async def _aembed_context_batch(
+        self, batch: list[str], input_type: str | None, **kwargs
+    ) -> list[list[float]]:
+        """Asynchronously embed a batch with a contextualized model.
+
+        See :meth:`_embed_context_batch` for details on the input format.
+        """
+        response = await self._aclient.contextualized_embed(  # type: ignore[attr-defined]
+            inputs=batch,
+            model=self.model,
+            input_type=input_type,
+            enable_auto_chunking=True,
+            chunk_size=32000,
+            **kwargs,
+        )
+        # Take the first chunk per document to keep one embedding per input.
+        return cast(
+            "list[list[float]]",
+            [result.embeddings[0] for result in response.results],
+        )
 
     async def _aembed(self, content: Any, **kwargs) -> list[float]:
         """
@@ -418,10 +489,19 @@ class VoyageAIVectorizer(BaseVectorizer):
         try:
             embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
+                if self.is_context:
+                    embeddings.extend(
+                        await self._aembed_context_batch(batch, input_type, **kwargs)
+                    )
+                    continue
                 response = await self._aembed_fn(
                     (
-                        [batch] if self.is_multimodal else batch
-                    ),  # Multimodal requires a list of lists/dicts
+                        # Multimodal wraps each item as its own single-part input
+                        # so one embedding is returned per requested content.
+                        [[item] for item in batch]
+                        if self.is_multimodal
+                        else batch
+                    ),
                     model=self.model,
                     input_type=input_type,
                     truncation=truncation,
