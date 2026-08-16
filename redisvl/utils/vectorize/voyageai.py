@@ -144,6 +144,11 @@ class VoyageAIVectorizer(BaseVectorizer):
         Notes:
             - Multimodal models require voyageai>=0.3.6 to be installed for video embeddings, as well as
                 ffmpeg installed on the system. Image embeddings require pillow to be installed.
+            - Contextualized (``voyage-context-*``) models require voyageai>=0.5.0. To keep the
+                one-embedding-per-input contract, a document longer than ``chunk_size`` (32000 tokens)
+                auto-chunks into multiple chunks but only the first chunk's embedding is kept; the rest
+                are dropped. ``truncation`` is not forwarded to the contextualized API (it does not
+                accept it), so it is silently ignored for these models.
 
         """
         super().__init__(model=model, dtype=dtype, cache=cache)
