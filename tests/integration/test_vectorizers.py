@@ -775,3 +775,22 @@ def test_voyageai_multimodal_embed_many_does_not_collapse_inputs():
     args, _ = client.multimodal_embed.call_args
     # Each item is wrapped as its own single-part multimodal input.
     assert args[0] == [["Ocean waves"], ["Forest trees"]]
+
+
+@pytest.mark.parametrize(
+    "model, expected_batch_size",
+    [
+        ("voyage-2", 72),
+        ("voyage-4-lite", 30),
+        ("voyage-3.5-lite", 30),
+        ("voyage-4", 10),
+        ("voyage-3.5", 10),
+        ("voyage-4-large", 7),
+        ("voyage-code-4", 7),
+        ("voyage-3-large", 7),
+    ],
+)
+def test_voyageai_batch_size_for_current_models(model, expected_batch_size):
+    """Current-generation models fall into batch-size tiers matching their token limits."""
+    vectorizer, _, _ = _build_voyage_vectorizer(model)
+    assert vectorizer._get_batch_size() == expected_batch_size

@@ -18,8 +18,14 @@ class VoyageAIVectorizer(BaseVectorizer):
     """The VoyageAIVectorizer class utilizes VoyageAI's API to generate
     embeddings for text and multimodal (text / image / video) data.
 
-    This vectorizer is designed to interact with VoyageAI's /embed and /multimodal_embed APIs,
-    requiring an API key for authentication. The key can be provided
+    This vectorizer is designed to interact with VoyageAI's /embed, /multimodal_embed,
+    and /contextualized_embed APIs. Any model identifier accepted by VoyageAI can be
+    passed via ``model`` - for example the general-purpose ``voyage-4-large`` /
+    ``voyage-4`` / ``voyage-4-lite`` family, domain models such as ``voyage-code-4``,
+    contextualized ``voyage-context-*`` models, and multimodal ``voyage-multimodal-*``
+    models. See https://docs.voyageai.com/docs/embeddings for the current catalog.
+
+    It requires an API key for authentication. The key can be provided
     directly in the `api_config` dictionary or through the `VOYAGE_API_KEY`
     environment variable. User must obtain an API key from VoyageAI's website
     (https://dash.voyageai.com/). Additionally, the `voyageai` python
@@ -265,12 +271,14 @@ class VoyageAIVectorizer(BaseVectorizer):
         """
         if self.model in ["voyage-2", "voyage-02"]:
             return 72
-        elif self.model in ["voyage-3-lite", "voyage-3.5-lite"]:
+        elif self.model in ["voyage-3-lite", "voyage-3.5-lite", "voyage-4-lite"]:
             return 30
-        elif self.model in ["voyage-3", "voyage-3.5"]:
+        elif self.model in ["voyage-3", "voyage-3.5", "voyage-4"]:
             return 10
         else:
-            return 7  # Default for other models
+            # Default for other models (e.g. voyage-3-large, voyage-4-large,
+            # voyage-code-*, voyage-finance-2, voyage-law-2, voyage-context-*).
+            return 7
 
     def _validate_input(
         self, contents: list[Any], input_type: str | None, truncation: bool | None
