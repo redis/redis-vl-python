@@ -745,6 +745,21 @@ def test_voyageai_context_embed_many_uses_contextualized_api():
     assert "truncation" not in kwargs
 
 
+def test_voyageai_context_query_disables_auto_chunking():
+    """Query inputs must not enable auto-chunking (document-only per VoyageAI)."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-context-4")
+
+    embedding = vectorizer.embed(content="find similar docs", input_type="query")
+
+    assert len(embedding) == 4
+    _, kwargs = client.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["find similar docs"]
+    assert kwargs["input_type"] == "query"
+    assert kwargs["enable_auto_chunking"] is False
+    # chunk_size is only valid alongside auto-chunking, so it must be omitted.
+    assert "chunk_size" not in kwargs
+
+
 @pytest.mark.asyncio
 async def test_voyageai_context_aembed_many_uses_contextualized_api():
     """Async context models route to contextualized_embed with auto-chunking."""
@@ -759,6 +774,21 @@ async def test_voyageai_context_aembed_many_uses_contextualized_api():
     assert kwargs["inputs"] == ["chunk one", "chunk two"]
     assert kwargs["enable_auto_chunking"] is True
     assert kwargs["chunk_size"] == 32000
+
+
+@pytest.mark.asyncio
+async def test_voyageai_context_aquery_disables_auto_chunking():
+    """Async query inputs must not enable auto-chunking."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-context-4")
+
+    embedding = await vectorizer.aembed(content="find similar docs", input_type="query")
+
+    assert len(embedding) == 4
+    _, kwargs = aclient.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["find similar docs"]
+    assert kwargs["input_type"] == "query"
+    assert kwargs["enable_auto_chunking"] is False
+    assert "chunk_size" not in kwargs
 
 
 def test_voyageai_multimodal_embed_many_does_not_collapse_inputs():
@@ -786,7 +816,9 @@ def test_voyageai_multimodal_embed_many_does_not_collapse_inputs():
         ("voyage-4", 10),
         ("voyage-3.5", 10),
         ("voyage-4-large", 7),
+        ("voyage-4-nano", 7),
         ("voyage-code-4", 7),
+        ("voyage-context-4", 7),
         ("voyage-3-large", 7),
     ],
 )

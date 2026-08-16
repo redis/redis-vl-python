@@ -21,9 +21,10 @@ class VoyageAIVectorizer(BaseVectorizer):
     This vectorizer is designed to interact with VoyageAI's /embed, /multimodal_embed,
     and /contextualized_embed APIs. Any model identifier accepted by VoyageAI can be
     passed via ``model`` - for example the general-purpose ``voyage-4-large`` /
-    ``voyage-4`` / ``voyage-4-lite`` family, domain models such as ``voyage-code-4``,
-    contextualized ``voyage-context-*`` models, and multimodal ``voyage-multimodal-*``
-    models. See https://docs.voyageai.com/docs/embeddings for the current catalog.
+    ``voyage-4`` / ``voyage-4-lite`` / ``voyage-4-nano`` family, domain models such
+    as ``voyage-code-4``, contextualized ``voyage-context-4`` / ``voyage-context-3``
+    models, and multimodal ``voyage-multimodal-*`` models.
+    See https://docs.voyageai.com/docs/embeddings for the current catalog.
 
     It requires an API key for authentication. The key can be provided
     directly in the `api_config` dictionary or through the `VOYAGE_API_KEY`
@@ -65,6 +66,12 @@ class VoyageAIVectorizer(BaseVectorizer):
         context_embeddings = context_vectorizer.embed_many(
             contents=["chunk one", "chunk two", "chunk three"],
             input_type="document"
+        )
+        # Retrieval queries use input_type="query"; auto-chunking is a
+        # document-only feature, so query inputs are embedded as-is.
+        context_query = context_vectorizer.embed(
+            content="your query text here",
+            input_type="query"
         )
 
         # Multimodal usage - requires Pillow and voyageai>=0.3.6
@@ -392,26 +399,39 @@ class VoyageAIVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
+    def _context_embed_kwargs(
+        self, batch: list[str], input_type: str | None, kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build the kwargs for a ``contextualized_embed`` call.
+
+        The batch is passed as a flat ``list[str]``. Auto-chunking is only valid
+        for ``input_type="document"`` (VoyageAI rejects it for queries), so it is
+        enabled with a large ``chunk_size`` on the document side - making each
+        input resolve to a single chunk - and left off otherwise. Either way the
+        first chunk per input is kept, yielding one embedding per requested item.
+        """
+        enable_auto_chunking = input_type == "document"
+        call_kwargs: dict[str, Any] = {
+            "inputs": batch,
+            "model": self.model,
+            "input_type": input_type,
+            "enable_auto_chunking": enable_auto_chunking,
+            **kwargs,
+        }
+        if enable_auto_chunking:
+            call_kwargs["chunk_size"] = 32000
+        return call_kwargs
+
     def _embed_context_batch(
         self, batch: list[str], input_type: str | None, **kwargs
     ) -> list[list[float]]:
-        """Embed a batch with a contextualized (voyage-context-*) model.
-
-        The batch is passed as a flat ``list[str]`` with auto-chunking enabled
-        and a large ``chunk_size`` so each input document resolves to a single
-        chunk, yielding exactly one embedding per requested content.
-        """
+        """Embed a batch with a contextualized (voyage-context-*) model."""
         # contextualized_embed is only present on recent voyageai clients; the
         # attr-defined ignore keeps mypy happy without vendored stubs.
         response = self._client.contextualized_embed(  # type: ignore[attr-defined]
-            inputs=batch,
-            model=self.model,
-            input_type=input_type,
-            enable_auto_chunking=True,
-            chunk_size=32000,
-            **kwargs,
+            **self._context_embed_kwargs(batch, input_type, kwargs),
         )
-        # Take the first chunk per document to keep one embedding per input.
+        # Take the first chunk per input to keep one embedding per input.
         return cast(
             "list[list[float]]",
             [result.embeddings[0] for result in response.results],
@@ -425,14 +445,9 @@ class VoyageAIVectorizer(BaseVectorizer):
         See :meth:`_embed_context_batch` for details on the input format.
         """
         response = await self._aclient.contextualized_embed(  # type: ignore[attr-defined]
-            inputs=batch,
-            model=self.model,
-            input_type=input_type,
-            enable_auto_chunking=True,
-            chunk_size=32000,
-            **kwargs,
+            **self._context_embed_kwargs(batch, input_type, kwargs),
         )
-        # Take the first chunk per document to keep one embedding per input.
+        # Take the first chunk per input to keep one embedding per input.
         return cast(
             "list[list[float]]",
             [result.embeddings[0] for result in response.results],
