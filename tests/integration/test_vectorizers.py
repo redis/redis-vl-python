@@ -691,15 +691,22 @@ def _fake_voyage_clients(dims=4):
         resp.embeddings = [[0.1] * dims for _ in inputs]
         return resp
 
+    def _tokenize(texts, model=None):
+        # One token per whitespace-delimited word, so tests can control token
+        # counts by word count (mirrors voyageai's tokenize return shape).
+        return [text.split() for text in texts]
+
     client = MagicMock()
     client.contextualized_embed.side_effect = _ctx_embed
     client.embed.side_effect = _embed
     client.multimodal_embed.side_effect = _mm_embed
+    client.tokenize.side_effect = _tokenize
 
     aclient = MagicMock()
     aclient.contextualized_embed = AsyncMock(side_effect=_ctx_embed)
     aclient.embed = AsyncMock(side_effect=_embed)
     aclient.multimodal_embed = AsyncMock(side_effect=_mm_embed)
+    aclient.tokenize.side_effect = _tokenize
 
     return client, aclient
 
@@ -805,6 +812,66 @@ def test_voyageai_multimodal_embed_many_does_not_collapse_inputs():
     args, _ = client.multimodal_embed.call_args
     # Each item is wrapped as its own single-part multimodal input.
     assert args[0] == [["Ocean waves"], ["Forest trees"]]
+
+
+# --- VoyageAI token-aware batching tests (mocked, no API key required) ---
+
+
+def test_voyageai_token_aware_batching_splits_on_token_limit():
+    """Plain text batches split when the per-request token budget is reached."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-3-large")
+    # 3 tokens per text; a 7-token budget fits two texts (6) but not three (9).
+    vectorizer._token_limit = lambda: 7
+    client.embed.reset_mock()
+
+    texts = ["a a a", "b b b", "c c c"]
+    embeddings = vectorizer.embed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 3
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    assert batches == [["a a a", "b b b"], ["c c c"]]
+
+
+def test_voyageai_token_aware_batching_oversized_text_goes_alone():
+    """A single text over the token budget is still sent alone, not dropped."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-3-large")
+    vectorizer._token_limit = lambda: 5
+    client.embed.reset_mock()
+
+    texts = ["a a a a a a a a", "b b"]  # 8 tokens (> budget), then 2 tokens
+    embeddings = vectorizer.embed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 2
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    assert batches == [["a a a a a a a a"], ["b b"]]
+
+
+def test_voyageai_token_aware_batching_respects_item_cap():
+    """The per-model item cap still bounds a batch when tokens are plentiful."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-4")  # item cap = 10
+    vectorizer._token_limit = lambda: 10_000_000  # effectively unbounded
+    client.embed.reset_mock()
+
+    texts = ["x"] * 25  # 1 token each
+    vectorizer.embed_many(contents=texts, input_type="document")
+
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    assert [len(b) for b in batches] == [10, 10, 5]
+
+
+@pytest.mark.asyncio
+async def test_voyageai_token_aware_batching_async_splits_on_token_limit():
+    """Async plain text batches split on the token budget too (sync/async parity)."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-3-large")
+    vectorizer._token_limit = lambda: 7
+    aclient.embed.reset_mock()
+
+    texts = ["a a a", "b b b", "c c c"]
+    embeddings = await vectorizer.aembed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 3
+    batches = [call.args[0] for call in aclient.embed.call_args_list]
+    assert batches == [["a a a", "b b b"], ["c c c"]]
 
 
 @pytest.mark.parametrize(
