@@ -47,7 +47,7 @@ def test_rank_scores_align_with_reranked_docs(reranker):
     # reranked_docs is sorted by score descending, so scores must be too,
     # this catches the case where scores are taken from the original
     # unsorted list instead of the sorted one.
-    assert scores == sorted(scores, reverse=True)
+    assert list(scores) == sorted(scores, reverse=True)
 
 
 def test_bad_input(reranker):
