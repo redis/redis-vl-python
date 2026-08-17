@@ -740,6 +740,39 @@ def test_voyageai_context_query_disables_auto_chunking():
     assert "chunk_size" not in kwargs
 
 
+def test_voyageai_context_default_input_type_enables_auto_chunking():
+    """Omitted input_type must default to document + auto-chunking.
+
+    SemanticRouter / SemanticCache call embed(_many) without input_type; a flat
+    list[str] with no type is rejected by VoyageAI, so the default must resolve
+    to a document (auto-chunking on) rather than passing input_type=None.
+    """
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = vectorizer.embed_many(contents=["chunk one", "chunk two"])
+
+    assert len(embeddings) == 2
+    _, kwargs = client.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["chunk one", "chunk two"]
+    assert kwargs["input_type"] == "document"
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+
+
+@pytest.mark.asyncio
+async def test_voyageai_context_adefault_input_type_enables_auto_chunking():
+    """Async: omitted input_type must default to document + auto-chunking."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = await vectorizer.aembed_many(contents=["chunk one", "chunk two"])
+
+    assert len(embeddings) == 2
+    _, kwargs = aclient.contextualized_embed.call_args
+    assert kwargs["input_type"] == "document"
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+
+
 @pytest.mark.asyncio
 async def test_voyageai_context_aembed_many_uses_contextualized_api():
     """Async context models route to contextualized_embed with auto-chunking."""

@@ -487,16 +487,22 @@ class VoyageAIVectorizer(BaseVectorizer):
         """Build the kwargs for a ``contextualized_embed`` call.
 
         The batch is passed as a flat ``list[str]``. Auto-chunking is only valid
-        for ``input_type="document"`` (VoyageAI rejects it for queries), so it is
-        enabled with a large ``chunk_size`` on the document side - making each
-        input resolve to a single chunk - and left off otherwise. Either way the
-        first chunk per input is kept, yielding one embedding per requested item.
+        for ``input_type="document"`` (VoyageAI rejects it for queries), so every
+        non-query input - including the default where ``input_type`` is omitted -
+        is treated as a document and chunked with a large ``chunk_size``, making
+        each input resolve to a single chunk. Explicit queries skip chunking and
+        are sent as a flat ``list[str]`` as-is. Either way the first chunk per
+        input is kept, yielding one embedding per requested item.
         """
-        enable_auto_chunking = input_type == "document"
+        enable_auto_chunking = input_type != "query"
+        # Auto-chunking requires input_type="document"; a flat list[str] with no
+        # type is rejected, so default (None) callers - e.g. SemanticRouter and
+        # SemanticCache, which never set input_type - resolve to "document".
+        effective_input_type = "document" if enable_auto_chunking else input_type
         call_kwargs: dict[str, Any] = {
             "inputs": batch,
             "model": self.model,
-            "input_type": input_type,
+            "input_type": effective_input_type,
             "enable_auto_chunking": enable_auto_chunking,
             **kwargs,
         }
