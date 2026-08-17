@@ -121,7 +121,7 @@ class HFCrossEncoderReranker(BaseReranker):
         docs_with_scores = list(zip(doc_subset, scores))
         docs_with_scores.sort(key=lambda x: x[1], reverse=True)
         reranked_docs = [doc for doc, _ in docs_with_scores[:limit]]
-        scores = scores[:limit]
+        scores = [score for _, score in docs_with_scores[:limit]]
 
         if return_score:
             return reranked_docs, scores  # type: ignore
