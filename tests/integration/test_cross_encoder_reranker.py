@@ -1,13 +1,8 @@
 import pytest
 
-from tests.conftest import SKIP_HF
+from redisvl.utils.rerank.hf_cross_encoder import HFCrossEncoderReranker
 
-if not SKIP_HF:
-    from redisvl.utils.rerank.hf_cross_encoder import HFCrossEncoderReranker
-
-pytestmark = pytest.mark.skipif(
-    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
-)
+pytestmark = pytest.mark.requires_hf
 
 
 @pytest.fixture(scope="session")

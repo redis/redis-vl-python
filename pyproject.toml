@@ -48,7 +48,8 @@ mistralai = ["mistralai>=1.0.0,<2"]
 openai = ["openai>=1.1.0"]
 cohere = ["cohere>=4.44"]
 voyageai = ["voyageai>=0.5.0"]
-sentence-transformers = ["sentence-transformers>=3.4.0,<4"]
+# Floor is a security constraint, not an API one: below 5.2.0 pins transformers<5.0.0.
+sentence-transformers = ["sentence-transformers>=5.2.0,<6"]
 langcache = ["langcache>=0.11.0"]
 # Legacy Google backend for the deprecated VertexAIVectorizer. The <2.0.0 cap is
 # intentional: Google's model-garden modules (vertexai.language_models /
@@ -78,7 +79,7 @@ all = [
     "openai>=1.1.0",
     "cohere>=4.44",
     "voyageai>=0.5.0",
-    "sentence-transformers>=3.4.0,<4",
+    "sentence-transformers>=5.2.0,<6",
     "langcache>=0.11.0",
     "google-cloud-aiplatform>=1.26,<2.0.0",
     "protobuf>=5.28.0,<6.0.0",
