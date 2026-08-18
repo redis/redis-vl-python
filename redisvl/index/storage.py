@@ -1,5 +1,5 @@
-from collections.abc import Collection
-from typing import Any, Callable, Iterable
+from collections.abc import Collection, Mapping
+from typing import Any, Callable, Iterable, cast
 
 from pydantic import BaseModel, ValidationError
 from redis import __version__ as redis_version
@@ -7,6 +7,7 @@ from redis import __version__ as redis_version
 # Add imports for Pipeline types
 from redis.asyncio.client import Pipeline as AsyncPipeline
 from redis.asyncio.cluster import ClusterPipeline as AsyncClusterPipeline
+from redis.typing import EncodableT
 
 # Redis 5.x compatibility (6 fixed the import path)
 if redis_version.startswith("5"):
@@ -611,7 +612,10 @@ class HashStorage(BaseStorage):
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
-        client.hset(name=key, mapping=obj)
+        client.hset(
+            name=key,
+            mapping=cast(Mapping[EncodableT, EncodableT], obj),
+        )
 
     @staticmethod
     async def _aset(client: AsyncRedisClientOrPipeline, key: str, obj: dict[str, Any]):

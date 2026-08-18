@@ -1799,7 +1799,8 @@ class SearchIndex(BaseSearchIndex):
 
                 for j, query_results in enumerate(results):
                     _built_query = batch_built_queries[j]
-                    parsed_result = search._parse_search(  # type: ignore
+                    parsed_result = search._parse_results(  # type: ignore
+                        "FT.SEARCH",
                         query_results,
                         query=_built_query,
                         duration=duration,
@@ -2998,7 +2999,8 @@ class AsyncSearchIndex(BaseSearchIndex):
 
                 for j, query_results in enumerate(results):
                     _built_query = batch_built_queries[j]
-                    parsed_result = search._parse_search(  # type: ignore
+                    parsed_result = search._parse_results(  # type: ignore
+                        "FT.SEARCH",
                         query_results,
                         query=_built_query,
                         duration=duration,
