@@ -54,7 +54,7 @@ skip_without_azure = pytest.mark.skipif(
         "AZURE_OPENAI_API_KEY and OPENAI_API_VERSION to run these, plus "
         "AZURE_OPENAI_DEPLOYMENT_NAME if your deployment is not named "
         "text-embedding-ada-002. Offline coverage lives in "
-        "tests/unit/test_azure_openai_vectorizer.py; see CONTRIBUTING.md."
+        "tests/unit/test_azure_openai_vectorizer.py."
     ),
 )
 

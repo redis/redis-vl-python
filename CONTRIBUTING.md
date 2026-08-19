@@ -169,8 +169,6 @@ uv run pytest --cov=redisvl --cov-report=html
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
 
-**Note:** The Azure OpenAI live tests are skipped unless `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` and `OPENAI_API_VERSION` are all set. Because they also carry the `requires_api_keys` marker, setting those variables is not sufficient on its own -- you still need `--run-api-tests` (or `make test-all`) to collect them. Set `AZURE_OPENAI_DEPLOYMENT_NAME` only if your deployment is not named `text-embedding-ada-002`, which is the default used at every call site. The shared Azure OpenAI resource that CI used has been retired, so these tests skip in CI; offline coverage for the vectorizer lives in `tests/unit/test_azure_openai_vectorizer.py`.
-
 ## Documentation
 
 Documentation is served from the `docs/` directory and built using Sphinx.

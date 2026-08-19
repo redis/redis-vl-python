@@ -179,9 +179,7 @@ async def _call(vectorizer, method_name, *args, **kwargs):
     return result
 
 
-# --------------------------------------------------------------------------- #
-# Configuration resolution                                                    #
-# --------------------------------------------------------------------------- #
+# Configuration resolution
 
 
 def test_init_from_api_config_configures_both_clients(fake_openai_module):
@@ -272,9 +270,7 @@ def test_missing_openai_dependency_raises_import_error(monkeypatch):
         AzureOpenAITextVectorizer(api_config=_creds())
 
 
-# --------------------------------------------------------------------------- #
-# Embedding                                                                   #
-# --------------------------------------------------------------------------- #
+# Embedding
 
 
 def test_embed_wraps_input_and_forwards_deployment_name(fake_openai_module):
@@ -335,9 +331,7 @@ async def test_aembed_many_uses_async_client(fake_openai_module):
     assert all(c["async"] is True for c in _CALLS[1:])
 
 
-# --------------------------------------------------------------------------- #
-# Validation and retry                                                        #
-# --------------------------------------------------------------------------- #
+# Validation and retry
 
 
 @pytest.mark.asyncio
@@ -448,9 +442,7 @@ def test_dtype_round_trip(fake_openai_module, dtype, itemsize):
     assert len(buffer) == 3 * itemsize
 
 
-# --------------------------------------------------------------------------- #
-# api_config handling                                                         #
-# --------------------------------------------------------------------------- #
+# api_config handling
 
 
 def test_api_config_not_mutated(fake_openai_module):
@@ -481,9 +473,7 @@ def test_partial_api_config_falls_back_to_env_per_key(fake_openai_module, monkey
     assert client.kwargs["api_version"] == API_VERSION
 
 
-# --------------------------------------------------------------------------- #
-# Wiring                                                                      #
-# --------------------------------------------------------------------------- #
+# Wiring
 
 
 def test_vectorizer_from_dict_supports_azure_openai(fake_openai_module, monkeypatch):
@@ -520,9 +510,7 @@ def test_uses_base_public_batch_embedding_methods():
     assert AzureOpenAITextVectorizer.aembed_many is BaseVectorizer.aembed_many
 
 
-# --------------------------------------------------------------------------- #
-# Guards on the tests themselves                                              #
-# --------------------------------------------------------------------------- #
+# Guards on the tests themselves
 
 
 def test_retry_decorated_methods_are_exactly_the_covered_four():
