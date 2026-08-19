@@ -4,6 +4,7 @@ from redis import Redis
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
+    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
     ID_FIELD_NAME,
     METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
@@ -16,7 +17,10 @@ from redisvl.extensions.message_history.schema import ChatMessage, MessageHistor
 from redisvl.index import SearchIndex
 from redisvl.query import CountQuery, FilterQuery
 from redisvl.query.filter import Tag
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import serialize
+
+logger = get_logger(__name__)
 
 
 class MessageHistory(BaseMessageHistory):
@@ -29,6 +33,7 @@ class MessageHistory(BaseMessageHistory):
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: dict[str, Any] = {},
+        create_index: bool = True,
         **kwargs,
     ):
         """Initialize message history
@@ -49,6 +54,16 @@ class MessageHistory(BaseMessageHistory):
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
+            create_index (bool): Whether RedisVL creates the index. When False
+                the constructor issues no index command at all: the index must
+                already exist over this name and prefix. This class never
+                validates an existing index's schema, so nothing further is
+                verified either way -- and as elsewhere, a live index whose
+                prefix or storage type differs from this one is not detected and
+                produces empty results rather than an error. See
+                :class:`~redisvl.extensions.cache.llm.SemanticCache` for a worked
+                example, and :doc:`/user_guide/installation` for the ACL details.
+                Defaults to True.
 
         """
         super().__init__(name, session_tag)
@@ -64,7 +79,14 @@ class MessageHistory(BaseMessageHistory):
             connection_kwargs=connection_kwargs or None,
         )
 
-        self._index.create(overwrite=False)
+        self._create_index = create_index
+        if create_index:
+            self._index.create(overwrite=False)
+        else:
+            logger.debug(
+                f"create_index=False: assuming index {name!r} exists over prefix "
+                f"{prefix!r}."
+            )
 
         self._default_session_filter = Tag(SESSION_FIELD_NAME) == self._session_tag
 
@@ -73,10 +95,14 @@ class MessageHistory(BaseMessageHistory):
 
     def clear(self) -> None:
         """Clears the conversation message history."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.clear()
 
     def delete(self) -> None:
         """Clear all conversation keys and remove the search index."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.delete(drop=True)
 
     def drop(self, id: str | None = None) -> None:
@@ -89,7 +115,7 @@ class MessageHistory(BaseMessageHistory):
         if id is None:
             id = self.get_recent(top_k=1, raw=True)[0][ID_FIELD_NAME]  # type: ignore
 
-        self._index.client.delete(self._index.key(id))  # type: ignore
+        self._index._redis_client.delete(self._index.key(id))
 
     def count(self, session_tag=None):
         query = CountQuery(
