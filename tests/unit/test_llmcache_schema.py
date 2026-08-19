@@ -3,7 +3,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from redisvl.extensions.cache.llm import CacheEntry, CacheHit
+from redisvl.extensions.cache.llm import CacheEntry, CacheHit, SemanticCacheIndexSchema
+from redisvl.extensions.constants import CACHE_VECTOR_FIELD_NAME
 from redisvl.redis.utils import array_to_buffer, hashify
 
 
@@ -126,3 +127,63 @@ def test_cache_hit_with_empty_optional_fields():
     result = hit.to_dict()
     assert "metadata" not in result
     assert "filters" not in result
+
+
+def test_semantic_cache_schema_defaults_to_flat_vector_index():
+    schema = SemanticCacheIndexSchema.from_params(
+        "llmcache", "llmcache", vector_dims=768, dtype="float32"
+    )
+
+    vector_field = schema.fields[CACHE_VECTOR_FIELD_NAME]
+
+    assert vector_field.attrs.algorithm.value == "FLAT"
+    assert vector_field.attrs.dims == 768
+    assert vector_field.attrs.datatype.value == "FLOAT32"
+    assert vector_field.attrs.distance_metric.value == "COSINE"
+
+
+def test_semantic_cache_schema_accepts_hnsw_vector_index_config():
+    schema = SemanticCacheIndexSchema.from_params(
+        "llmcache",
+        "llmcache",
+        vector_dims=768,
+        dtype="float32",
+        vector_index_config={
+            "algorithm": "hnsw",
+            "m": 32,
+            "ef_construction": 300,
+            "ef_runtime": 20,
+        },
+    )
+
+    vector_field = schema.fields[CACHE_VECTOR_FIELD_NAME]
+
+    assert vector_field.attrs.algorithm.value == "HNSW"
+    assert vector_field.attrs.dims == 768
+    assert vector_field.attrs.datatype.value == "FLOAT32"
+    assert vector_field.attrs.distance_metric.value == "COSINE"
+    assert vector_field.attrs.m == 32
+    assert vector_field.attrs.ef_construction == 300
+    assert vector_field.attrs.ef_runtime == 20
+
+
+def test_semantic_cache_schema_rejects_unknown_vector_index_algorithm():
+    with pytest.raises(ValueError, match="Unknown vector field algorithm"):
+        SemanticCacheIndexSchema.from_params(
+            "llmcache",
+            "llmcache",
+            vector_dims=768,
+            dtype="float32",
+            vector_index_config={"algorithm": "unknown"},
+        )
+
+
+def test_semantic_cache_schema_rejects_vectorizer_derived_config_overrides():
+    with pytest.raises(ValueError, match="dims"):
+        SemanticCacheIndexSchema.from_params(
+            "llmcache",
+            "llmcache",
+            vector_dims=768,
+            dtype="float32",
+            vector_index_config={"algorithm": "hnsw", "dims": 1536},
+        )
