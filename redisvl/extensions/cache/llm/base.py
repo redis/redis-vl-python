@@ -43,6 +43,7 @@ class BaseLLMCache(BaseCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Check the cache for semantically similar prompts.
 
@@ -53,6 +54,8 @@ class BaseLLMCache(BaseCache):
             return_fields (Optional[List[str]]): Fields to return in results.
             filter_expression (Optional[FilterExpression]): Optional filter to apply.
             distance_threshold (Optional[float]): Override for semantic distance threshold.
+            refresh_ttl (Optional[bool]): Override whether this cache hit should
+                refresh matched entries' TTL.
 
         Returns:
             List[Dict[str, Any]]: List of matching cache entries.
@@ -67,6 +70,7 @@ class BaseLLMCache(BaseCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Async check the cache for semantically similar prompts."""
         raise NotImplementedError
