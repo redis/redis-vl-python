@@ -39,13 +39,33 @@ def embeddings_cache(client):
     cache.clear()
 
 
+# Azure OpenAI live tests need a reachable deployment. _initialize_clients()
+# requires all three of these before it will construct a client, so gate on all
+# three rather than guessing from one. AZURE_OPENAI_DEPLOYMENT_NAME is
+# deliberately excluded -- it has a real default at every call site below.
+_AZURE_CONFIGURED = all(
+    os.getenv(var)
+    for var in ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "OPENAI_API_VERSION")
+)
+skip_without_azure = pytest.mark.skipif(
+    not _AZURE_CONFIGURED,
+    reason=(
+        "Azure OpenAI is not configured. Set AZURE_OPENAI_ENDPOINT, "
+        "AZURE_OPENAI_API_KEY and OPENAI_API_VERSION to run these, plus "
+        "AZURE_OPENAI_DEPLOYMENT_NAME if your deployment is not named "
+        "text-embedding-ada-002. Offline coverage lives in "
+        "tests/unit/test_azure_openai_vectorizer.py; see CONTRIBUTING.md."
+    ),
+)
+
+
 _vectorizer_params = [
     pytest.param(HFTextVectorizer, marks=pytest.mark.requires_hf),
     OpenAITextVectorizer,
     VertexAIVectorizer,
     GoogleGenAIVectorizer,
     CohereTextVectorizer,
-    AzureOpenAITextVectorizer,
+    pytest.param(AzureOpenAITextVectorizer, marks=skip_without_azure),
     BedrockVectorizer,
     MistralAITextVectorizer,
     CustomVectorizer,
@@ -416,7 +436,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
 
 
 _dtype_params = [
-    AzureOpenAITextVectorizer,
+    pytest.param(AzureOpenAITextVectorizer, marks=skip_without_azure),
     BedrockVectorizer,
     CohereTextVectorizer,
     CustomVectorizer,

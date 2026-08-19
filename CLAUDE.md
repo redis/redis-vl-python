@@ -74,6 +74,7 @@ RedisVL uses `pytest` with `testcontainers` for testing.
 - `pytest --run-api-tests` - explicitly run API-dependent tests (e.g., LangCache,
   external vectorizer/reranker providers). These require the appropriate API
   keys and environment variables to be set.
+- Azure OpenAI live tests are env-gated and skip in CI -- see CONTRIBUTING.md for how to run or re-enable them.
 
 ## Project Structure
 
