@@ -313,9 +313,7 @@ def test_search_index_delete(index):
     assert index.name not in index.listall()
 
 
-def test_exists_under_acl_without_admin_commands(
-    index, client, redis_url, redis_test_name
-):
+def test_exists_under_acl_without_admin_commands(index, client, acl_user):
     """exists() must work for a credential that grants search but drops @admin.
 
     Redis tags FT._LIST @admin as well as @search, so this ACL shape used to
@@ -327,30 +325,18 @@ def test_exists_under_acl_without_admin_commands(
     skip_if_no_redis_search(client)
     index.create(overwrite=True, drop=True)
 
-    username = redis_test_name("acl_no_admin")
-    password = "test-acl-password"
-    client.execute_command(
-        "ACL", "SETUSER", username, "on", f">{password}", "~*", "&*", "+@all", "-@admin"
-    )
-    restricted = None
     try:
-        restricted = RedisConnectionFactory.get_redis_connection(
-            redis_url=redis_url, username=username, password=password
-        )
-        # Pin the premise so this test cannot quietly become vacuous: if a
-        # future Redis stops gating FT._LIST behind @admin, the reason for
-        # preferring FT.INFO is gone and we want to hear about it here.
-        with pytest.raises(NoPermissionError):
-            restricted.execute_command("FT._LIST")
+        with acl_user("~*", "&*", "+@all", "-@admin", name="acl_no_admin") as user:
+            restricted = user.connect()
+            # Pin the premise so this test cannot quietly become vacuous: if a
+            # future Redis stops gating FT._LIST behind @admin, the reason for
+            # preferring FT.INFO is gone and we want to hear about it here.
+            with pytest.raises(NoPermissionError):
+                restricted.execute_command("FT._LIST")
 
-        restricted_index = SearchIndex(schema=index.schema, redis_client=restricted)
-        assert restricted_index.exists() is True
+            restricted_index = SearchIndex(schema=index.schema, redis_client=restricted)
+            assert restricted_index.exists() is True
     finally:
-        # Drop the ACL user before anything else that could raise: users are
-        # server-global, so a leaked one outlives this test and its worker.
-        client.execute_command("ACL", "DELUSER", username)
-        if restricted is not None:
-            restricted.close()
         index.delete(drop=True)
 
 
