@@ -620,6 +620,46 @@ def test_batch_search(index):
     assert results[1].docs[0]["id"] == "rvl:2"
 
 
+def test_default_client_from_existing_and_batch_search(redis_url, redis_test_name):
+    """User-provided redis-py clients support introspection and batch search."""
+    name = redis_test_name("resp3_index")
+    prefix = f"{name}:"
+    client = Redis.from_url(redis_url)
+    index = SearchIndex.from_dict(
+        {
+            "index": {"name": name, "prefix": prefix},
+            "fields": [
+                {"name": "test", "type": "tag"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_client=client,
+    )
+
+    try:
+        index.create()
+        index.load([{"id": "1", "test": "foo"}], id_field="id")
+
+        reopened = SearchIndex.from_existing(name, redis_client=client)
+        results = reopened.batch_search(["@test:{foo}"])
+
+        assert reopened.schema == index.schema
+        assert results[0].total == 1
+        assert results[0].docs[0]["id"] == f"{prefix}1"
+    finally:
+        index.delete(drop=True)
+        client.close()
+
+
 @pytest.mark.parametrize(
     "queries",
     [

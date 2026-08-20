@@ -69,6 +69,45 @@ def test_convert_index_info_json_storage():
     assert result["index"]["storage_type"] == "json"
 
 
+def test_convert_index_info_resp3_definition():
+    """Test converting the RESP3 dictionary form returned by redis-py 8."""
+    index_info = {
+        "index_name": "test_resp3_index",
+        "index_definition": {
+            "key_type": "HASH",
+            "prefixes": ["resp3_prefix"],
+            "default_score": 1.0,
+            "indexes_all": "false",
+        },
+        "attributes": [
+            {
+                "identifier": "category",
+                "attribute": "category",
+                "type": "TAG",
+                "SEPARATOR": "|",
+                "flags": ["CASESENSITIVE", "SORTABLE"],
+            }
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["index"]["name"] == "test_resp3_index"
+    assert result["index"]["prefix"] == "resp3_prefix"
+    assert result["index"]["storage_type"] == "hash"
+    assert result["fields"] == [
+        {
+            "name": "category",
+            "type": "tag",
+            "attrs": {
+                "case_sensitive": True,
+                "sortable": True,
+                "separator": "|",
+            },
+        }
+    ]
+
+
 def test_convert_index_info_with_fields():
     """Test converting index info with field definitions."""
     index_info = {

@@ -542,6 +542,49 @@ async def test_batch_search(async_index):
     assert results[1].docs[0]["id"] == "rvl:2"
 
 
+@pytest.mark.asyncio
+async def test_default_client_from_existing_and_batch_search(
+    redis_url, redis_test_name
+):
+    """User-provided async redis-py clients support introspection and batch search."""
+    name = redis_test_name("async_resp3_index")
+    prefix = f"{name}:"
+    client = AsyncRedis.from_url(redis_url)
+    index = AsyncSearchIndex.from_dict(
+        {
+            "index": {"name": name, "prefix": prefix},
+            "fields": [
+                {"name": "test", "type": "tag"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_client=client,
+    )
+
+    try:
+        await index.create()
+        await index.load([{"id": "1", "test": "foo"}], id_field="id")
+
+        reopened = await AsyncSearchIndex.from_existing(name, redis_client=client)
+        results = await reopened.batch_search(["@test:{foo}"])
+
+        assert reopened.schema == index.schema
+        assert results[0].total == 1
+        assert results[0].docs[0]["id"] == f"{prefix}1"
+    finally:
+        await index.delete(drop=True)
+        await client.aclose()
+
+
 @pytest.mark.parametrize(
     "queries",
     [
