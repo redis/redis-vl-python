@@ -154,7 +154,12 @@ async def test_async_search_index_client(redis_cluster_url, redis_test_name):
 @pytest.mark.requires_cluster
 @pytest.mark.asyncio
 async def test_embeddings_cache_cluster_async(redis_cluster_url, redis_test_name):
-    """Test that EmbeddingsCache correctly handles AsyncRedisCluster clients."""
+    """Test that EmbeddingsCache correctly handles AsyncRedisCluster clients.
+
+    Batch writes are the subtle case. Queueing a command on an async pipeline is
+    synchronous, so awaiting the returned pipeline used to clear a cluster
+    pipeline's queue -- ``amset`` returned every key having written nothing.
+    """
     cluster_client = RedisConnectionFactory.get_async_redis_cluster_connection(
         redis_cluster_url
     )
@@ -162,15 +167,38 @@ async def test_embeddings_cache_cluster_async(redis_cluster_url, redis_test_name
         name=redis_test_name("embedcache"), async_redis_client=cluster_client
     )
 
+    contents = [f"hey_{i}" for i in range(10)]
+    items = [
+        {"content": content, "model_name": "test", "embedding": [1.0, 2.0, float(i)]}
+        for i, content in enumerate(contents)
+    ]
+
     try:
         await cache.aset(
-            text="hey",
+            content="hey",
             model_name="test",
             embedding=[1, 2, 3],
         )
         result = await cache.aget("hey", "test")
         assert result is not None
         assert result["embedding"] == [1, 2, 3]
+        await cache.aclear()
+
+        await cache.amset(items)
+
+        # Count with scan_iter, which fans out to every primary. KEYS and DBSIZE
+        # are routed to a single node and would only report one shard's worth.
+        # SCAN only promises each key at least once, so de-duplicate.
+        prefix = cache._get_prefix()
+        scanned = {key async for key in cluster_client.scan_iter(match=f"{prefix}*")}
+        assert len(scanned) == len(items)
+
+        results = await cache.amget(contents, "test")
+        assert all(result is not None for result in results)
+        assert results[3]["embedding"] == [1.0, 2.0, 3.0]
+
+        # amexists_by_keys queued through the same pipeline and returned [].
+        assert await cache.amexists(contents, "test") == [True] * len(items)
         await cache.aclear()
     finally:
         # Manually close the cluster client to prevent connection leaks
@@ -187,7 +215,7 @@ def test_embeddings_cache_cluster_sync(redis_cluster_url, redis_test_name):
 
     for i in range(100):
         cache.set(
-            text=f"hey_{i}",
+            content=f"hey_{i}",
             model_name="test",
             embedding=[1, 2, 3],
         )
@@ -198,8 +226,8 @@ def test_embeddings_cache_cluster_sync(redis_cluster_url, redis_test_name):
 
     cache.mset(
         [
-            {"text": "hey_0", "model_name": "test", "embedding": [1, 2, 3]},
-            {"text": "hey_1", "model_name": "test", "embedding": [1, 2, 3]},
+            {"content": "hey_0", "model_name": "test", "embedding": [1, 2, 3]},
+            {"content": "hey_1", "model_name": "test", "embedding": [1, 2, 3]},
         ]
     )
     result = cache.mget(["hey_0", "hey_1"], "test")
