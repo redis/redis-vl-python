@@ -144,6 +144,17 @@ class BaseCache:
                 )
         return self._async_redis_client
 
+    def _resolve_ttl(self, ttl: int | None = None) -> int | None:
+        """Resolve an explicit TTL against this cache's default TTL.
+
+        Args:
+            ttl (Optional[int], optional): An explicit time-to-live in seconds.
+
+        Returns:
+            Optional[int]: The TTL to apply, or None if no expiration is set.
+        """
+        return ttl if ttl is not None else self._ttl
+
     def expire(self, key: str, ttl: int | None = None) -> None:
         """Set or refresh the expiration time for a key in the cache.
 
@@ -157,7 +168,7 @@ class BaseCache:
             If neither the provided TTL nor the default TTL is set (both are None),
             this method will have no effect.
         """
-        _ttl = ttl if ttl is not None else self._ttl
+        _ttl = self._resolve_ttl(ttl)
         if _ttl:
             client = self._get_redis_client()
             client.expire(key, _ttl)
@@ -175,7 +186,7 @@ class BaseCache:
             If neither the provided TTL nor the default TTL is set (both are None),
             this method will have no effect.
         """
-        _ttl = ttl if ttl is not None else self._ttl
+        _ttl = self._resolve_ttl(ttl)
         if _ttl:
             client = await self._get_async_redis_client()
             await client.expire(key, _ttl)

@@ -321,7 +321,7 @@ class EmbeddingsCache(BaseCache):
 
         # Store in Redis
         client = self._get_redis_client()
-        client.hset(name=key, mapping=cache_entry)  # type: ignore
+        client.hset(name=key, mapping=cache_entry)
 
         # Set TTL if specified
         self.expire(key, ttl)
@@ -347,6 +347,11 @@ class EmbeddingsCache(BaseCache):
 
         Returns:
             List[str]: List of Redis keys where the embeddings were stored.
+
+        Note:
+            The batch is pipelined, not transactional, so on a Redis Cluster it
+            fans out across shards. If it fails partway, some entries will have
+            been written; the operation is idempotent, so simply retry it.
 
         .. code-block:: python
 
@@ -379,6 +384,7 @@ class EmbeddingsCache(BaseCache):
 
         client = self._get_redis_client()
         keys = []
+        _ttl = self._resolve_ttl(ttl)
 
         with client.pipeline(transaction=False) as pipeline:
             # Process all entries
@@ -386,13 +392,13 @@ class EmbeddingsCache(BaseCache):
                 # Prepare and store
                 key, cache_entry = self._prepare_entry_data(**item)
                 keys.append(key)
-                pipeline.hset(name=key, mapping=cache_entry)  # type: ignore
+                pipeline.hset(name=key, mapping=cache_entry)
+                # Queue the expiry with its write so no entry is ever left
+                # unexpiring. HSET on its own leaves a key's TTL untouched.
+                if _ttl:
+                    pipeline.expire(key, _ttl)
 
             pipeline.execute()
-
-        # Set TTLs
-        for key in keys:
-            self.expire(key, ttl)
 
         return keys
 
@@ -764,6 +770,11 @@ class EmbeddingsCache(BaseCache):
         Returns:
             List[str]: List of Redis keys where the embeddings were stored.
 
+        Note:
+            The batch is pipelined, not transactional, so on a Redis Cluster it
+            fans out across shards. If it fails partway, some entries will have
+            been written; the operation is idempotent, so simply retry it.
+
         .. code-block:: python
 
             # Store multiple embeddings asynchronously
@@ -787,6 +798,7 @@ class EmbeddingsCache(BaseCache):
 
         client = await self._get_async_redis_client()
         keys = []
+        _ttl = self._resolve_ttl(ttl)
 
         async with client.pipeline(transaction=False) as pipeline:
             # Process all entries
@@ -794,13 +806,16 @@ class EmbeddingsCache(BaseCache):
                 # Prepare and store
                 key, cache_entry = self._prepare_entry_data(**item)
                 keys.append(key)
-                await pipeline.hset(name=key, mapping=cache_entry)  # type: ignore
+                # Never await a queued command: queueing is synchronous, and
+                # awaiting a cluster pipeline calls initialize(), which clears
+                # the queue. Only execute() is awaited.
+                pipeline.hset(name=key, mapping=cache_entry)
+                # Queue the expiry with its write so no entry is ever left
+                # unexpiring. HSET on its own leaves a key's TTL untouched.
+                if _ttl:
+                    pipeline.expire(key, _ttl)
 
             await pipeline.execute()
-
-        # Set TTLs
-        for key in keys:
-            await self.aexpire(key, ttl)
 
         return keys
 
@@ -829,7 +844,7 @@ class EmbeddingsCache(BaseCache):
         async with client.pipeline(transaction=False) as pipeline:
             # Queue all exists operations
             for key in keys:
-                await pipeline.exists(key)
+                pipeline.exists(key)
             results = await pipeline.execute()
 
         # Convert to boolean values
