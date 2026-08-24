@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -13,13 +13,47 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 # ignore that voyageai isn't imported
 # mypy: disable-error-code="name-defined"
 
+# Per-request total token limits by model, used for token-aware batching of the
+# plain text embedding path. Values track VoyageAI's documented per-request token
+# limits (https://docs.voyageai.com/docs/embeddings). Unknown models fall back to
+# the conservative default below.
+VOYAGE_TOKEN_LIMITS: dict[str, int] = {
+    "voyage-2": 320_000,
+    "voyage-02": 320_000,
+    "voyage-3": 120_000,
+    "voyage-3-lite": 120_000,
+    "voyage-3-large": 120_000,
+    "voyage-3.5": 320_000,
+    "voyage-3.5-lite": 1_000_000,
+    "voyage-4": 320_000,
+    "voyage-4-lite": 1_000_000,
+    "voyage-4-large": 120_000,
+    "voyage-4-nano": 120_000,
+    "voyage-code-2": 120_000,
+    "voyage-code-3": 120_000,
+    "voyage-code-4": 120_000,
+    "voyage-finance-2": 120_000,
+    "voyage-law-2": 120_000,
+    "voyage-large-2": 120_000,
+    "voyage-large-2-instruct": 120_000,
+    "voyage-multilingual-2": 120_000,
+}
+DEFAULT_VOYAGE_TOKEN_LIMIT = 120_000
+
 
 class VoyageAIVectorizer(BaseVectorizer):
     """The VoyageAIVectorizer class utilizes VoyageAI's API to generate
     embeddings for text and multimodal (text / image / video) data.
 
-    This vectorizer is designed to interact with VoyageAI's /embed and /multimodal_embed APIs,
-    requiring an API key for authentication. The key can be provided
+    This vectorizer is designed to interact with VoyageAI's /embed, /multimodal_embed,
+    and /contextualized_embed APIs. Any model identifier accepted by VoyageAI can be
+    passed via ``model`` - for example the general-purpose ``voyage-4-large`` /
+    ``voyage-4`` / ``voyage-4-lite`` / ``voyage-4-nano`` family, domain models such
+    as ``voyage-code-4``, contextualized ``voyage-context-4`` / ``voyage-context-3``
+    models, and multimodal ``voyage-multimodal-*`` models.
+    See https://docs.voyageai.com/docs/embeddings for the current catalog.
+
+    It requires an API key for authentication. The key can be provided
     directly in the `api_config` dictionary or through the `VOYAGE_API_KEY`
     environment variable. User must obtain an API key from VoyageAI's website
     (https://dash.voyageai.com/). Additionally, the `voyageai` python
@@ -48,6 +82,25 @@ class VoyageAIVectorizer(BaseVectorizer):
         doc_embeddings = vectorizer.embed_many(
             contents=["your document text", "more document text"],
             input_type="document"
+        )
+
+        # Contextualized embeddings (voyage-context-* models) - requires voyageai>=0.5.0
+        # Each input string is treated as its own document (auto-chunked) and
+        # embedded independently: inputs do not influence one another, which keeps
+        # the one-embedding-per-input contract and cache determinism intact.
+        context_vectorizer = VoyageAIVectorizer(
+            model="voyage-context-4",
+            api_config={"api_key": "your-voyageai-api-key"}
+        )
+        context_embeddings = context_vectorizer.embed_many(
+            contents=["chunk one", "chunk two", "chunk three"],
+            input_type="document"
+        )
+        # Retrieval queries use input_type="query"; auto-chunking is a
+        # document-only feature, so query inputs are embedded as-is.
+        context_query = context_vectorizer.embed(
+            content="your query text here",
+            input_type="query"
         )
 
         # Multimodal usage - requires Pillow and voyageai>=0.3.6
@@ -120,6 +173,17 @@ class VoyageAIVectorizer(BaseVectorizer):
         Notes:
             - Multimodal models require voyageai>=0.3.6 to be installed for video embeddings, as well as
                 ffmpeg installed on the system. Image embeddings require pillow to be installed.
+            - Contextualized (``voyage-context-*``) models require voyageai>=0.5.0. Each input
+                string is sent as its own document with auto-chunking, so inputs are embedded
+                independently (no cross-input contextualization) and the one-embedding-per-input
+                contract and cache determinism are preserved. A document longer than ``chunk_size``
+                (32000 tokens) auto-chunks into multiple chunks but only the first chunk's embedding
+                is kept; the rest are dropped. ``truncation`` is not forwarded to the contextualized
+                API (it does not accept it), so it is silently ignored for these models.
+            - The plain text embedding path (``embed``/``embed_many`` for non-context,
+                non-multimodal models) uses token-aware batching: inputs are grouped into requests
+                bounded by both the per-model item cap and the model's per-request token limit, so
+                large inputs are packed efficiently without exceeding VoyageAI's token budget.
 
         """
         super().__init__(model=model, dtype=dtype, cache=cache)
@@ -130,6 +194,11 @@ class VoyageAIVectorizer(BaseVectorizer):
     def is_multimodal(self) -> bool:
         """Whether a multimodal model has been configured."""
         return "multimodal" in self.model
+
+    @property
+    def is_context(self) -> bool:
+        """Whether a contextualized-embedding model (voyage-context-*) has been configured."""
+        return "context" in self.model
 
     def embed_image(self, image_path: str, **kwargs) -> list[float] | bytes:
         """Embed an image (from its path on disk) using VoyageAI's multimodal API. Requires pillow to be installed."""
@@ -219,6 +288,10 @@ class VoyageAIVectorizer(BaseVectorizer):
 
         self._client = Client(api_key=api_key, **kwargs)
         self._aclient = AsyncClient(api_key=api_key, **kwargs)
+        # Token-aware batching relies on the VoyageAI tokenizer, which loads a
+        # HuggingFace tokenizer for the model. If that is ever unavailable we
+        # fall back to item-count batching and remember it (see _batchify_text).
+        self._token_batching_supported = True
 
     def _set_model_dims(self) -> int:
         """
@@ -242,19 +315,73 @@ class VoyageAIVectorizer(BaseVectorizer):
 
     def _get_batch_size(self) -> int:
         """
-        Determine the appropriate batch size based on the model being used.
+        Determine the per-request item cap for the current model.
+
+        For the plain text path this is combined with the model's per-request
+        token limit (see :meth:`_batchify_by_tokens`); it is the sole bound for
+        the context/multimodal paths.
 
         Returns:
-            int: Recommended batch size for the current model
+            int: Recommended maximum number of items per request
         """
         if self.model in ["voyage-2", "voyage-02"]:
             return 72
-        elif self.model in ["voyage-3-lite", "voyage-3.5-lite"]:
+        elif self.model in ["voyage-3-lite", "voyage-3.5-lite", "voyage-4-lite"]:
             return 30
-        elif self.model in ["voyage-3", "voyage-3.5"]:
+        elif self.model in ["voyage-3", "voyage-3.5", "voyage-4"]:
             return 10
         else:
-            return 7  # Default for other models
+            # Default for other models (e.g. voyage-3-large, voyage-4-large,
+            # voyage-code-*, voyage-finance-2, voyage-law-2, voyage-context-*).
+            return 7
+
+    def _token_limit(self) -> int:
+        """Per-request token budget for the current model (token-aware batching)."""
+        return VOYAGE_TOKEN_LIMITS.get(self.model, DEFAULT_VOYAGE_TOKEN_LIMIT)
+
+    def _count_tokens(self, text: str) -> int:
+        """Count tokens for a single text using VoyageAI's tokenizer."""
+        return len(self._client.tokenize([text], model=self.model)[0])
+
+    def _batchify_by_tokens(self, texts: list[str], batch_size: int):
+        """Yield batches of texts bounded by both item count and token budget.
+
+        Batches are grown until adding the next text would exceed either the
+        per-model item cap (``batch_size``) or the model's per-request token limit.
+        A single text larger than the token limit is still yielded on its own
+        (never dropped), matching VoyageAI's own client batching behavior.
+        """
+        max_tokens = self._token_limit()
+        batch: list[str] = []
+        batch_tokens = 0
+        for text in texts:
+            n_tokens = self._count_tokens(text)
+            if batch and (
+                len(batch) >= batch_size or batch_tokens + n_tokens > max_tokens
+            ):
+                yield batch
+                batch, batch_tokens = [], 0
+            batch.append(text)
+            batch_tokens += n_tokens
+        if batch:
+            yield batch
+
+    def _batchify_text(self, texts: list[str], batch_size: int) -> list[list[str]]:
+        """Batch plain-text inputs, token-aware when possible.
+
+        Token-aware batching depends on VoyageAI's tokenizer, which loads a
+        HuggingFace tokenizer for the model. When that is unavailable (e.g. the
+        HF Hub is unreachable or has no tokenizer for the model id), fall back to
+        fixed item-count batching instead of failing, and remember the fallback
+        so we don't re-attempt (and re-timeout) the tokenizer on later calls.
+        """
+        if self._token_batching_supported:
+            try:
+                # Materialize so a tokenizer failure surfaces here, not mid-request.
+                return list(self._batchify_by_tokens(texts, batch_size))
+            except Exception:
+                self._token_batching_supported = False
+        return list(self.batchify(texts, batch_size))
 
     def _validate_input(
         self, contents: list[Any], input_type: str | None, truncation: bool | None
@@ -340,13 +467,29 @@ class VoyageAIVectorizer(BaseVectorizer):
         if batch_size is None:
             batch_size = self._get_batch_size()
 
+        # The plain text path uses token-aware batching; context/multimodal paths
+        # stay on fixed item-count batching (auto-chunking / opaque media inputs).
+        if self.is_context or self.is_multimodal:
+            batches: Any = self.batchify(contents, batch_size)
+        else:
+            batches = self._batchify_text(contents, batch_size)
+
         try:
             embeddings: list[Any] = []
-            for batch in self.batchify(contents, batch_size):
+            for batch in batches:
+                if self.is_context:
+                    embeddings.extend(
+                        self._embed_context_batch(batch, input_type, **kwargs)
+                    )
+                    continue
                 response = self._embed_fn(
                     (
-                        [batch] if self.is_multimodal else batch
-                    ),  # Multimodal requires a list of lists/dicts
+                        # Multimodal wraps each item as its own single-part input
+                        # so one embedding is returned per requested content.
+                        [[item] for item in batch]
+                        if self.is_multimodal
+                        else batch
+                    ),
                     model=self.model,
                     input_type=input_type,
                     truncation=truncation,
@@ -358,6 +501,66 @@ class VoyageAIVectorizer(BaseVectorizer):
             raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
+
+    def _context_embed_kwargs(
+        self, batch: list[str], input_type: str | None, kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build the kwargs for a ``contextualized_embed`` call.
+
+        The batch is passed as a flat ``list[str]``. Auto-chunking is only valid
+        for ``input_type="document"`` (VoyageAI rejects it for queries), so every
+        non-query input - including the default where ``input_type`` is omitted -
+        is treated as a document and chunked with a large ``chunk_size``, making
+        each input resolve to a single chunk. Explicit queries skip chunking and
+        are sent as a flat ``list[str]`` as-is. Either way the first chunk per
+        input is kept, yielding one embedding per requested item.
+        """
+        enable_auto_chunking = input_type != "query"
+        # Auto-chunking requires input_type="document"; a flat list[str] with no
+        # type is rejected, so default (None) callers - e.g. SemanticRouter and
+        # SemanticCache, which never set input_type - resolve to "document".
+        effective_input_type = "document" if enable_auto_chunking else input_type
+        call_kwargs: dict[str, Any] = {
+            "inputs": batch,
+            "model": self.model,
+            "input_type": effective_input_type,
+            "enable_auto_chunking": enable_auto_chunking,
+            **kwargs,
+        }
+        if enable_auto_chunking:
+            call_kwargs["chunk_size"] = 32000
+        return call_kwargs
+
+    def _embed_context_batch(
+        self, batch: list[str], input_type: str | None, **kwargs
+    ) -> list[list[float]]:
+        """Embed a batch with a contextualized (voyage-context-*) model."""
+        # contextualized_embed is only present on recent voyageai clients; the
+        # attr-defined ignore keeps mypy happy without vendored stubs.
+        response = self._client.contextualized_embed(  # type: ignore[attr-defined]
+            **self._context_embed_kwargs(batch, input_type, kwargs),
+        )
+        # Take the first chunk per input to keep one embedding per input.
+        return cast(
+            "list[list[float]]",
+            [result.embeddings[0] for result in response.results],
+        )
+
+    async def _aembed_context_batch(
+        self, batch: list[str], input_type: str | None, **kwargs
+    ) -> list[list[float]]:
+        """Asynchronously embed a batch with a contextualized model.
+
+        See :meth:`_embed_context_batch` for details on the input format.
+        """
+        response = await self._aclient.contextualized_embed(  # type: ignore[attr-defined]
+            **self._context_embed_kwargs(batch, input_type, kwargs),
+        )
+        # Take the first chunk per input to keep one embedding per input.
+        return cast(
+            "list[list[float]]",
+            [result.embeddings[0] for result in response.results],
+        )
 
     async def _aembed(self, content: Any, **kwargs) -> list[float]:
         """
@@ -415,13 +618,29 @@ class VoyageAIVectorizer(BaseVectorizer):
         if batch_size is None:
             batch_size = self._get_batch_size()
 
+        # The plain text path uses token-aware batching; context/multimodal paths
+        # stay on fixed item-count batching (auto-chunking / opaque media inputs).
+        if self.is_context or self.is_multimodal:
+            batches: Any = self.batchify(contents, batch_size)
+        else:
+            batches = self._batchify_text(contents, batch_size)
+
         try:
             embeddings: list[Any] = []
-            for batch in self.batchify(contents, batch_size):
+            for batch in batches:
+                if self.is_context:
+                    embeddings.extend(
+                        await self._aembed_context_batch(batch, input_type, **kwargs)
+                    )
+                    continue
                 response = await self._aembed_fn(
                     (
-                        [batch] if self.is_multimodal else batch
-                    ),  # Multimodal requires a list of lists/dicts
+                        # Multimodal wraps each item as its own single-part input
+                        # so one embedding is returned per requested content.
+                        [[item] for item in batch]
+                        if self.is_multimodal
+                        else batch
+                    ),
                     model=self.model,
                     input_type=input_type,
                     truncation=truncation,
