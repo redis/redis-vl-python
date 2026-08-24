@@ -3,7 +3,7 @@ import os
 import pytest
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
-from redis.exceptions import ConnectionError
+from redis.exceptions import ConnectionError, NoPermissionError
 
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -134,6 +134,31 @@ class TestConnect:
         with pytest.raises(ConnectionError):
             bad_client = RedisConnectionFactory.connect(redis_url="redis://fake:1234")
             bad_client.ping()
+
+
+def test_connection_opens_without_identification_permission(acl_user):
+    """A credential that cannot identify the client must still connect.
+
+    RedisVL announces itself with CLIENT SETINFO when a connection is made, and
+    used to fall back to ECHO if that was refused. Both commands are
+    `@connection` and are in neither `@read` nor `@write`, so a role built up
+    from those categories never grants either -- and the unguarded fallback made
+    RedisVL fail while the connection was being created, before any index
+    operation could be attempted.
+
+    Only a live server can show that this role really denies the command, which
+    is why this is an integration test.
+    """
+    with acl_user("~*", "&*", "+@read", "+@write", name="acl_no_connection") as user:
+        restricted = user.connect()
+
+        # Pin the premise. If a future Redis lets this role run CLIENT SETINFO,
+        # the test is no longer exercising the tolerance and should say so.
+        with pytest.raises(NoPermissionError):
+            restricted.client_setinfo("LIB-NAME", "probe")
+
+        # And the connection is genuinely usable for what the role does permit.
+        assert restricted.exists("no-such-key") == 0
 
 
 def test_validate_redis(client):
