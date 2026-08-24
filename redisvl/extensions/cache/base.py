@@ -31,7 +31,7 @@ class BaseCache:
         redis_client: SyncRedisClient | None = None,
         async_redis_client: AsyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
     ):
         """Initialize a base cache.
 
@@ -45,6 +45,7 @@ class BaseCache:
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
         """
+        connection_kwargs = connection_kwargs or {}
         self.name = name
         self._ttl: int | None = None
         self.set_ttl(ttl)

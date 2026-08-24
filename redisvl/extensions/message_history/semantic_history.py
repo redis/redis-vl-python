@@ -41,7 +41,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         distance_threshold: float = 0.3,
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         overwrite: bool = False,
         create_index: bool = True,
         **kwargs,
@@ -84,6 +84,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         The proposed schema will support a single vector embedding constructed
         from either the prompt or response in a single string.
         """
+        connection_kwargs = connection_kwargs or {}
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
 

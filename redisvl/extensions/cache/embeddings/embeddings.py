@@ -23,7 +23,7 @@ class EmbeddingsCache(BaseCache):
         redis_client: SyncRedisClient | None = None,
         async_redis_client: AsyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
     ):
         """Initialize an embeddings cache.
 
@@ -45,6 +45,7 @@ class EmbeddingsCache(BaseCache):
                 redis_url="redis://localhost:6379"
             )
         """
+        connection_kwargs = connection_kwargs or {}
         super().__init__(
             name=name,
             ttl=ttl,
