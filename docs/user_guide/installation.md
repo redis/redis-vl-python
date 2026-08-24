@@ -226,6 +226,18 @@ RedisSearchError: Error while fetching llmcache index info:
 User <name> has no permissions to run the 'FT.INFO' command
 ```
 
+Reading a cache is not read-only either. When a cache has a TTL configured — at construction or later via `set_ttl()` — every read that hits refreshes the matched entries' TTL, so it issues `EXPIRE`. That includes `SemanticCache.check()`, every `EmbeddingsCache` getter, their async equivalents, and the reads a vectorizer performs for you when constructed with `cache=`. `EXPIRE` is in `@write`, not `@read` (measured with `ACL CAT write`), so a lookup-only credential fails on a cache *hit* rather than on the write that populated it.
+
+Granting the command is only half of it, because the key patterns must permit writes too. Measured on 8.4.5 with `ACL DRYRUN <user> EXPIRE llmcache:abc 60`:
+
+| Rules | Result |
+|---|---|
+| `+@read ~llmcache:*` | `no permissions to run the 'expire' command` |
+| `+@read +expire ~llmcache:*` | Permitted |
+| `+@read +expire %R~llmcache:*` | `no permissions to access the 'llmcache:abc' key` |
+
+So `%R~llmcache:*` — the read-only shape the [Key permissions](#key-permissions) table below presents as sufficient for querying — is denied on the key, not the command. `+@read +@write` is unaffected, as is a cache with no TTL. See [Cache LLM Responses](03_llmcache.ipynb) for the refresh behaviour itself, including that `set_ttl()` starts adding TTLs to entries stored without one.
+
 ### "no permissions to run the 'FT.INFO' command"
 
 RedisVL does not guess its way around this. A credential that cannot ask whether the index exists also cannot create one, so there is nothing useful to infer — instead, tell RedisVL that the index is already there:
@@ -280,6 +292,8 @@ Measured on 8.4.5 against an index prefixed `doc:`, with the command categories 
 | `~other:*` (no overlap) | The same denial |
 
 Partial overlap is worth emphasising: it fails exactly like no overlap at all, rather than returning the subset you can read. `FT.CREATE` is not checked this way, so a credential can create an index it is then unable to query.
+
+Key patterns are glob-style, matched by the same engine as `SCAN MATCH`, so metacharacters in a prefix do not mean what they look like. Measured on 8.4.5, `~cache[ab]:*` grants `cachea:1` and `cacheb:1` while *denying* the literal key `cache[ab]:1`; escaped as `~cache\[ab]:*` it does the reverse. Escape `*`, `?`, `[` and `\` in a prefix, and confirm the rule with `ACL DRYRUN`.
 
 `create_index=False` does not help here — the very commands it lets you avoid are joined by the ones it cannot, so widen the key patterns instead.
 
