@@ -67,7 +67,7 @@ class SemanticCache(BaseLLMCache):
         filterable_fields: list[dict[str, Any]] | None = None,
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         overwrite: bool = False,
         create_index: bool = True,
         **kwargs,
@@ -127,6 +127,7 @@ class SemanticCache(BaseLLMCache):
                 create_index=False,
             )
         """
+        connection_kwargs = connection_kwargs or {}
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
 

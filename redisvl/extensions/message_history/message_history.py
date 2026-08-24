@@ -32,7 +32,7 @@ class MessageHistory(BaseMessageHistory):
         prefix: str | None = None,
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         create_index: bool = True,
         **kwargs,
     ):
@@ -66,6 +66,7 @@ class MessageHistory(BaseMessageHistory):
                 Defaults to True.
 
         """
+        connection_kwargs = connection_kwargs or {}
         super().__init__(name, session_tag)
 
         prefix = prefix or name
@@ -182,7 +183,7 @@ class MessageHistory(BaseMessageHistory):
             ValueError: if top_k is not an integer greater than or equal to 0,
                 or if role contains invalid values.
         """
-        if type(top_k) != int or top_k < 0:
+        if type(top_k) is not int or top_k < 0:
             raise ValueError("top_k must be an integer greater than or equal to 0")
 
         # Validate and normalize role parameter
