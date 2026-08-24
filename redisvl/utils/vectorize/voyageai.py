@@ -288,6 +288,10 @@ class VoyageAIVectorizer(BaseVectorizer):
 
         self._client = Client(api_key=api_key, **kwargs)
         self._aclient = AsyncClient(api_key=api_key, **kwargs)
+        # Token-aware batching relies on the VoyageAI tokenizer, which loads a
+        # HuggingFace tokenizer for the model. If that is ever unavailable we
+        # fall back to item-count batching and remember it (see _batchify_text).
+        self._token_batching_supported = True
 
     def _set_model_dims(self) -> int:
         """
@@ -361,6 +365,23 @@ class VoyageAIVectorizer(BaseVectorizer):
             batch_tokens += n_tokens
         if batch:
             yield batch
+
+    def _batchify_text(self, texts: list[str], batch_size: int) -> list[list[str]]:
+        """Batch plain-text inputs, token-aware when possible.
+
+        Token-aware batching depends on VoyageAI's tokenizer, which loads a
+        HuggingFace tokenizer for the model. When that is unavailable (e.g. the
+        HF Hub is unreachable or has no tokenizer for the model id), fall back to
+        fixed item-count batching instead of failing, and remember the fallback
+        so we don't re-attempt (and re-timeout) the tokenizer on later calls.
+        """
+        if self._token_batching_supported:
+            try:
+                # Materialize so a tokenizer failure surfaces here, not mid-request.
+                return list(self._batchify_by_tokens(texts, batch_size))
+            except Exception:
+                self._token_batching_supported = False
+        return list(self.batchify(texts, batch_size))
 
     def _validate_input(
         self, contents: list[Any], input_type: str | None, truncation: bool | None
@@ -451,7 +472,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         if self.is_context or self.is_multimodal:
             batches: Any = self.batchify(contents, batch_size)
         else:
-            batches = self._batchify_by_tokens(contents, batch_size)
+            batches = self._batchify_text(contents, batch_size)
 
         try:
             embeddings: list[Any] = []
@@ -602,7 +623,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         if self.is_context or self.is_multimodal:
             batches: Any = self.batchify(contents, batch_size)
         else:
-            batches = self._batchify_by_tokens(contents, batch_size)
+            batches = self._batchify_text(contents, batch_size)
 
         try:
             embeddings: list[Any] = []

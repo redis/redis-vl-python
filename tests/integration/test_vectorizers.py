@@ -900,6 +900,68 @@ async def test_voyageai_token_aware_batching_async_splits_on_token_limit():
     assert batches == [["a a a", "b b b"], ["c c c"]]
 
 
+def test_voyageai_tokenizer_unavailable_falls_back_to_item_batching():
+    """If the tokenizer is unavailable, fall back to item-count batching.
+
+    VoyageAI's tokenize() loads a HuggingFace tokenizer; when that can't be
+    reached, embed_many must still succeed (item-count batches) instead of
+    raising, and it must not re-attempt the failing tokenizer afterwards.
+    """
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-4")  # item cap = 10
+    client.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    client.embed.reset_mock()
+
+    texts = ["x"] * 25
+    embeddings = vectorizer.embed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 25
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    # Falls back to the per-model item cap (10), not token-aware sizing.
+    assert [len(b) for b in batches] == [10, 10, 5]
+    assert vectorizer._token_batching_supported is False
+
+    # A second call must not re-invoke the failing tokenizer.
+    client.tokenize.reset_mock()
+    vectorizer.embed_many(contents=["y", "z"], input_type="document")
+    client.tokenize.assert_not_called()
+
+
+def test_voyageai_init_survives_tokenizer_unavailable():
+    """Init (dimension probe) must not fail when the tokenizer is unavailable."""
+    from unittest.mock import patch
+
+    client, aclient = _fake_voyage_clients()
+    client.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    aclient.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    with (
+        patch("voyageai.Client", return_value=client),
+        patch("voyageai.AsyncClient", return_value=aclient),
+    ):
+        vectorizer = VoyageAIVectorizer(
+            model="voyage-3-large", api_config={"api_key": "test"}
+        )
+
+    assert vectorizer.dims == 4
+    assert vectorizer._token_batching_supported is False
+
+
+@pytest.mark.asyncio
+async def test_voyageai_atokenizer_unavailable_falls_back_to_item_batching():
+    """Async: tokenizer failure falls back to item-count batching (sync/async parity)."""
+    vectorizer, client, aclient = _build_voyage_vectorizer("voyage-4")  # item cap = 10
+    # Token counting uses the sync client's tokenize even on the async path.
+    client.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    aclient.embed.reset_mock()
+
+    texts = ["x"] * 25
+    embeddings = await vectorizer.aembed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 25
+    batches = [call.args[0] for call in aclient.embed.call_args_list]
+    assert [len(b) for b in batches] == [10, 10, 5]
+    assert vectorizer._token_batching_supported is False
+
+
 @pytest.mark.parametrize(
     "model, expected_batch_size",
     [
