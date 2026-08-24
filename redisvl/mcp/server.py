@@ -68,6 +68,7 @@ class RedisVLMCPServer(FastMCP):
         self._bindings: dict[str, BindingRuntime] = {}
         self._semaphore: asyncio.Semaphore | None = None
         self._tools_registered = False
+        self._registered_tool_fingerprint = ""
 
         # Lifecycle management
         self._lifecycle_state = _LifecycleState.INITIAL  # Server lifecycle
@@ -270,9 +271,32 @@ class RedisVLMCPServer(FastMCP):
 
         return hasattr(client.ft(index.schema.index.name), "hybrid_search")
 
+    @staticmethod
+    def _tool_surface_fingerprint(config: Any) -> str:
+        """Summarize the config that a registered tool set baked in."""
+        if config is None:
+            return ""
+        return repr(sorted(config.server.builtin_tools.items()))
+
     def _register_tools(self) -> None:
         """Register MCP tools once every binding is ready."""
         if self._tools_registered or not hasattr(self, "tool"):
+            # Registration is deliberately once-per-process, since re-registering
+            # the same names on the FastMCP object is not valid. Built-in tool
+            # closures resolve their binding per call, so they survive a restart
+            # unchanged -- but which built-ins exist is now a function of config,
+            # and `startup()` re-reads that file. A stop/start against an edited
+            # config therefore keeps the old tool set, and the dangerous direction
+            # is an operator disabling a tool and believing the restart applied it.
+            if self._tools_registered:
+                current = self._tool_surface_fingerprint(getattr(self, "config", None))
+                if current != self._registered_tool_fingerprint:
+                    logger.warning(
+                        "MCP built-in tool configuration changed since tools were "
+                        "registered, but tools register once per process. The "
+                        "previously registered tool set is still in effect; "
+                        "restart the process to apply the new configuration."
+                    )
             return
 
         # The search description advertises schema-specific filter hints, which
@@ -282,16 +306,89 @@ class RedisVLMCPServer(FastMCP):
         if len(self._bindings) == 1:
             search_schema = next(iter(self._bindings.values())).schema
 
-        # Discovery is always available so clients can enumerate indexes.
-        register_list_indexes_tool(self)
-        register_search_tool(self, search_schema)
+        # An operator can turn off a built-in whose capability the server should
+        # not offer at all -- a read-only deployment, or one that should not
+        # advertise discovery.
+        config = getattr(self, "config", None)
+        enabled = (
+            config.server.builtin_tool_enabled
+            if config is not None
+            else lambda _name: True
+        )
+
+        registered: list[str] = []
+
+        # Discovery is on by default so clients can enumerate indexes.
+        discovery_enabled = enabled("list-indexes")
+        if discovery_enabled:
+            register_list_indexes_tool(self)
+            registered.append("list-indexes")
+
+        # `index` is required once several bindings exist, and without discovery
+        # the logical ids cannot be learned any other way -- so every tool that
+        # requires one has to name them inline instead of deferring to a tool that
+        # is not published. Computed once so the two cannot drift apart.
+        unlisted_index_ids = (
+            sorted(self._bindings)
+            if len(self._bindings) > 1 and not discovery_enabled
+            else None
+        )
+
+        if enabled("search-records"):
+            register_search_tool(self, search_schema, index_ids=unlisted_index_ids)
+            registered.append("search-records")
         # Expose upsert only when at least one binding is writable. A binding is
         # read-only under global read-only mode or its own read_only policy, both
         # of which are folded into effective_read_only; the per-call write check
         # in the tool then rejects writes to any individual read-only binding.
-        if any(not rt.effective_read_only for rt in self._bindings.values()):
-            register_upsert_tool(self)
+        if enabled("upsert-records") and any(
+            not rt.effective_read_only for rt in self._bindings.values()
+        ):
+            register_upsert_tool(self, index_ids=unlisted_index_ids)
+            registered.append("upsert-records")
+
+        self._warn_on_unusable_tool_surface(registered)
+        self._registered_tool_fingerprint = self._tool_surface_fingerprint(config)
         self._tools_registered = True
+
+    def _warn_on_unusable_tool_surface(self, registered: list[str]) -> None:
+        """Warn about tool-set shapes that are valid config but unusable in practice.
+
+        Neither case is fatal -- an operator may be mid-rollout -- but both are
+        silent otherwise, and both present to a client as a server that simply
+        does not work.
+        """
+        if not registered:
+            # Deliberately does not attribute a cause: `upsert-records` can also
+            # be absent because every binding is read-only, not because
+            # `builtin_tools` disabled it.
+            logger.warning(
+                "MCP server registered no tools, so clients will see an empty "
+                "tool list. Check server.builtin_tools and read-only settings."
+            )
+            return
+
+        # Both `search-records` and `upsert-records` require an `index` once
+        # several bindings exist, so either one is affected by losing discovery --
+        # naming them in the descriptions keeps the contract satisfiable, but an
+        # operator who disabled discovery on a multi-index server probably did not
+        # intend to. Checking only search would leave a write-only surface silent.
+        index_requiring = sorted(
+            {"search-records", "upsert-records"}.intersection(registered)
+        )
+        if (
+            len(self._bindings) > 1
+            and index_requiring
+            and "list-indexes" not in registered
+        ):
+            logger.warning(
+                "MCP server has %d indexes and exposes %s, but list-indexes is "
+                "disabled: clients cannot discover the logical index ids those "
+                "tools require, so the ids are named inline in each tool "
+                "description instead.",
+                len(self._bindings),
+                ", ".join(index_requiring),
+            )
 
     @asynccontextmanager
     async def _server_lifespan(self, _server: Any):

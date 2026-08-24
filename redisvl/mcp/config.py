@@ -26,9 +26,21 @@ _RESERVED_SCORE_METADATA_FIELDS = frozenset(
 )
 
 
+_BUILTIN_TOOL_NAMES = frozenset({"list-indexes", "search-records", "upsert-records"})
+
+
 def reserved_score_metadata_field_names() -> frozenset[str]:
     """Return MCP-reserved score metadata field names."""
     return _RESERVED_SCORE_METADATA_FIELDS
+
+
+def builtin_tool_names() -> frozenset[str]:
+    """Return the names of the built-in MCP tools.
+
+    These register by default and can be turned off individually through
+    ``server.builtin_tools``, so they are not unconditionally available.
+    """
+    return _BUILTIN_TOOL_NAMES
 
 
 class MCPRuntimeConfig(BaseModel):
@@ -200,6 +212,25 @@ class MCPServerConfig(BaseModel):
     redis_url: str = Field(..., min_length=1)
     auth: MCPAuthConfig | None = None
     transport_security: MCPTransportSecurityConfig | None = None
+    builtin_tools: dict[str, Literal["enabled", "disabled"]] = Field(
+        default_factory=dict
+    )
+
+    @model_validator(mode="after")
+    def _validate_builtin_tools(self) -> "MCPServerConfig":
+        """Reject disable/enable entries that do not name a built-in tool."""
+        unknown = sorted(set(self.builtin_tools) - builtin_tool_names())
+        if unknown:
+            raise ValueError(
+                "server.builtin_tools contains unknown tool names: "
+                f"{', '.join(unknown)}; known built-ins: "
+                f"{', '.join(sorted(builtin_tool_names()))}"
+            )
+        return self
+
+    def builtin_tool_enabled(self, tool_name: str) -> bool:
+        """Report whether a built-in tool should be registered."""
+        return self.builtin_tools.get(tool_name, "enabled") == "enabled"
 
 
 class MCPIndexSearchConfig(BaseModel):

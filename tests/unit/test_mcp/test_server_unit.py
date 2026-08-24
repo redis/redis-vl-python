@@ -1,7 +1,9 @@
+import logging
 from types import SimpleNamespace
 
 import pytest
 
+from redisvl.mcp.config import MCPConfig, builtin_tool_names
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.server import RedisVLMCPServer
@@ -144,7 +146,7 @@ async def test_teardown_continues_when_a_binding_fails_to_close(monkeypatch):
     assert server._tools_registered is True
 
 
-def _register_tools_with(monkeypatch, bindings: dict) -> list[str]:
+def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[str]:
     """Run _register_tools against the given bindings, returning registered names."""
     registered: list[str] = []
     monkeypatch.setattr(
@@ -153,21 +155,42 @@ def _register_tools_with(monkeypatch, bindings: dict) -> list[str]:
     )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_search_tool",
-        lambda server, schema: registered.append("search-records"),
+        lambda server, schema, index_ids=None: registered.append("search-records"),
     )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_upsert_tool",
-        lambda server: registered.append("upsert-records"),
+        lambda server, index_ids=None: registered.append("upsert-records"),
     )
 
     server = RedisVLMCPServer.__new__(RedisVLMCPServer)
     server._bindings = bindings
     server._tools_registered = False
+    server._registered_tool_fingerprint = ""
     server.tool = object()
+    server.config = config
     server.mcp_settings = SimpleNamespace(read_only=False)
 
     server._register_tools()
     return registered
+
+
+def _config_with(*, builtin_tools=None) -> MCPConfig:
+    """Build a real validated config so the gating logic sees the real methods."""
+    server_config: dict = {"redis_url": "redis://localhost:6379"}
+    if builtin_tools is not None:
+        server_config["builtin_tools"] = builtin_tools
+    return MCPConfig.model_validate(
+        {
+            "server": server_config,
+            "indexes": {
+                "knowledge": {
+                    "redis_name": "docs-index",
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                }
+            },
+        }
+    )
 
 
 def test_register_tools_exposes_upsert_when_a_binding_is_writable(monkeypatch):
@@ -197,3 +220,244 @@ def test_register_tools_hides_upsert_when_every_binding_is_read_only(monkeypatch
     # Read paths stay available even when writes are globally disabled.
     assert "list-indexes" in registered
     assert "search-records" in registered
+
+
+def test_register_tools_registers_every_builtin_when_no_config_is_attached(monkeypatch):
+    registered = _register_tools_with(
+        monkeypatch, {"knowledge": _binding_runtime("knowledge")}
+    )
+
+    assert registered == ["list-indexes", "search-records", "upsert-records"]
+
+
+@pytest.mark.parametrize(
+    "disabled_tool", ["list-indexes", "search-records", "upsert-records"]
+)
+def test_register_tools_skips_a_builtin_the_operator_disabled(
+    monkeypatch, disabled_tool
+):
+    registered = _register_tools_with(
+        monkeypatch,
+        {"knowledge": _binding_runtime("knowledge")},
+        config=_config_with(builtin_tools={disabled_tool: "disabled"}),
+    )
+
+    assert disabled_tool not in registered
+    # Disabling one built-in must not take the others with it.
+    for other in {"list-indexes", "search-records", "upsert-records"} - {disabled_tool}:
+        assert other in registered
+
+
+def test_register_tools_warns_when_the_whole_tool_surface_is_empty(monkeypatch, caplog):
+    """Every built-in disabled is valid config but a dead server."""
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        registered = _register_tools_with(
+            monkeypatch,
+            {"knowledge": _binding_runtime("knowledge")},
+            config=_config_with(
+                builtin_tools={name: "disabled" for name in builtin_tool_names()}
+            ),
+        )
+
+    # The surface really is empty, so the warning is not passing for some other
+    # reason.
+    assert registered == []
+    # A client sees a server that connects and then offers nothing, which is
+    # indistinguishable from a broken deployment unless the operator is told.
+    assert [
+        record.message
+        for record in caplog.records
+        if "registered no tools" in record.message
+    ]
+
+
+def test_register_tools_warns_when_discovery_is_disabled_on_a_multi_index_server(
+    monkeypatch, caplog
+):
+    """search-records needs logical index ids that only list-indexes reveals."""
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        registered = _register_tools_with(
+            monkeypatch,
+            {
+                "knowledge": _binding_runtime("knowledge"),
+                "tickets": _binding_runtime("tickets"),
+            },
+            config=_config_with(builtin_tools={"list-indexes": "disabled"}),
+        )
+
+    assert "search-records" in registered and "list-indexes" not in registered
+    assert [
+        record.message
+        for record in caplog.records
+        if "cannot discover" in record.message
+    ]
+
+
+def test_register_tools_stays_quiet_when_discovery_is_disabled_on_one_index(
+    monkeypatch, caplog
+):
+    """With a sole binding the index argument defaults, so discovery is optional."""
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        _register_tools_with(
+            monkeypatch,
+            {"knowledge": _binding_runtime("knowledge")},
+            config=_config_with(builtin_tools={"list-indexes": "disabled"}),
+        )
+
+    assert not [
+        record.message
+        for record in caplog.records
+        if "cannot discover" in record.message
+    ]
+
+
+def test_register_tools_names_index_ids_when_discovery_is_disabled(monkeypatch):
+    """A multi-index description must not point at a tool the server withholds."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_list_indexes_tool", lambda server: None
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server, schema, index_ids=None: captured.update(index_ids=index_ids),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_upsert_tool", lambda server, index_ids=None: None
+    )
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {
+        "knowledge": _binding_runtime("knowledge"),
+        "tickets": _binding_runtime("tickets"),
+    }
+    server._tools_registered = False
+    server._registered_tool_fingerprint = ""
+    server.tool = object()
+    server.config = _config_with(builtin_tools={"list-indexes": "disabled"})
+    server.mcp_settings = SimpleNamespace(read_only=False)
+
+    server._register_tools()
+
+    # Without discovery these ids are otherwise unlearnable, and `index` is
+    # required on a multi-index server.
+    assert captured["index_ids"] == ["knowledge", "tickets"]
+
+
+def test_register_tools_omits_index_ids_when_discovery_is_available(monkeypatch):
+    """With list-indexes published, the description should defer to it as before."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_list_indexes_tool", lambda server: None
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server, schema, index_ids=None: captured.update(index_ids=index_ids),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_upsert_tool", lambda server, index_ids=None: None
+    )
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {
+        "knowledge": _binding_runtime("knowledge"),
+        "tickets": _binding_runtime("tickets"),
+    }
+    server._tools_registered = False
+    server._registered_tool_fingerprint = ""
+    server.tool = object()
+    server.config = None
+    server.mcp_settings = SimpleNamespace(read_only=False)
+
+    server._register_tools()
+
+    assert captured["index_ids"] is None
+
+
+def test_register_tools_warns_when_builtin_config_changed_after_registration(
+    monkeypatch, caplog
+):
+    """Tools register once per process, so an edited config cannot take effect."""
+    registered = _register_tools_with(
+        monkeypatch,
+        {"knowledge": _binding_runtime("knowledge")},
+        config=_config_with(),
+    )
+    assert "upsert-records" in registered
+
+    # Simulate a stop/start that reloaded a config which now disables upsert.
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {"knowledge": _binding_runtime("knowledge")}
+    server.tool = object()
+    server._tools_registered = True
+    server._registered_tool_fingerprint = ""
+    server.config = _config_with(builtin_tools={"upsert-records": "disabled"})
+
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        server._register_tools()
+
+    # The dangerous direction: an operator disables a tool, restarts, and believes
+    # it is gone while the old tool set is still what clients see.
+    assert [
+        r.message
+        for r in caplog.records
+        if "changed since tools were registered" in r.message
+    ]
+
+
+def test_register_tools_gives_upsert_the_same_index_ids_as_search(monkeypatch):
+    """Both tools require `index`, so both need the ids when discovery is off."""
+    captured: dict = {}
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_list_indexes_tool", lambda server: None
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server, schema, index_ids=None: captured.update(search=index_ids),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_upsert_tool",
+        lambda server, index_ids=None: captured.update(upsert=index_ids),
+    )
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {
+        "knowledge": _binding_runtime("knowledge"),
+        "tickets": _binding_runtime("tickets"),
+    }
+    server._tools_registered = False
+    server._registered_tool_fingerprint = ""
+    server.tool = object()
+    server.config = _config_with(builtin_tools={"list-indexes": "disabled"})
+    server.mcp_settings = SimpleNamespace(read_only=False)
+
+    server._register_tools()
+
+    # Writes need the ids exactly as much as reads do.
+    assert captured["upsert"] == ["knowledge", "tickets"]
+    assert captured["upsert"] == captured["search"]
+
+
+def test_register_tools_warns_when_discovery_is_disabled_on_a_write_only_surface(
+    monkeypatch, caplog
+):
+    """A write-only surface loses discovery too, and must not warn silently."""
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        registered = _register_tools_with(
+            monkeypatch,
+            {
+                "knowledge": _binding_runtime("knowledge"),
+                "tickets": _binding_runtime("tickets"),
+            },
+            config=_config_with(
+                builtin_tools={
+                    "list-indexes": "disabled",
+                    "search-records": "disabled",
+                }
+            ),
+        )
+
+    # Only upsert is published, so a check keyed on search-records would miss it.
+    assert registered == ["upsert-records"]
+    messages = [r.message for r in caplog.records if "cannot discover" in r.message]
+    assert messages
+    assert "upsert-records" in messages[0]

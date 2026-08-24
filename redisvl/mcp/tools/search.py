@@ -51,16 +51,31 @@ def _build_return_fields_hint(schema: IndexSchema) -> str:
 
 
 def _build_search_tool_description(
-    schema: IndexSchema | None, base_description: str | None = None
+    schema: IndexSchema | None,
+    base_description: str | None = None,
+    *,
+    index_ids: list[str] | None = None,
 ) -> str:
     """Build the `search-records` description from static text plus schema hints.
 
     With multiple bindings configured the schema is ambiguous (the caller picks
-    an index per call via `list-indexes`), so per-field hints are omitted and a
-    routing note is appended instead.
+    an index per call), so per-field hints are omitted and a routing note is
+    appended instead.
+
+    ``index_ids`` is supplied only when discovery is unavailable -- an operator
+    can disable ``list-indexes``, and pointing clients at a tool the server does
+    not publish would leave them unable to satisfy the required ``index``
+    argument at all. Naming the ids inline is the only way they can learn them.
     """
     description = (base_description or DEFAULT_SEARCH_DESCRIPTION).strip()
     if schema is None:
+        if index_ids:
+            return (
+                description + " Multiple indexes are configured and discovery is "
+                "disabled: pass one of these index ids as the `index` argument: "
+                + ", ".join(index_ids)
+                + "."
+            )
         return (
             description + " Multiple indexes are configured: call list-indexes "
             "first, then pass the chosen index id as the `index` argument."
@@ -498,9 +513,12 @@ async def search_records(
         raise map_exception(exc) from exc
 
 
-def register_search_tool(server: Any, schema: IndexSchema | None) -> None:
+def register_search_tool(
+    server: Any, schema: IndexSchema | None, *, index_ids: list[str] | None = None
+) -> None:
     """Register the MCP `search-records` tool with its config-owned contract."""
     description = _build_search_tool_description(
+        index_ids=index_ids,
         schema=schema,
         base_description=server.mcp_settings.tool_search_description,
     )

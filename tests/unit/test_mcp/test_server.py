@@ -59,7 +59,14 @@ def _binding_namespace(
 
 def _startup_config(indexes=None):
     return SimpleNamespace(
-        server=SimpleNamespace(redis_url="redis://localhost:6379"),
+        server=SimpleNamespace(
+            redis_url="redis://localhost:6379",
+            # Mirrors MCPServerConfig: every built-in is enabled unless a config
+            # explicitly disables it, and the map itself is read when the server
+            # fingerprints its registered tool surface.
+            builtin_tools={},
+            builtin_tool_enabled=lambda _name: True,
+        ),
         indexes=indexes or {"knowledge": _binding_namespace()},
     )
 
@@ -407,7 +414,7 @@ async def test_server_registers_tools_with_effective_schema(monkeypatch):
 
     registered_schemas = []
 
-    def fake_register_search_tool(server, schema):
+    def fake_register_search_tool(server, schema, index_ids=None):
         registered_schemas.append(schema)
 
     async def fake_disconnect(self):
@@ -422,7 +429,9 @@ async def test_server_registers_tools_with_effective_schema(monkeypatch):
     monkeypatch.setattr(
         "redisvl.mcp.server.register_search_tool", fake_register_search_tool
     )
-    monkeypatch.setattr("redisvl.mcp.server.register_upsert_tool", lambda server: None)
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_upsert_tool", lambda server, index_ids=None: None
+    )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_list_indexes_tool", lambda server: None
     )
