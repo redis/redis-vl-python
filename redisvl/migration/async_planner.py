@@ -13,6 +13,7 @@ from redisvl.migration.planner import MigrationPlanner
 from redisvl.redis.connection import supports_svs_async
 from redisvl.schema.schema import IndexSchema
 from redisvl.types import AsyncRedisClient
+from redisvl.utils.utils import match_pattern
 
 
 class AsyncMigrationPlanner:
@@ -266,17 +267,19 @@ class AsyncMigrationPlanner:
         for prefix in prefixes:
             if len(key_sample) >= self.key_sample_limit:
                 break
+            # NOTE: appending key_separator diverges from the sync planner and
+            # samples a narrower key set than the index covers. Pre-existing.
             if prefix == "":
-                match_pattern = "*"
+                scan_match = "*"
             elif prefix.endswith(key_separator):
-                match_pattern = f"{prefix}*"
+                scan_match = match_pattern(prefix)
             else:
-                match_pattern = f"{prefix}{key_separator}*"
+                scan_match = match_pattern(prefix, key_separator)
             cursor: int = 0
             while True:
                 cursor, keys = await client.scan(
                     cursor=cursor,
-                    match=match_pattern,
+                    match=scan_match,
                     count=max(self.key_sample_limit, 10),
                 )
                 for key in keys:

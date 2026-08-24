@@ -18,6 +18,7 @@ from redisvl.migration.models import (
 )
 from redisvl.redis.connection import supports_svs
 from redisvl.schema.schema import IndexSchema
+from redisvl.utils.utils import match_pattern
 
 
 class MigrationPlanner:
@@ -657,18 +658,18 @@ class MigrationPlanner:
             if len(key_sample) >= self.key_sample_limit:
                 break
             if prefix == "":
-                match_pattern = "*"
+                scan_match = "*"
             else:
                 # Use literal prefix + glob, matching Redis Search PREFIX
                 # semantics (pure string-prefix match).  Do NOT insert the
                 # key_separator — a PREFIX of "doc" must match "doc:1",
                 # "doca:1", etc., exactly like FT.CREATE does.
-                match_pattern = f"{prefix}*"
+                scan_match = match_pattern(prefix)
             cursor = 0
             while True:
                 cursor, keys = client.scan(
                     cursor=cursor,
-                    match=match_pattern,
+                    match=scan_match,
                     count=max(self.key_sample_limit, 1000),
                 )
                 for key in keys:
