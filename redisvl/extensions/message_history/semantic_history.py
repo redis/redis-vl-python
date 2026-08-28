@@ -5,7 +5,7 @@ from redis import Redis
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
     CREATE_INDEX_OVERWRITE_CONFLICT,
-    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
+    EXTERNAL_INDEX_DROP_CONFLICT,
     ID_FIELD_NAME,
     MESSAGE_VECTOR_FIELD_NAME,
     METADATA_FIELD_NAME,
@@ -156,15 +156,33 @@ class SemanticMessageHistory(BaseMessageHistory):
         )
 
     def clear(self) -> None:
-        """Clears the message history."""
-        if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        """Delete every message, leaving the index in place.
+
+        Not blocked by ``create_index=False``: that flag guards index lifecycle
+        operations -- :meth:`delete` -- not entry removal.
+
+        Note:
+            This enumerates entries through the index (``FT.SEARCH``, which a
+            ``+@read +@write`` credential is granted) rather than by keyspace
+            prefix. So it deletes exactly the documents the *live* index
+            covers, which under ``create_index=False`` is unverified: against
+            an index whose prefix differs from this one's, it removes
+            documents this instance never wrote and leaves this instance's own
+            entries in place.
+        """
         self._index.clear()
 
     def delete(self) -> None:
-        """Clear all message keys and remove the search index."""
+        """Remove every message and drop the search index.
+
+        Raises:
+            ValueError: If this instance was constructed with
+                ``create_index=False``. Dropping an index RedisVL did not
+                create is not this instance's to do; use :meth:`clear` to
+                remove the messages and leave the index standing.
+        """
         if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         self._index.delete(drop=True)
 
     def drop(self, id: str | None = None) -> None:

@@ -9,7 +9,7 @@ from redis.exceptions import ResponseError
 
 from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
-    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
+    EXTERNAL_INDEX_DROP_CONFLICT,
     ROUTE_VECTOR_FIELD_NAME,
 )
 from redisvl.extensions.router.schema import (
@@ -654,6 +654,13 @@ class SemanticRouter(BaseModel):
     def remove_route(self, route_name: str) -> None:
         """Remove a route and all references from the semantic router.
 
+        Note that, like :meth:`add_route`, this replaces the router's stored
+        config with this instance's route list -- including under
+        ``create_index=False``, where that list was never reconciled against
+        Redis. Removing one route from a router this instance holds only a
+        subset of will drop the rest from the config :meth:`from_existing`
+        reads.
+
         Args:
             route_name (str): Name of the route to remove.
         """
@@ -671,18 +678,43 @@ class SemanticRouter(BaseModel):
             self._update_router_state()
 
     def delete(self) -> None:
-        """Delete the semantic router index and its persisted route config."""
+        """Delete the semantic router index and its persisted route config.
+
+        Raises:
+            ValueError: If this instance was constructed with
+                ``create_index=False``. Dropping an index RedisVL did not
+                create is not this instance's to do; use :meth:`clear` to
+                remove the route references and leave the index standing.
+        """
         if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         self._index.delete(drop=True)
         # The route config is stored as a standalone JSON key that is not
         # tracked by the search index, so it must be removed explicitly.
         self._index._redis_client.delete(f"{self.name}:route_config")
 
     def clear(self) -> None:
-        """Flush all routes from the semantic router index."""
-        if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        """Delete every route reference, leaving the index in place.
+
+        Not blocked by ``create_index=False``: that flag guards index lifecycle
+        operations -- :meth:`delete` -- not entry removal.
+
+        Note:
+            This enumerates entries through the index (``FT.SEARCH``, which a
+            ``+@read +@write`` credential is granted) rather than by keyspace
+            prefix, so under ``create_index=False`` it deletes whatever the
+            unverified live index covers.
+
+        Warning:
+            The stored ``route_config`` is left as it was, on this path and the
+            default one alike -- only :meth:`delete` removes it. So after
+            clearing, a separate process calling
+            :meth:`SemanticRouter.from_existing` rebuilds its route list from
+            that blob and reports routes whose reference vectors are gone,
+            matching nothing. :meth:`remove_route` keeps the config in step, but
+            rewrites it from this instance's route list -- see its own note
+            before using it on a router you attached to.
+        """
         self._index.clear()
         self.routes = []
 
