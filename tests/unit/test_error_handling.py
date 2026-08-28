@@ -452,12 +452,21 @@ class TestClusterOperationsErrorHandling:
             1,  # Third succeeds
         ]
 
-        # Mock the .info() and ._query() methods to return test data
+        # clear() sizes its runaway backstop with a CountQuery, and must not
+        # read FT.INFO: that command is @search only, so a single call for a
+        # loop bound would deny the whole method to a +@read +@write
+        # credential. info() is stubbed to raise so re-introducing it fails
+        # here rather than silently in production.
         with (
-            patch.object(SearchIndex, "info") as mock_info,
+            patch.object(
+                SearchIndex,
+                "info",
+                side_effect=AssertionError("clear() must not call info()"),
+            ),
+            patch.object(SearchIndex, "query") as mock_count,
             patch.object(SearchIndex, "_query") as mock_query,
         ):
-            mock_info.return_value = {"num_docs": 3}
+            mock_count.return_value = 3
             mock_query.side_effect = [
                 [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}],
                 [],
@@ -479,6 +488,67 @@ class TestClusterOperationsErrorHandling:
                 )
                 # Should return count of successfully deleted keys (2 out of 3)
                 assert result == 2
+
+    def test_clear_terminates_when_no_key_can_be_deleted(self):
+        """clear() must not spin when every delete in a page fails.
+
+        Reachable through the cluster branch of `_delete_batch`, which catches
+        per-key `RedisError` -- and `NoPermissionError` is one -- logs it, and
+        returns 0 while the page stays non-empty. `clear()` has no `FT.INFO`
+        bound any more, so the offset advance plus the runaway backstop are the
+        only things standing between that and an infinite loop. Cluster is never
+        exercised in CI, so this is asserted hermetically.
+
+        This proves control flow given `_delete_batch`'s documented cluster
+        return contract. It proves nothing about CROSSSLOT behaviour, node
+        targeting, or whether FT.SEARCH enumerates every shard.
+        """
+        from redisvl.index import SearchIndex
+        from redisvl.schema import IndexSchema
+
+        schema = Mock(spec=IndexSchema)
+        schema.index = Mock()
+        schema.index.name = "stalled"
+        schema.index.prefix = "test"
+        schema.index.key_separator = ":"
+        schema.index.storage_type = StorageType.HASH
+
+        mock_cluster_client = Mock(spec=RedisCluster)
+        mock_cluster_client.delete.side_effect = redis.exceptions.NoPermissionError(
+            "this user has no permissions to run the 'del' command"
+        )
+
+        page = [{"id": "test:key1"}, {"id": "test:key2"}]
+        # A runaway guard for the test itself: pytest-timeout is not installed,
+        # so a regression that removes the bound would hang the suite instead of
+        # failing it.
+        max_calls = 200
+        calls = {"n": 0}
+
+        def always_a_full_page(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] > max_calls:
+                raise AssertionError(
+                    f"clear() did not terminate within {max_calls} queries"
+                )
+            return page
+
+        with (
+            patch.object(SearchIndex, "query", return_value=2),
+            patch.object(SearchIndex, "_query", side_effect=always_a_full_page),
+        ):
+            index = SearchIndex(schema)
+            index._SearchIndex__redis_client = mock_cluster_client
+
+            with patch("redisvl.index.index.logger") as mock_logger:
+                result = index.clear()
+
+        assert result == 0
+        # It gave up by paging past the backstop rather than by deleting.
+        assert any(
+            "paged past its runaway backstop" in str(call)
+            for call in mock_logger.warning.call_args_list
+        )
 
     @patch("redisvl.redis.connection.RedisConnectionFactory.validate_async_redis")
     @pytest.mark.asyncio
@@ -505,10 +575,11 @@ class TestClusterOperationsErrorHandling:
             ]
         )
 
-        # Mock the .info() and ._query() methods to return test data
+        # See the sync twin: info() must never be reached from clear().
         async def mock_info(*args, **kwargs):
-            return {"num_docs": 3}
+            raise AssertionError("clear() must not call info()")
 
+        mock_count = AsyncMock(return_value=3)
         mock_query = AsyncMock(
             side_effect=[
                 [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}],
@@ -518,6 +589,7 @@ class TestClusterOperationsErrorHandling:
 
         with (
             patch.object(AsyncSearchIndex, "info", mock_info),
+            patch.object(AsyncSearchIndex, "query", mock_count),
             patch.object(AsyncSearchIndex, "_query", mock_query),
         ):
             # Create index with mocked client

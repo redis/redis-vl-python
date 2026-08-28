@@ -1151,27 +1151,101 @@ class SearchIndex(BaseSearchIndex):
         here, we can't easily give control of the keys we're clearing to the
         user so they can separate them based on hash tag.
 
+        Normal termination is an empty page. A ``CountQuery`` taken up front
+        sizes a runaway backstop, so a writer inserting as fast as this deletes
+        cannot keep the sweep running forever. The count used to come from
+        ``FT.INFO``'s ``num_docs``, which is ``@search`` only and so denied this
+        entire method to a ``+@read +@write`` credential; ``CountQuery`` is
+        ``FT.SEARCH``, which the query loop below already requires.
+
+        Note:
+            This enumerates *through the index*, so it can only delete what the
+            index currently returns. On an index still running its background
+            scan the sweep drains the documents indexed so far, sees an empty
+            page while unindexed keys remain, and stops -- reporting what it
+            deleted as if it were done. Measured on Redis 8.4.6 against 20 000
+            hashes indexed immediately after loading, two runs cleared 125 and
+            57; against a fully indexed copy of the same data, both cleared all
+            20 000. Wait for ``FT.INFO``'s ``indexing`` to reach ``0`` if you
+            need the sweep to be complete, or clear by key prefix instead. This
+            is long-standing behaviour, not a consequence of the bound below:
+            the ``num_docs`` bound this replaced cleared 57 on the same setup.
+
+        Note:
+            A page whose keys cannot be deleted at all -- most plausibly a
+            permission denial swallowed by :meth:`_delete_batch`'s cluster
+            branch -- does not abort the sweep: the offset advances past it so
+            the documents behind it are still reached. If nothing can be
+            deleted, the backstop ends the sweep and a warning is logged.
+
+        Note:
+            Keys under the index's prefix that failed to index are never
+            returned by the query, so they survive.
+
+        Warning:
+            The return value counts deletions, so ``0`` does not distinguish an
+            already-empty index from a sweep that could delete nothing. Callers
+            that must know check the log, or re-run: the operation is
+            idempotent.
+
         Returns:
             int: Count of records deleted from Redis.
         """
         batch_size = 500
-        max_ratio = 1.01
 
-        info = self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        matched = cast(int, self.query(CountQuery(FilterExpression("*"))))
+        # Runaway backstop sized to the matched count plus slack for concurrent
+        # inserts -- the same shape as drop_by_filter. CountQuery is FT.SEARCH,
+        # which the query loop below already needs and which `+@read +@write`
+        # grants; the FT.INFO this once read for the same purpose is `@search`
+        # only, so a single call for a loop bound denied the whole method.
+        max_records = ceil(matched * 1.5) + batch_size
+
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
 
         while True:
-            batch = self._query(query)
-            if batch and total_records_deleted <= max_records_deleted:
-                batch_keys = [record["id"] for record in batch]
-                total_records_deleted += self._delete_batch(batch_keys)
-            else:
+            if total_records_deleted > max_records:
+                logger.warning(
+                    "clear() of index %s hit its runaway backstop (%d) with "
+                    "documents possibly still indexed; %d records were deleted. "
+                    "Re-run to continue.",
+                    self.schema.index.name,
+                    max_records,
+                    total_records_deleted,
+                )
                 break
+
+            query.paging(offset, batch_size)
+            batch = self._query(query)
+            if not batch:
+                break
+
+            batch_keys = [record["id"] for record in batch]
+            records_deleted = self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
+
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted -- most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past the blockage instead of re-reading the same head
+                # forever; the documents behind it may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -2485,27 +2559,71 @@ class AsyncSearchIndex(BaseSearchIndex):
         we can't easily give control of the keys we're clearing to the user so they
         can separate them based on hash tag.
 
+        See :meth:`SearchIndex.clear` for the full semantics, which are
+        identical here: why the backstop comes from a ``CountQuery`` rather than
+        ``FT.INFO``, that a sweep racing a background index scan can stop while
+        unindexed keys remain, that a page which cannot be deleted is paged past
+        rather than aborting, and that a ``0`` return does not distinguish an
+        empty index from a sweep that deleted nothing.
+
         Returns:
             int: Count of records deleted from Redis.
         """
         batch_size = 500
-        max_ratio = 1.01
 
-        info = await self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        matched = cast(int, await self.query(CountQuery(FilterExpression("*"))))
+        # Runaway backstop sized to the matched count plus slack for concurrent
+        # inserts -- the same shape as drop_by_filter. CountQuery is FT.SEARCH,
+        # which the query loop below already needs and which `+@read +@write`
+        # grants; the FT.INFO this once read for the same purpose is `@search`
+        # only, so a single call for a loop bound denied the whole method.
+        max_records = ceil(matched * 1.5) + batch_size
+
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
 
         while True:
-            batch = await self._query(query)
-            if batch and total_records_deleted <= max_records_deleted:
-                batch_keys = [record["id"] for record in batch]
-                total_records_deleted += await self._delete_batch(batch_keys)
-            else:
+            if total_records_deleted > max_records:
+                logger.warning(
+                    "clear() of index %s hit its runaway backstop (%d) with "
+                    "documents possibly still indexed; %d records were deleted. "
+                    "Re-run to continue.",
+                    self.schema.index.name,
+                    max_records,
+                    total_records_deleted,
+                )
                 break
+
+            query.paging(offset, batch_size)
+            batch = await self._query(query)
+            if not batch:
+                break
+
+            batch_keys = [record["id"] for record in batch]
+            records_deleted = await self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
+
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted -- most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past the blockage instead of re-reading the same head
+                # forever; the documents behind it may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
