@@ -312,9 +312,7 @@ class SemanticCache(BaseLLMCache):
         """Delete the cache and its index entirely.
 
         Raises:
-            ValueError: If this instance was constructed with
-                ``create_index=False``. Dropping an index RedisVL did not
-                create is not this instance's to do; use :meth:`clear` to
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
                 empty the cache and leave the index standing.
         """
         if not self._create_index:
@@ -325,8 +323,7 @@ class SemanticCache(BaseLLMCache):
         """Async delete the cache and its index entirely.
 
         Raises:
-            ValueError: If this instance was constructed with
-                ``create_index=False``. See :meth:`delete`.
+            ValueError: If ``create_index=False``. See :meth:`delete`.
         """
         if not self._create_index:
             raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
@@ -336,38 +333,21 @@ class SemanticCache(BaseLLMCache):
     def clear(self) -> None:
         """Delete every cache entry, leaving the index in place.
 
-        Not blocked by ``create_index=False``: this walks the keyspace with
-        ``SCAN`` and ``DEL`` over the prefix this cache declares, issuing no
-        index command at all, so a ``+@read +@write`` credential can run it.
-        Dropping the index itself is :meth:`delete`, which stays guarded.
+        Clears by key prefix, not by index membership, so it removes every key
+        under ``{name}:`` and nothing outside it. Available under
+        ``create_index=False``; dropping the index is :meth:`delete`.
 
         Warning:
-            The prefix, not the index, is the unit of clearing, and it is the
-            prefix this instance *declares* -- always ``{name}:``. With
-            ``create_index=False`` nothing verifies that against the live
-            index, so both directions can go wrong silently:
-
-            - **Too little.** If the live index covers a different prefix, or
-              is an alias onto one, this deletes only what this instance itself
-              wrote and leaves every served entry in place. It reports success,
-              and the cache still returns the stale hits it was called to
-              invalidate.
-            - **Too much.** ``SCAN``/``DEL`` is blind to both the index and the
-              key type, so it removes *every* key under ``{name}:`` -- another
-              writer's cache entries, and any unrelated application data that
-              happens to live under the same namespace root.
-
-            Neither is detectable from an attach-only instance, because
-            diagnosing it needs the ``FT.INFO`` such a credential is denied.
+            Under ``create_index=False`` the prefix is unverified, so this can
+            delete keys the index never covered and miss entries it does. See
+            :doc:`/user_guide/installation`.
         """
         super().clear()
 
     async def aclear(self) -> None:
         """Async delete every cache entry, leaving the index in place.
 
-        Not blocked by ``create_index=False``; see :meth:`clear` for the
-        permissions this needs and for the prefix caveats, which apply
-        identically here.
+        See :meth:`clear` for the caveats, which apply identically here.
         """
         await super().aclear()
 

@@ -150,10 +150,7 @@ class TestExternalIndexLifecycle:
     """The flag guards the index's lifecycle, not its contents.
 
     `delete()` drops the index, so an attach-only instance must refuse it.
-    `clear()` removes entries and leaves the index in place, so it stays
-    available: guarding it too left a caller attached to a platform-provisioned
-    index with no public way to invalidate the cache, which pushed downstream
-    code into reimplementing the keyspace walk against private APIs.
+    `clear()` removes entries and leaves the index standing, so it does not.
     """
 
     @pytest.mark.parametrize("kind", ALL_KINDS)
@@ -188,10 +185,8 @@ class TestExternalIndexLifecycle:
         assert client.mock_calls == []
 
     def test_cache_clear_issues_no_index_command(self, vectorizer):
-        # The reason this one is safe to allow: the cache clears by keyspace
-        # prefix, so it never names the index. Asserted as "ft() was never
-        # reached" rather than on the SCAN call shape, which belongs to
-        # BaseCache and is being reworked for cluster correctness.
+        # Asserted as "ft() was never reached" rather than on the SCAN call
+        # shape, which belongs to BaseCache and is being reworked separately.
         client = _client()
         client.scan.return_value = (0, ["llmcache:abc"])
         client.scan_iter.return_value = iter(["llmcache:abc"])
@@ -210,10 +205,7 @@ class TestExternalIndexLifecycle:
     @pytest.mark.parametrize("kind", ["history", "semantic_history", "router"])
     def test_index_backed_clear_is_not_refused(self, kind, vectorizer, monkeypatch):
         # These delegate to SearchIndex.clear(), so the minimal assertion is
-        # that control reaches it at all. MessageHistory's body is currently
-        # byte-identical to SemanticMessageHistory's, but parametrizing it
-        # anyway is what keeps that from being load-bearing: re-adding a guard
-        # to either one has to fail a test.
+        # that control reaches it at all.
         cleared = Mock(return_value=0)
         monkeypatch.setattr(SearchIndex, "clear", cleared)
         extension = _build(

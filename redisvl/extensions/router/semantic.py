@@ -654,11 +654,9 @@ class SemanticRouter(BaseModel):
     def remove_route(self, route_name: str) -> None:
         """Remove a route and all references from the semantic router.
 
-        Note that, like :meth:`add_route`, this replaces the router's stored
-        config with this instance's route list -- including under
-        ``create_index=False``, where that list was never reconciled against
-        Redis. Removing one route from a router this instance holds only a
-        subset of will drop the rest from the config :meth:`from_existing`
+        Like :meth:`add_route`, this replaces the router's stored config with
+        this instance's route list, so removing one route from a router holding
+        only a subset drops the rest from the config :meth:`from_existing`
         reads.
 
         Args:
@@ -681,9 +679,7 @@ class SemanticRouter(BaseModel):
         """Delete the semantic router index and its persisted route config.
 
         Raises:
-            ValueError: If this instance was constructed with
-                ``create_index=False``. Dropping an index RedisVL did not
-                create is not this instance's to do; use :meth:`clear` to
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
                 remove the route references and leave the index standing.
         """
         if not self._create_index:
@@ -696,24 +692,14 @@ class SemanticRouter(BaseModel):
     def clear(self) -> None:
         """Delete every route reference, leaving the index in place.
 
-        Not blocked by ``create_index=False``: that flag guards index lifecycle
-        operations -- :meth:`delete` -- not entry removal.
-
-        Note:
-            This enumerates entries through the index (``FT.SEARCH``, which a
-            ``+@read +@write`` credential is granted) rather than by keyspace
-            prefix, so under ``create_index=False`` it deletes whatever the
-            unverified live index covers.
+        Clears by index membership. Available under ``create_index=False``;
+        dropping the index is :meth:`delete`.
 
         Warning:
-            The stored ``route_config`` is left as it was, on this path and the
-            default one alike -- only :meth:`delete` removes it. So after
-            clearing, a separate process calling
-            :meth:`SemanticRouter.from_existing` rebuilds its route list from
-            that blob and reports routes whose reference vectors are gone,
-            matching nothing. :meth:`remove_route` keeps the config in step, but
-            rewrites it from this instance's route list -- see its own note
-            before using it on a router you attached to.
+            The stored ``route_config`` is left as it was, here and on the
+            default path. A separate process calling :meth:`from_existing`
+            afterwards will report routes whose reference vectors are gone.
+            :meth:`remove_route` keeps the two in step.
         """
         self._index.clear()
         self.routes = []

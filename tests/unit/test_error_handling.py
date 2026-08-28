@@ -452,11 +452,9 @@ class TestClusterOperationsErrorHandling:
             1,  # Third succeeds
         ]
 
-        # clear() sizes its runaway backstop with a CountQuery, and must not
-        # read FT.INFO: that command is @search only, so a single call for a
-        # loop bound would deny the whole method to a +@read +@write
-        # credential. info() is stubbed to raise so re-introducing it fails
-        # here rather than silently in production.
+        # info() is stubbed to raise, not to return: clear() must never call
+        # it, because FT.INFO is @search only and would deny the whole method
+        # to a +@read +@write credential.
         with (
             patch.object(
                 SearchIndex,
@@ -492,16 +490,10 @@ class TestClusterOperationsErrorHandling:
     def test_clear_terminates_when_no_key_can_be_deleted(self):
         """clear() must not spin when every delete in a page fails.
 
-        Reachable through the cluster branch of `_delete_batch`, which catches
-        per-key `RedisError` -- and `NoPermissionError` is one -- logs it, and
-        returns 0 while the page stays non-empty. `clear()` has no `FT.INFO`
-        bound any more, so the offset advance plus the runaway backstop are the
-        only things standing between that and an infinite loop. Cluster is never
-        exercised in CI, so this is asserted hermetically.
-
-        This proves control flow given `_delete_batch`'s documented cluster
-        return contract. It proves nothing about CROSSSLOT behaviour, node
-        targeting, or whether FT.SEARCH enumerates every shard.
+        Reachable through `_delete_batch`'s cluster branch, which swallows
+        per-key `RedisError` and returns 0 while the page stays non-empty.
+        Asserted hermetically because cluster never runs in CI, so this covers
+        control flow only -- not CROSSSLOT behaviour or node targeting.
         """
         from redisvl.index import SearchIndex
         from redisvl.schema import IndexSchema
@@ -519,9 +511,8 @@ class TestClusterOperationsErrorHandling:
         )
 
         page = [{"id": "test:key1"}, {"id": "test:key2"}]
-        # A runaway guard for the test itself: pytest-timeout is not installed,
-        # so a regression that removes the bound would hang the suite instead of
-        # failing it.
+        # pytest-timeout is not installed, so without this cap a regression
+        # would hang the suite rather than fail it.
         max_calls = 200
         calls = {"n": 0}
 

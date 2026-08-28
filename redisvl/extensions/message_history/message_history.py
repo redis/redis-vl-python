@@ -97,17 +97,14 @@ class MessageHistory(BaseMessageHistory):
     def clear(self) -> None:
         """Delete every message, leaving the index in place.
 
-        Not blocked by ``create_index=False``: that flag guards index lifecycle
-        operations -- :meth:`delete` -- not entry removal.
+        Clears by index membership, so it removes the documents the live index
+        covers. Available under ``create_index=False``; dropping the index is
+        :meth:`delete`.
 
-        Note:
-            This enumerates entries through the index (``FT.SEARCH``, which a
-            ``+@read +@write`` credential is granted) rather than by keyspace
-            prefix. So it deletes exactly the documents the *live* index
-            covers, which under ``create_index=False`` is unverified: against
-            an index whose prefix differs from this one's, it removes
-            documents this instance never wrote and leaves this instance's own
-            entries in place.
+        Warning:
+            Under ``create_index=False`` the live index is unverified, so if its
+            prefix differs from this instance's it removes documents this
+            instance never wrote. See :doc:`/user_guide/installation`.
         """
         self._index.clear()
 
@@ -115,9 +112,7 @@ class MessageHistory(BaseMessageHistory):
         """Remove every message and drop the search index.
 
         Raises:
-            ValueError: If this instance was constructed with
-                ``create_index=False``. Dropping an index RedisVL did not
-                create is not this instance's to do; use :meth:`clear` to
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
                 remove the messages and leave the index standing.
         """
         if not self._create_index:

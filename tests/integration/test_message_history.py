@@ -833,15 +833,10 @@ def test_create_index_false_clear_works_under_a_read_write_acl(
 ):
     """The `FT.INFO` removal from `SearchIndex.clear()`, end to end.
 
-    `MessageHistory.clear()` goes through `SearchIndex.clear()`, which used to
-    read `FT.INFO` to size its loop bound. `FT.INFO` is `@search` only, so that
-    single call denied the whole method to the `+@read +@write` credential
-    `create_index=False` exists to serve -- even though the `FT.SEARCH` and
-    `DEL` the sweep is actually made of are both granted.
-
-    This is the extension the fix was for, and it needs no vectorizer, so it is
-    the cheap place to prove it against a real restricted credential rather than
-    a mock.
+    `MessageHistory.clear()` delegates to `SearchIndex.clear()`, which used to
+    read `FT.INFO` -- `@search` only, and so denied to the credential this flag
+    serves. This extension needs no vectorizer, making it the cheap place to
+    prove the fix against a real restricted credential rather than a mock.
     """
     skip_if_no_redis_search(client)
     name = app_name
@@ -869,15 +864,13 @@ def test_create_index_false_clear_works_under_a_read_write_acl(
                 create_index=False,
             )
 
-            # Pin the premise: this credential cannot read the index metadata
-            # that clear() used to depend on.
+            # Pin the premise: this credential cannot read FT.INFO.
             with pytest.raises(NoPermissionError):
                 user.connect().execute_command("FT.INFO", name)
 
             restricted.clear()
 
-        # Read back through the owner, so the assertion does not depend on the
-        # restricted instance outliving its ACL user.
+        # Read back through the owner: the restricted instance is gone.
         assert owner.get_recent(top_k=10) == []
         # And clearing left the index standing, so the history is still usable.
         assert owner._index.exists()
