@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.exceptions import ConnectionError
 
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.router.semantic import SemanticRouter
@@ -100,6 +101,28 @@ def test_search_index_connect_keeps_ownership_after_replacing_owned_client():
     assert index._owns_redis_client is True
     index.disconnect()
     second_client.close.assert_called_once_with()
+
+
+def test_search_index_connect_preserves_live_client_when_replacement_fails():
+    first_client = MagicMock()
+    connection_error = ConnectionError("replacement unavailable")
+    with patch(
+        "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+        side_effect=[first_client, connection_error],
+    ):
+        index = SearchIndex(
+            IndexSchema.from_dict(_schema_dict()), redis_url="redis://first:6379"
+        )
+        assert index._redis_client is first_client
+
+        with pytest.raises(ConnectionError, match="replacement unavailable"):
+            index.connect("redis://unavailable:6379")
+
+    assert index.client is first_client
+    assert index._owns_redis_client is True
+    first_client.close.assert_not_called()
+    index.disconnect()
+    first_client.close.assert_called_once_with()
 
 
 def test_search_index_from_existing_owns_factory_created_client():

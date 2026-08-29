@@ -964,13 +964,14 @@ class SearchIndex(BaseSearchIndex):
             ModuleNotFoundError: If required Redis modules are not installed.
         """
         self.invalidate_sql_schema_cache()
+        new_client = RedisConnectionFactory.get_redis_connection(
+            redis_url=redis_url, **kwargs
+        )
         if self._owns_redis_client:
             self._detach_client_finalizer()
             if self.__redis_client is not None:
                 self.__redis_client.close()
-        self.__redis_client = RedisConnectionFactory.get_redis_connection(
-            redis_url=redis_url, **kwargs
-        )
+        self.__redis_client = new_client
         self._owns_redis_client = True
         self._register_client_finalizer(self.__redis_client)
 
