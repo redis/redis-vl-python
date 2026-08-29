@@ -84,6 +84,17 @@ index = SearchIndex.from_existing("my-index", redis_url="redis://localhost:6379"
 
 **Clearing data** with `clear()` removes all documents from the index without deleting the index itself. The schema remains intact, ready for new data.
 
+## Search Visibility Under Concurrent Writes
+
+On Redis 8.8 and later, RediSearch uses a multithreaded background worker pool by default. Under concurrent write and query load, a document can be present in Redis but not yet visible to a search query issued immediately after the write. For example, a query immediately following `load()` may temporarily return fewer documents than were loaded:
+
+```python
+index.load(records)
+results = index.query(query)  # may not include every newly loaded document yet
+```
+
+This is a short indexing window rather than data loss; a later query should observe the documents after the index catches up. It can affect ingestion pipelines and read-after-write checks that query through the index immediately after writing. If an application requires foreground indexing and can accept the associated performance trade-off, configure Redis with `--search-workers 0` to disable the background worker pool. This setting is controlled by the Redis server, not by RedisVL.
+
 ## Bulk Delete and Update
 
 Redis has no server-side "delete/update by query", so mutating many documents traditionally means scanning for keys and issuing writes yourself. RedisVL wraps that pattern behind two filter-driven methods (available on both `SearchIndex` and `AsyncSearchIndex`).
