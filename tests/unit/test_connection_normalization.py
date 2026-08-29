@@ -7,6 +7,7 @@ from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.router.semantic import SemanticRouter
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.sql import SQLQuery
+from redisvl.schema import IndexSchema
 
 
 def _schema_dict(name: str = "idx") -> dict:
@@ -57,6 +58,48 @@ def test_search_index_from_existing_prefers_provided_client():
     mock_get_connection.assert_not_called()
     mock_info.assert_called_once_with("search-index", provided_client)
     assert index.client is provided_client
+
+
+def test_search_index_set_client_releases_owned_client_without_taking_ownership():
+    owned_client = MagicMock()
+    provided_client = MagicMock()
+    with patch(
+        "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+        return_value=owned_client,
+    ):
+        index = SearchIndex(
+            IndexSchema.from_dict(_schema_dict()), redis_url="redis://localhost:6379"
+        )
+        assert index._redis_client is owned_client
+
+    with patch("redisvl.index.index.RedisConnectionFactory.validate_sync_redis"):
+        index.set_client(provided_client)
+
+    owned_client.close.assert_called_once_with()
+    assert index.client is provided_client
+    assert index._owns_redis_client is False
+    index.disconnect()
+    provided_client.close.assert_not_called()
+
+
+def test_search_index_connect_keeps_ownership_after_replacing_owned_client():
+    first_client = MagicMock()
+    second_client = MagicMock()
+    with patch(
+        "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+        side_effect=[first_client, second_client],
+    ):
+        index = SearchIndex(
+            IndexSchema.from_dict(_schema_dict()), redis_url="redis://first:6379"
+        )
+        assert index._redis_client is first_client
+        index.connect("redis://second:6379")
+
+    first_client.close.assert_called_once_with()
+    assert index._redis_client is second_client
+    assert index._owns_redis_client is True
+    index.disconnect()
+    second_client.close.assert_called_once_with()
 
 
 def test_search_index_from_existing_owns_factory_created_client():
@@ -138,6 +181,25 @@ async def test_async_search_index_from_existing_prefers_provided_client():
     mock_get_connection.assert_not_awaited()
     mock_info.assert_awaited_once_with("async-search-index", provided_client)
     assert index.client is provided_client
+
+
+@pytest.mark.asyncio
+async def test_async_search_index_set_client_does_not_take_ownership():
+    provided_client = AsyncMock()
+    index = AsyncSearchIndex(
+        IndexSchema.from_dict(_schema_dict()), redis_client=provided_client
+    )
+
+    replacement = AsyncMock()
+    with patch.object(
+        index, "_validate_client", new=AsyncMock(return_value=replacement)
+    ):
+        await index.set_client(replacement)
+
+    assert index.client is replacement
+    assert index._owns_redis_client is False
+    provided_client.aclose.assert_not_awaited()
+    replacement.aclose.assert_not_awaited()
 
 
 @pytest.mark.asyncio
