@@ -6,8 +6,9 @@ from time import sleep, time
 
 import pytest
 from pydantic import ValidationError
-from redis.exceptions import ConnectionError
+from redis.exceptions import ConnectionError, NoPermissionError
 
+from redisvl.exceptions import RedisSearchError
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
@@ -1149,3 +1150,65 @@ def test_cache_disconnect(redis_url, worker_id, hf_vectorizer):
     cache.disconnect()
     # We keep this index object around because it isn't lazily created
     assert cache._index.client is None
+
+
+def test_create_index_false_works_under_a_read_write_acl(
+    cache, vectorizer, redis_url, acl_user, worker_id
+):
+    """An application role must be able to use a cache it did not create.
+
+    A credential assembled from `@read`/`@write` is denied `FT.INFO` and
+    `FT.CREATE` together -- neither is in either category -- so it cannot
+    construct a SemanticCache at all, even against an index it can query
+    perfectly well. `create_index=False` lets the caller assert what RedisVL is
+    unable to ask, and only a live server can show that the resulting cache
+    still stores and retrieves.
+
+    The `cache` fixture supplies the pre-created index, standing in for the DBA
+    who provisions it.
+    """
+    cache.store("What is the capital of France?", "Paris")
+
+    with acl_user(
+        "~*", "&*", "+@read", "+@write", "-@dangerous", name="acl_cache_user"
+    ) as user:
+        credentials = {"username": user.username, "password": user.password}
+
+        # Pin the premise: this role cannot ask whether the index exists.
+        restricted = user.connect()
+        with pytest.raises(NoPermissionError):
+            restricted.execute_command("FT.INFO", cache.index.name)
+
+        restricted_cache = SemanticCache(
+            name=cache.index.name,
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            redis_url=redis_url,
+            connection_kwargs=credentials,
+            create_index=False,
+        )
+
+        try:
+            hits = restricted_cache.check("What is the capital of France?")
+            assert hits and hits[0]["response"] == "Paris"
+
+            # And it can write, so a cache miss populates the shared cache.
+            restricted_cache.store("Who wrote Hamlet?", "Shakespeare")
+            assert restricted_cache.check("Who wrote Hamlet?")
+        finally:
+            # This cache built its own client from the credentials, so the
+            # fixture does not track it -- and the user is about to be deleted.
+            restricted_cache.disconnect()
+
+        # Without the flag, the same credential fails loudly at the existence
+        # check rather than degrading -- deliberately, since a credential that
+        # cannot ask whether the index exists cannot create one either.
+        with pytest.raises(RedisSearchError) as excinfo:
+            SemanticCache(
+                name=cache.index.name,
+                vectorizer=vectorizer,
+                redis_url=redis_url,
+                connection_kwargs=credentials,
+            )
+        assert "ft.info" in str(excinfo.value).lower()
+        assert isinstance(excinfo.value.__cause__, NoPermissionError)

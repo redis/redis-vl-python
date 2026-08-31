@@ -12,7 +12,9 @@ from redisvl.extensions.cache.llm.schema import (
 )
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
+    CREATE_INDEX_OVERWRITE_CONFLICT,
     ENTRY_ID_FIELD_NAME,
+    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
     INSERTED_AT_FIELD_NAME,
     METADATA_FIELD_NAME,
     PROMPT_FIELD_NAME,
@@ -36,6 +38,18 @@ from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger("[RedisVL]")
 
+# Emitted when the caller did not choose a vectorizer and the index predates this
+# call, so its vectors may have been written with the old default model. Remove
+# this warning in future releases.
+DEFAULT_VECTORIZER_CHANGED_WARNING = (
+    "The default vectorizer has changed from `sentence-transformers/all-mpnet-base-v2` "
+    "to `redis/langcache-embed-v1` in version 0.6.0 of RedisVL. "
+    "For more information about this model, please refer to https://arxiv.org/abs/2504.02268 "
+    "or visit https://huggingface.co/redis/langcache-embed-v1. "
+    "To continue using the old vectorizer, please specify it explicitly in the constructor as: "
+    "vectorizer=HFTextVectorizer(model='sentence-transformers/all-mpnet-base-v2')"
+)
+
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
@@ -53,8 +67,9 @@ class SemanticCache(BaseLLMCache):
         filterable_fields: list[dict[str, Any]] | None = None,
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         overwrite: bool = False,
+        create_index: bool = True,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -78,13 +93,44 @@ class SemanticCache(BaseLLMCache):
                 for the redis client. Defaults to empty {}.
             overwrite (bool): Whether or not to force overwrite the schema for
                 the semantic cache index. Defaults to false.
+            create_index (bool): Whether RedisVL creates and validates the index.
+                When True, the constructor runs ``FT.INFO`` to check whether the
+                index exists, compares the live schema against this one, and runs
+                ``FT.CREATE`` if it is absent. When False it does none of these
+                and issues no index command at all: the index must already exist
+                with a compatible schema. A live index whose prefix or storage
+                type differs from this schema is not detected and produces empty
+                results rather than an error. Use this when the index is managed
+                externally, or when the credential cannot run ``FT.INFO``. See
+                :doc:`/user_guide/installation` for the ACL details. Defaults to
+                true.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
             ValueError: If the threshold is not between 0 and 2 (Redis COSINE distance).
             ValueError: If existing schema does not match new schema and overwrite is False.
+            ValueError: If both create_index is False and overwrite is True.
+
+        .. code-block:: python
+
+            from redisvl.extensions.cache.llm import SemanticCache
+
+            # RedisVL creates the index if it is missing
+            cache = SemanticCache(name="llmcache", redis_url="redis://localhost:6379")
+
+            # the index is managed externally, or this credential cannot run
+            # FT.INFO -- assume the index exists and issue no index command
+            cache = SemanticCache(
+                name="llmcache",
+                redis_url="redis://localhost:6379",
+                create_index=False,
+            )
         """
+        connection_kwargs = connection_kwargs or {}
+        if not create_index and overwrite:
+            raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+
         # Call parent class with all shared parameters
         super().__init__(
             name=name,
@@ -148,32 +194,35 @@ class SemanticCache(BaseLLMCache):
 
         # Check for existing cache index and handle schema mismatch
         self.overwrite = overwrite
-        if not self.overwrite and self._index.exists():
+        self._create_index = create_index
 
+        if create_index:
+            if not self.overwrite and self._index.exists():
+                if not vectorizer:
+                    logger.warning(DEFAULT_VECTORIZER_CHANGED_WARNING)
+
+                existing_index = SearchIndex.from_existing(
+                    name, redis_client=self._index._redis_client
+                )
+                if existing_index.schema.to_dict() != self._index.schema.to_dict():
+                    raise ValueError(
+                        f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
+                        "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                    )
+
+            # Create the search index in Redis
+            self._index.create(overwrite=self.overwrite, drop=False)
+        else:
+            # The flag asserts the index already exists, which is exactly this
+            # warning's precondition -- so it still applies here.
             if not vectorizer:
-                # user hasn't specified a vectorizer and an index already exists they're not overwriting
-                # raise a warning to inform users we changed the default embedding model
-                # remove this warning in future releases
-                logger.warning(
-                    "The default vectorizer has changed from `sentence-transformers/all-mpnet-base-v2` "
-                    "to `redis/langcache-embed-v1` in version 0.6.0 of RedisVL. "
-                    "For more information about this model, please refer to https://arxiv.org/abs/2504.02268 "
-                    "or visit https://huggingface.co/redis/langcache-embed-v1. "
-                    "To continue using the old vectorizer, please specify it explicitly in the constructor as: "
-                    "vectorizer=HFTextVectorizer(model='sentence-transformers/all-mpnet-base-v2')"
-                )
+                logger.warning(DEFAULT_VECTORIZER_CHANGED_WARNING)
 
-            existing_index = SearchIndex.from_existing(
-                name, redis_client=self._index._redis_client
+            logger.debug(
+                f"create_index=False: assuming index {name!r} exists over prefix "
+                f"{schema.index.prefix!r} with {self._vectorizer.dims} vector "
+                "dimensions. Its schema is not verified."
             )
-            if existing_index.schema.to_dict() != self._index.schema.to_dict():
-                raise ValueError(
-                    f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
-                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
-                )
-
-        # Create the search index in Redis
-        self._index.create(overwrite=self.overwrite, drop=False)
 
     def __repr__(self) -> str:
         return (
@@ -261,12 +310,28 @@ class SemanticCache(BaseLLMCache):
 
     def delete(self) -> None:
         """Delete the cache and its index entirely."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.delete(drop=True)
 
     async def adelete(self) -> None:
         """Async delete the cache and its index entirely."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         aindex = await self._get_async_index()
         await aindex.delete(drop=True)
+
+    def clear(self) -> None:
+        """Clear all cache keys when RedisVL manages the index lifecycle."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        super().clear()
+
+    async def aclear(self) -> None:
+        """Async clear all cache keys when RedisVL manages the index lifecycle."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        await super().aclear()
 
     def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
         """Drop specific entries from the cache by ID or Redis key.

@@ -229,3 +229,53 @@ async def test_register_list_indexes_tool_is_read_only_and_callable():
 
     result = await tool["fn"]()
     assert result == list_indexes(server)
+
+
+def test_list_indexes_reports_upsert_unavailable_when_the_tool_is_disabled():
+    """A writable binding is still unwritable if `upsert-records` is not published.
+
+    `upsert_available` is a client-facing claim about what can be called. Deriving
+    it from read-only state alone would advertise a tool the server withholds, so
+    the client would only discover the truth by attempting a write.
+    """
+    server = FakeServer([_binding_runtime("knowledge", effective_read_only=False)])
+    server.config = MCPConfig.model_validate(
+        {
+            "server": {
+                "redis_url": "redis://localhost:6379",
+                "builtin_tools": {"upsert-records": "disabled"},
+            },
+            "indexes": {
+                "knowledge": {
+                    "redis_name": "docs-index",
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                }
+            },
+        }
+    )
+
+    indexes = {entry["id"]: entry for entry in list_indexes(server)["indexes"]}
+
+    assert indexes["knowledge"]["upsert_available"] is False
+
+
+def test_list_indexes_reports_upsert_available_when_the_tool_is_enabled():
+    """The control: an explicit config that leaves the built-in on."""
+    server = FakeServer([_binding_runtime("knowledge", effective_read_only=False)])
+    server.config = MCPConfig.model_validate(
+        {
+            "server": {"redis_url": "redis://localhost:6379"},
+            "indexes": {
+                "knowledge": {
+                    "redis_name": "docs-index",
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                }
+            },
+        }
+    )
+
+    indexes = {entry["id"]: entry for entry in list_indexes(server)["indexes"]}
+
+    assert indexes["knowledge"]["upsert_available"] is True

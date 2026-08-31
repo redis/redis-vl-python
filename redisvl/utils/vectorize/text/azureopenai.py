@@ -129,8 +129,8 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             ImportError: If the openai library is not installed
             ValueError: If required parameters are not provided
         """
-        if api_config is None:
-            api_config = {}
+        # Copy so we never mutate the caller's dict.
+        api_config = dict(api_config or {})
 
         # Dynamic import of the openai module
         try:
@@ -142,10 +142,8 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             )
 
         # Fetch the API key, version and endpoint from api_config or environment variable
-        azure_endpoint = (
-            api_config.pop("azure_endpoint")
-            if api_config
-            else os.getenv("AZURE_OPENAI_ENDPOINT")
+        azure_endpoint = api_config.pop("azure_endpoint", None) or os.getenv(
+            "AZURE_OPENAI_ENDPOINT"
         )
 
         if not azure_endpoint:
@@ -154,10 +152,8 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                 "Provide it in api_config or set the AZURE_OPENAI_ENDPOINT environment variable."
             )
 
-        api_version = (
-            api_config.pop("api_version")
-            if api_config
-            else os.getenv("OPENAI_API_VERSION")
+        api_version = api_config.pop("api_version", None) or os.getenv(
+            "OPENAI_API_VERSION"
         )
 
         if not api_version:
@@ -166,11 +162,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                 "Provide it in api_config or set the OPENAI_API_VERSION environment variable."
             )
 
-        api_key = (
-            api_config.pop("api_key")
-            if api_config
-            else os.getenv("AZURE_OPENAI_API_KEY")
-        )
+        api_key = api_config.pop("api_key", None) or os.getenv("AZURE_OPENAI_API_KEY")
 
         if not api_key:
             raise ValueError(
@@ -219,6 +211,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     def _embed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
         """
@@ -253,6 +246,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     def _embed_many(
         self,
@@ -299,6 +293,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     async def _aembed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
         """
@@ -333,6 +328,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     async def _aembed_many(
         self,

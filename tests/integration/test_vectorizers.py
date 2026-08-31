@@ -39,13 +39,33 @@ def embeddings_cache(client):
     cache.clear()
 
 
+# Azure OpenAI live tests need a reachable deployment. _initialize_clients()
+# requires all three of these before it will construct a client, so gate on all
+# three rather than guessing from one. AZURE_OPENAI_DEPLOYMENT_NAME is
+# deliberately excluded -- it has a real default at every call site below.
+_AZURE_CONFIGURED = all(
+    os.getenv(var)
+    for var in ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "OPENAI_API_VERSION")
+)
+skip_without_azure = pytest.mark.skipif(
+    not _AZURE_CONFIGURED,
+    reason=(
+        "Azure OpenAI is not configured. Set AZURE_OPENAI_ENDPOINT, "
+        "AZURE_OPENAI_API_KEY and OPENAI_API_VERSION to run these, plus "
+        "AZURE_OPENAI_DEPLOYMENT_NAME if your deployment is not named "
+        "text-embedding-ada-002. Offline coverage lives in "
+        "tests/unit/test_azure_openai_vectorizer.py."
+    ),
+)
+
+
 _vectorizer_params = [
     pytest.param(HFTextVectorizer, marks=pytest.mark.requires_hf),
     OpenAITextVectorizer,
     VertexAIVectorizer,
     GoogleGenAIVectorizer,
     CohereTextVectorizer,
-    AzureOpenAITextVectorizer,
+    pytest.param(AzureOpenAITextVectorizer, marks=skip_without_azure),
     BedrockVectorizer,
     MistralAITextVectorizer,
     CustomVectorizer,
@@ -416,7 +436,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
 
 
 _dtype_params = [
-    AzureOpenAITextVectorizer,
+    pytest.param(AzureOpenAITextVectorizer, marks=skip_without_azure),
     BedrockVectorizer,
     CohereTextVectorizer,
     CustomVectorizer,
@@ -632,3 +652,332 @@ def test_deprecated_text_parameter_warning():
         embeddings = vectorizer.embed_many(texts=TEST_TEXTS)
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(TEST_TEXTS)
+
+
+# --- VoyageAI model-routing tests (mocked, no API key required) ---
+
+
+def _fake_voyage_clients(dims=4):
+    """Build mocked sync/async VoyageAI clients returning fixed-size embeddings.
+
+    Each endpoint returns exactly one embedding per requested input so tests can
+    assert that batching never collapses multiple inputs into a single request.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    def _ctx_embed(inputs, model, input_type=None, **kwargs):
+        resp = MagicMock()
+        # contextualized_embed returns one result per input document, each with
+        # a list of per-chunk embeddings.
+        resp.results = [
+            MagicMock(index=i, embeddings=[[0.1] * dims]) for i in range(len(inputs))
+        ]
+        return resp
+
+    def _embed(texts, model=None, input_type=None, truncation=True, **kwargs):
+        resp = MagicMock()
+        resp.embeddings = [[0.1] * dims for _ in texts]
+        return resp
+
+    def _mm_embed(inputs, model, input_type=None, truncation=True, **kwargs):
+        resp = MagicMock()
+        resp.embeddings = [[0.1] * dims for _ in inputs]
+        return resp
+
+    def _tokenize(texts, model=None):
+        # One token per whitespace-delimited word, so tests can control token
+        # counts by word count (mirrors voyageai's tokenize return shape).
+        return [text.split() for text in texts]
+
+    client = MagicMock()
+    client.contextualized_embed.side_effect = _ctx_embed
+    client.embed.side_effect = _embed
+    client.multimodal_embed.side_effect = _mm_embed
+    client.tokenize.side_effect = _tokenize
+
+    aclient = MagicMock()
+    aclient.contextualized_embed = AsyncMock(side_effect=_ctx_embed)
+    aclient.embed = AsyncMock(side_effect=_embed)
+    aclient.multimodal_embed = AsyncMock(side_effect=_mm_embed)
+    aclient.tokenize.side_effect = _tokenize
+
+    return client, aclient
+
+
+def _build_voyage_vectorizer(model):
+    from unittest.mock import patch
+
+    client, aclient = _fake_voyage_clients()
+    with (
+        patch("voyageai.Client", return_value=client),
+        patch("voyageai.AsyncClient", return_value=aclient),
+    ):
+        vectorizer = VoyageAIVectorizer(model=model, api_config={"api_key": "test"})
+    return vectorizer, client, aclient
+
+
+def test_voyageai_context_model_detection():
+    """voyage-context-* models are detected as contextualized models."""
+    ctx_vectorizer, _, _ = _build_voyage_vectorizer("voyage-context-4")
+    assert ctx_vectorizer.is_context is True
+    assert ctx_vectorizer.is_multimodal is False
+
+    plain_vectorizer, _, _ = _build_voyage_vectorizer("voyage-3-large")
+    assert plain_vectorizer.is_context is False
+
+
+def test_voyageai_context_embed_many_uses_contextualized_api():
+    """Context models route to contextualized_embed with auto-chunking enabled."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = vectorizer.embed_many(
+        contents=["chunk one", "chunk two", "chunk three"], input_type="document"
+    )
+
+    # One embedding per input, no collapsing.
+    assert len(embeddings) == 3
+
+    _, kwargs = client.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["chunk one", "chunk two", "chunk three"]
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+    # contextualized_embed does not accept truncation.
+    assert "truncation" not in kwargs
+
+
+def test_voyageai_context_query_disables_auto_chunking():
+    """Query inputs must not enable auto-chunking (document-only per VoyageAI)."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-context-4")
+
+    embedding = vectorizer.embed(content="find similar docs", input_type="query")
+
+    assert len(embedding) == 4
+    _, kwargs = client.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["find similar docs"]
+    assert kwargs["input_type"] == "query"
+    assert kwargs["enable_auto_chunking"] is False
+    # chunk_size is only valid alongside auto-chunking, so it must be omitted.
+    assert "chunk_size" not in kwargs
+
+
+def test_voyageai_context_default_input_type_enables_auto_chunking():
+    """Omitted input_type must default to document + auto-chunking.
+
+    SemanticRouter / SemanticCache call embed(_many) without input_type; a flat
+    list[str] with no type is rejected by VoyageAI, so the default must resolve
+    to a document (auto-chunking on) rather than passing input_type=None.
+    """
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = vectorizer.embed_many(contents=["chunk one", "chunk two"])
+
+    assert len(embeddings) == 2
+    _, kwargs = client.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["chunk one", "chunk two"]
+    assert kwargs["input_type"] == "document"
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+
+
+@pytest.mark.asyncio
+async def test_voyageai_context_adefault_input_type_enables_auto_chunking():
+    """Async: omitted input_type must default to document + auto-chunking."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = await vectorizer.aembed_many(contents=["chunk one", "chunk two"])
+
+    assert len(embeddings) == 2
+    _, kwargs = aclient.contextualized_embed.call_args
+    assert kwargs["input_type"] == "document"
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+
+
+@pytest.mark.asyncio
+async def test_voyageai_context_aembed_many_uses_contextualized_api():
+    """Async context models route to contextualized_embed with auto-chunking."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-context-4")
+
+    embeddings = await vectorizer.aembed_many(
+        contents=["chunk one", "chunk two"], input_type="document"
+    )
+
+    assert len(embeddings) == 2
+    _, kwargs = aclient.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["chunk one", "chunk two"]
+    assert kwargs["enable_auto_chunking"] is True
+    assert kwargs["chunk_size"] == 32000
+
+
+@pytest.mark.asyncio
+async def test_voyageai_context_aquery_disables_auto_chunking():
+    """Async query inputs must not enable auto-chunking."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-context-4")
+
+    embedding = await vectorizer.aembed(content="find similar docs", input_type="query")
+
+    assert len(embedding) == 4
+    _, kwargs = aclient.contextualized_embed.call_args
+    assert kwargs["inputs"] == ["find similar docs"]
+    assert kwargs["input_type"] == "query"
+    assert kwargs["enable_auto_chunking"] is False
+    assert "chunk_size" not in kwargs
+
+
+def test_voyageai_multimodal_embed_many_does_not_collapse_inputs():
+    """Multimodal embed_many sends each content as its own input (no collapsing)."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-multimodal-3.5")
+
+    embeddings = vectorizer.embed_many(
+        contents=["Ocean waves", "Forest trees"], input_type="document"
+    )
+
+    # Two requested contents must yield two embeddings.
+    assert len(embeddings) == 2
+
+    args, _ = client.multimodal_embed.call_args
+    # Each item is wrapped as its own single-part multimodal input.
+    assert args[0] == [["Ocean waves"], ["Forest trees"]]
+
+
+# --- VoyageAI token-aware batching tests (mocked, no API key required) ---
+
+
+def test_voyageai_token_aware_batching_splits_on_token_limit():
+    """Plain text batches split when the per-request token budget is reached."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-3-large")
+    # 3 tokens per text; a 7-token budget fits two texts (6) but not three (9).
+    vectorizer._token_limit = lambda: 7
+    client.embed.reset_mock()
+
+    texts = ["a a a", "b b b", "c c c"]
+    embeddings = vectorizer.embed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 3
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    assert batches == [["a a a", "b b b"], ["c c c"]]
+
+
+def test_voyageai_token_aware_batching_oversized_text_goes_alone():
+    """A single text over the token budget is still sent alone, not dropped."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-3-large")
+    vectorizer._token_limit = lambda: 5
+    client.embed.reset_mock()
+
+    texts = ["a a a a a a a a", "b b"]  # 8 tokens (> budget), then 2 tokens
+    embeddings = vectorizer.embed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 2
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    assert batches == [["a a a a a a a a"], ["b b"]]
+
+
+def test_voyageai_token_aware_batching_respects_item_cap():
+    """The per-model item cap still bounds a batch when tokens are plentiful."""
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-4")  # item cap = 10
+    vectorizer._token_limit = lambda: 10_000_000  # effectively unbounded
+    client.embed.reset_mock()
+
+    texts = ["x"] * 25  # 1 token each
+    vectorizer.embed_many(contents=texts, input_type="document")
+
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    assert [len(b) for b in batches] == [10, 10, 5]
+
+
+@pytest.mark.asyncio
+async def test_voyageai_token_aware_batching_async_splits_on_token_limit():
+    """Async plain text batches split on the token budget too (sync/async parity)."""
+    vectorizer, _, aclient = _build_voyage_vectorizer("voyage-3-large")
+    vectorizer._token_limit = lambda: 7
+    aclient.embed.reset_mock()
+
+    texts = ["a a a", "b b b", "c c c"]
+    embeddings = await vectorizer.aembed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 3
+    batches = [call.args[0] for call in aclient.embed.call_args_list]
+    assert batches == [["a a a", "b b b"], ["c c c"]]
+
+
+def test_voyageai_tokenizer_unavailable_falls_back_to_item_batching():
+    """If the tokenizer is unavailable, fall back to item-count batching.
+
+    VoyageAI's tokenize() loads a HuggingFace tokenizer; when that can't be
+    reached, embed_many must still succeed (item-count batches) instead of
+    raising, and it must not re-attempt the failing tokenizer afterwards.
+    """
+    vectorizer, client, _ = _build_voyage_vectorizer("voyage-4")  # item cap = 10
+    client.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    client.embed.reset_mock()
+
+    texts = ["x"] * 25
+    embeddings = vectorizer.embed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 25
+    batches = [call.args[0] for call in client.embed.call_args_list]
+    # Falls back to the per-model item cap (10), not token-aware sizing.
+    assert [len(b) for b in batches] == [10, 10, 5]
+    assert vectorizer._token_batching_supported is False
+
+    # A second call must not re-invoke the failing tokenizer.
+    client.tokenize.reset_mock()
+    vectorizer.embed_many(contents=["y", "z"], input_type="document")
+    client.tokenize.assert_not_called()
+
+
+def test_voyageai_init_survives_tokenizer_unavailable():
+    """Init (dimension probe) must not fail when the tokenizer is unavailable."""
+    from unittest.mock import patch
+
+    client, aclient = _fake_voyage_clients()
+    client.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    aclient.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    with (
+        patch("voyageai.Client", return_value=client),
+        patch("voyageai.AsyncClient", return_value=aclient),
+    ):
+        vectorizer = VoyageAIVectorizer(
+            model="voyage-3-large", api_config={"api_key": "test"}
+        )
+
+    assert vectorizer.dims == 4
+    assert vectorizer._token_batching_supported is False
+
+
+@pytest.mark.asyncio
+async def test_voyageai_atokenizer_unavailable_falls_back_to_item_batching():
+    """Async: tokenizer failure falls back to item-count batching (sync/async parity)."""
+    vectorizer, client, aclient = _build_voyage_vectorizer("voyage-4")  # item cap = 10
+    # Token counting uses the sync client's tokenize even on the async path.
+    client.tokenize.side_effect = RuntimeError("HF hub unreachable")
+    aclient.embed.reset_mock()
+
+    texts = ["x"] * 25
+    embeddings = await vectorizer.aembed_many(contents=texts, input_type="document")
+
+    assert len(embeddings) == 25
+    batches = [call.args[0] for call in aclient.embed.call_args_list]
+    assert [len(b) for b in batches] == [10, 10, 5]
+    assert vectorizer._token_batching_supported is False
+
+
+@pytest.mark.parametrize(
+    "model, expected_batch_size",
+    [
+        ("voyage-2", 72),
+        ("voyage-4-lite", 30),
+        ("voyage-3.5-lite", 30),
+        ("voyage-4", 10),
+        ("voyage-3.5", 10),
+        ("voyage-4-large", 7),
+        ("voyage-4-nano", 7),
+        ("voyage-code-4", 7),
+        ("voyage-context-4", 7),
+        ("voyage-3-large", 7),
+    ],
+)
+def test_voyageai_batch_size_for_current_models(model, expected_batch_size):
+    """Current-generation models fall into batch-size tiers matching their token limits."""
+    vectorizer, _, _ = _build_voyage_vectorizer(model)
+    assert vectorizer._get_batch_size() == expected_batch_size

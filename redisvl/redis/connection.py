@@ -212,6 +212,43 @@ def make_lib_name(*args) -> str:
     return f"redis-py({custom_libs})"
 
 
+def _identify_client(client: SyncRedisClient, lib_name: str | None = None) -> None:
+    """Report RedisVL as the connecting library, tolerating a refusal.
+
+    redis-py sends its own ``CLIENT SETINFO`` during the connection handshake,
+    so this call is here to overwrite that with the composed
+    ``redis-py(redisvl_v...;<wrapper>)`` name that adoption metrics read. Keep
+    it: without it the library and any wrapper above it go unattributed.
+
+    A refusal is ignored, because ``CLIENT SETINFO`` only populates the
+    ``lib-name`` field that ``CLIENT LIST`` and ``CLIENT INFO`` display -- its
+    own documentation tells client libraries to ignore failures. Two credentials
+    hit this: one granting neither ``@connection`` nor the command itself, and
+    one on a server predating Redis 7.2, where the command does not exist.
+
+    Only ``ResponseError`` is caught. In the connection-factory path this is the
+    first command issued on a freshly created connection, which makes it the
+    de-facto connectivity check, so swallowing ``ConnectionError`` would defer a
+    genuine failure to some later and more confusing command. Note that on a
+    cluster client redis-py routes the command to the default node only, so the
+    label reaches one node rather than the whole cluster.
+    """
+    try:
+        client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
+    except ResponseError as e:
+        logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
+
+
+async def _aidentify_client(
+    client: AsyncRedisClient, lib_name: str | None = None
+) -> None:
+    """Async version of :func:`_identify_client`."""
+    try:
+        await client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
+    except ResponseError as e:
+        logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
+
+
 def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     """Convert the output of FT.INFO into a schema-ready dictionary.
 
@@ -580,15 +617,7 @@ class RedisConnectionFactory:
             client = RedisCluster.from_url(url, **kwargs)
         else:
             client = Redis.from_url(url, **kwargs)
-        # Module validation removed - operations will fail naturally if modules are missing
-        # Set client library name only
-        _lib_name = make_lib_name(kwargs.get("lib_name"))
-        try:
-            client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            if hasattr(client, "echo"):
-                client.echo(_lib_name)
+        _identify_client(client, kwargs.get("lib_name"))
         return client
 
     @staticmethod
@@ -641,15 +670,7 @@ class RedisConnectionFactory:
             )
             client = AsyncRedis.from_url(cleaned_url, **cleaned_kwargs)
 
-        # Module validation removed - operations will fail naturally if modules are missing
-        # Set client library name only
-        _lib_name = make_lib_name(kwargs.get("lib_name"))
-        try:
-            await client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            if hasattr(client, "echo"):
-                await client.echo(_lib_name)
+        await _aidentify_client(client, kwargs.get("lib_name"))
         return client
 
     @staticmethod
@@ -763,52 +784,50 @@ class RedisConnectionFactory:
         redis_client: SyncRedisClient,
         lib_name: str | None = None,
     ) -> None:
-        """Validates the sync Redis client.
+        """Check the client type and report the library name.
 
-        Note: Module validation has been removed. This method now only validates
-        the client type and sets the library name.
+        Identification is best effort: a server that refuses ``CLIENT SETINFO``
+        is tolerated, so the only failure raised here is a wrong client type.
+        (Module validation was removed; a missing module now surfaces when an
+        operation needs it.)
+
+        Args:
+            redis_client (SyncRedisClient): The client to check.
+            lib_name (Optional[str]): Name of a library wrapping RedisVL, to
+                report alongside it. Defaults to None.
+
+        Raises:
+            TypeError: If the client is not a Redis or RedisCluster instance.
         """
         if not issubclass(type(redis_client), (Redis, RedisCluster)):
             raise TypeError(
                 "Invalid Redis client instance. Must be Redis or RedisCluster."
             )
 
-        # Set client library name
-        _lib_name = make_lib_name(lib_name)
-        try:
-            redis_client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            # For RedisCluster, echo is not available
-            if hasattr(redis_client, "echo"):
-                redis_client.echo(_lib_name)
-
-        # Module validation removed - operations will fail naturally if modules are missing
+        _identify_client(redis_client, lib_name)
 
     @staticmethod
     async def validate_async_redis(
         redis_client: AsyncRedisClient,
         lib_name: str | None = None,
     ) -> None:
-        """Validates the async Redis client.
+        """Async version of :meth:`validate_sync_redis`.
 
-        Note: Module validation has been removed. This method now only validates
-        the client type and sets the library name.
+        Args:
+            redis_client (AsyncRedisClient): The client to check.
+            lib_name (Optional[str]): Name of a library wrapping RedisVL, to
+                report alongside it. Defaults to None.
+
+        Raises:
+            TypeError: If the client is not an async Redis or RedisCluster
+                instance.
         """
         if not issubclass(type(redis_client), (AsyncRedis, AsyncRedisCluster)):
             raise TypeError(
                 "Invalid async Redis client instance. Must be async Redis or async RedisCluster."
             )
-        # Set client library name
-        _lib_name = make_lib_name(lib_name)
-        try:
-            await redis_client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            if hasattr(redis_client, "echo"):
-                await redis_client.echo(_lib_name)
 
-        # Module validation removed - operations will fail naturally if modules are missing
+        await _aidentify_client(redis_client, lib_name)
 
     @staticmethod
     @overload

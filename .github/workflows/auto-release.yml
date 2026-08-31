@@ -183,26 +183,75 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-      - name: Apply release version to pyproject.toml
+      # Only the bump needs uv. Kept after the `auto` calls, which resolve the
+      # release version today without the env setup-python/setup-uv export.
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Apply release version to pyproject.toml and uv.lock
         run: |
           set -euo pipefail
           VERSION="${{ steps.latest_release.outputs.version }}"
           sed -i "s/^version = \".*\"$/version = \"${VERSION}\"/" pyproject.toml
+          # uv.lock carries the project's own version. Edit that one field rather
+          # than running `uv lock`, which re-serializes the whole file.
+          sed -i "/^name = \"redisvl\"$/{n;s/^version = \".*\"$/version = \"${VERSION}\"/;}" uv.lock
           grep '^version = ' pyproject.toml
+          grep -A1 '^name = "redisvl"$' uv.lock
+
+      - name: Verify the version bump
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.latest_release.outputs.version }}"
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          # Catch a sed that matched the wrong line, before anything is pushed or
+          # published. No change is fine: a re-run of an already-bumped commit.
+          for f in pyproject.toml uv.lock; do
+            stat="$(git diff --numstat -- "$f" | cut -f1,2)"
+            if [ -n "$stat" ] && [ "$stat" != "$(printf '1\t1')" ]; then
+              fail "$f: expected a single-line version change, got $(git diff --shortstat -- "$f")"
+            fi
+            other="$(git diff -U0 -- "$f" | grep -E '^[-+][^-+]' | grep -vE '^[-+]version = "' || true)"
+            if [ -n "$other" ]; then
+              fail "$f: changed something other than a version line: $other"
+            fi
+          done
+
+          # In uv.lock it has to be the project's own entry, not a dependency's pin.
+          grep -qx "version = \"${VERSION}\"" pyproject.toml \
+            || fail "pyproject.toml does not carry ${VERSION}"
+          grep -A1 '^name = "redisvl"$' uv.lock | grep -qx "version = \"${VERSION}\"" \
+            || fail "uv.lock: the redisvl entry does not carry ${VERSION}"
+
+          uv lock --check
 
       - name: Commit and push version bump
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- pyproject.toml; then
-            echo "No pyproject version change to commit."
+          if git diff --quiet -- pyproject.toml uv.lock; then
+            echo "No version change to commit."
           else
             git config user.name "${RELEASE_BOT_NAME}"
             git config user.email "${RELEASE_BOT_EMAIL}"
-            git add pyproject.toml
+            git add pyproject.toml uv.lock
             # Include [skip ci] to avoid running the workflow again on this bot commit.
-            git commit -m "chore(release): set pyproject version to ${{ steps.latest_release.outputs.version }} [skip ci]"
+            git commit -m "chore(release): set version to ${{ steps.latest_release.outputs.version }} [skip ci]"
             git push origin HEAD:main
           fi
 

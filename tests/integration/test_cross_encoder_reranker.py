@@ -33,6 +33,23 @@ async def test_async_rank_documents(reranker):
     assert all(isinstance(score, float) for score in scores)
 
 
+def test_rank_scores_align_with_reranked_docs(reranker):
+    # https://github.com/redis/redis-vl-python/issues/693
+    docs = [
+        "irrelevant document",
+        "highly relevant document",
+        "somewhat relevant document",
+    ]
+    query = "relevant document"
+
+    reranked_docs, scores = reranker.rank(query, docs, limit=len(docs))
+
+    # reranked_docs is sorted by score descending, so scores must be too,
+    # this catches the case where scores are taken from the original
+    # unsorted list instead of the sorted one.
+    assert list(scores) == sorted(scores, reverse=True)
+
+
 def test_bad_input(reranker):
     with pytest.raises(ValueError):
         reranker.rank("", [])  # Empty query

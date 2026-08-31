@@ -81,6 +81,14 @@ uv sync --all-extras
 
 This will create a virtual environment and install all necessary dependencies for development.
 
+### Changing Dependencies
+
+`uv.lock` is checked in, and CI verifies it matches `pyproject.toml`. If you add, remove, or re-bound a dependency, re-lock and commit the result:
+
+```bash
+uv lock
+```
+
 ## Using the Makefile
 
 We provide a comprehensive Makefile to streamline common development tasks. Here are the available commands:

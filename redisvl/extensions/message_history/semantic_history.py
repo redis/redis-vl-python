@@ -4,6 +4,8 @@ from redis import Redis
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
+    CREATE_INDEX_OVERWRITE_CONFLICT,
+    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
     ID_FIELD_NAME,
     MESSAGE_VECTOR_FIELD_NAME,
     METADATA_FIELD_NAME,
@@ -20,8 +22,11 @@ from redisvl.extensions.message_history.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import CountQuery, FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+
+logger = get_logger(__name__)
 
 
 class SemanticMessageHistory(BaseMessageHistory):
@@ -36,8 +41,9 @@ class SemanticMessageHistory(BaseMessageHistory):
         distance_threshold: float = 0.3,
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         overwrite: bool = False,
+        create_index: bool = True,
         **kwargs,
     ):
         """Initialize message history with index
@@ -63,10 +69,25 @@ class SemanticMessageHistory(BaseMessageHistory):
                 for the redis client. Defaults to empty {}.
             overwrite (bool): Whether or not to force overwrite the schema for
                 the semantic message index. Defaults to false.
+            create_index (bool): Whether RedisVL creates and validates the index.
+                When False the constructor issues no index command at all: the
+                index must already exist with a compatible schema, and a live
+                index whose prefix or storage type differs is not detected --
+                which produces empty results rather than an error. See
+                :class:`~redisvl.extensions.cache.llm.SemanticCache` for a worked
+                example, and :doc:`/user_guide/installation` for the ACL details.
+                Defaults to True.
+
+        Raises:
+            ValueError: If both create_index is False and overwrite is True.
 
         The proposed schema will support a single vector embedding constructed
         from either the prompt or response in a single string.
         """
+        connection_kwargs = connection_kwargs or {}
+        if not create_index and overwrite:
+            raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+
         super().__init__(name, session_tag)
 
         prefix = prefix or name
@@ -107,16 +128,24 @@ class SemanticMessageHistory(BaseMessageHistory):
         )
 
         # Check for existing message history index
-        if not overwrite and self._index.exists():
-            existing_index = SearchIndex.from_existing(
-                name, redis_client=self._index.client
-            )
-            if existing_index.schema.to_dict() != self._index.schema.to_dict():
-                raise ValueError(
-                    f"Existing index {name} schema does not match the user provided schema for the semantic message history. "
-                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
+        self._create_index = create_index
+        if create_index:
+            if not overwrite and self._index.exists():
+                existing_index = SearchIndex.from_existing(
+                    name, redis_client=self._index._redis_client
                 )
-        self._index.create(overwrite=overwrite, drop=False)
+                if existing_index.schema.to_dict() != self._index.schema.to_dict():
+                    raise ValueError(
+                        f"Existing index {name} schema does not match the user provided schema for the semantic message history. "
+                        "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                    )
+            self._index.create(overwrite=overwrite, drop=False)
+        else:
+            logger.debug(
+                f"create_index=False: assuming index {name!r} exists over prefix "
+                f"{prefix!r} with {vectorizer.dims} vector dimensions. Its schema "
+                "is not verified."
+            )
 
         self._default_session_filter = Tag(SESSION_FIELD_NAME) == self._session_tag
 
@@ -128,10 +157,14 @@ class SemanticMessageHistory(BaseMessageHistory):
 
     def clear(self) -> None:
         """Clears the message history."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.clear()
 
     def delete(self) -> None:
         """Clear all message keys and remove the search index."""
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
         self._index.delete(drop=True)
 
     def drop(self, id: str | None = None) -> None:
@@ -144,7 +177,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         if id is None:
             id = self.get_recent(top_k=1, raw=True)[0][ID_FIELD_NAME]  # type: ignore
 
-        self._index.client.delete(self._index.key(id))  # type: ignore
+        self._index._redis_client.delete(self._index.key(id))
 
     def count(self, session_tag=None):
         query = CountQuery(

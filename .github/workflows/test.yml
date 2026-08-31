@@ -41,6 +41,12 @@ jobs:
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          # The live Azure OpenAI tests gate themselves on AZURE_OPENAI_ENDPOINT,
+          # AZURE_OPENAI_API_KEY and OPENAI_API_VERSION: if any of the three is empty
+          # or unset they skip, so an absent secret disables them and re-adding it
+          # re-enables them with no code change. These lines stay wired up for that
+          # reason. (test_non_supported_dtypes is deliberately left ungated -- it
+          # validates dtype before any client is built and needs no network.)
           AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
@@ -193,6 +199,12 @@ jobs:
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          # The Azure cells in docs/user_guide/04_vectorizers.ipynb carry an
+          # unconditional `# NBVAL_SKIP`, so notebook validation skips them whether or
+          # not these secrets are set, and never blocks on getpass for missing
+          # credentials. Restoring the secrets is therefore not enough on its own --
+          # those markers have to be removed too. These lines stay wired up so that
+          # re-enabling needs no workflow change.
           AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
