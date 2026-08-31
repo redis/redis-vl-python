@@ -3,8 +3,11 @@
 import pytest
 
 from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery
+from redisvl.query import AggregateHybridQuery, FilterQuery, TextQuery
+from redisvl.query.filter import Tag
+from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
+from tests.conftest import skip_if_redis_version_below
 
 
 @pytest.fixture
@@ -85,6 +88,56 @@ def default_stopwords_index(client, default_stopwords_schema):
     schema = IndexSchema.from_dict(default_stopwords_schema)
     index = SearchIndex(schema, redis_client=client)
     index.create(overwrite=True, drop=True)
+
+    yield index
+
+    index.delete(drop=True)
+
+
+@pytest.fixture
+def filtered_queries_stopwords_disabled_index(redis_url, redis_test_name):
+    """Index with STOPWORDS 0 for filtered text and hybrid query regressions."""
+    index_name = redis_test_name("filtered_queries_stopwords_disabled")
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": index_name,
+                "prefix": f"{index_name}:",
+                "storage_type": "hash",
+                "stopwords": [],
+            },
+            "fields": [
+                {"name": "text", "type": "text"},
+                {"name": "team", "type": "tag"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 2,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+    index.create(overwrite=True, drop=True)
+    index.load(
+        [
+            {
+                "text": "reference handbook",
+                "team": "docs",
+                "embedding": array_to_buffer([1.0, 0.0], "float32"),
+            },
+            {
+                "text": "reference handbook",
+                "team": "support",
+                "embedding": array_to_buffer([1.0, 0.0], "float32"),
+            },
+        ]
+    )
 
     yield index
 
@@ -190,3 +243,46 @@ def test_stopwords_disabled_allows_searching_common_words(
     # With STOPWORDS 0, "of" should be indexed and searchable
     assert len(results.docs) > 0
     assert any("of" in doc.title.lower() for doc in results.docs)
+
+
+def test_filtered_text_query_with_stopwords_disabled(
+    filtered_queries_stopwords_disabled_index,
+):
+    """Filtered text queries should not add AND as a full-text search term."""
+    query = TextQuery(
+        text="handbook",
+        text_field_name="text",
+        filter_expression=Tag("team") == "docs",
+        return_fields=["text", "team"],
+        stopwords=None,
+    )
+
+    results = filtered_queries_stopwords_disabled_index.query(query)
+
+    assert len(results) == 1
+    assert results[0]["text"] == "reference handbook"
+    assert results[0]["team"] == "docs"
+
+
+def test_filtered_aggregate_hybrid_query_with_stopwords_disabled(
+    filtered_queries_stopwords_disabled_index,
+):
+    """Filtered aggregate hybrid queries should work with STOPWORDS 0."""
+    skip_if_redis_version_below(
+        filtered_queries_stopwords_disabled_index.client, "7.2.0"
+    )
+    query = AggregateHybridQuery(
+        text="handbook",
+        text_field_name="text",
+        vector=[1.0, 0.0],
+        vector_field_name="embedding",
+        filter_expression=Tag("team") == "docs",
+        return_fields=["text", "team"],
+        stopwords=None,
+    )
+
+    results = filtered_queries_stopwords_disabled_index.query(query)
+
+    assert len(results) == 1
+    assert results[0]["text"] == "reference handbook"
+    assert results[0]["team"] == "docs"

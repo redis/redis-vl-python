@@ -129,7 +129,7 @@ def test_hybrid_query_with_all_parameters():
     # Verify that the expected query pieces have been defined
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(the | toon=>{$weight:2.0} | squad=>{$weight:1.5} | play | basketball | against | a | gang | of | aliens) AND @genre:{comedy})",
+        "(~@description:(the | toon=>{$weight:2.0} | squad=>{$weight:1.5} | play | basketball | against | a | gang | of | aliens) @genre:{comedy})",
         "SCORER",
         "TFIDF",
         "YIELD_SCORE_AS",
@@ -385,7 +385,7 @@ def test_hybrid_query_with_string_filter():
 
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(toon | squad | play | basketball | gang | aliens) AND @category:{tech|science|engineering})",
+        "(~@description:(toon | squad | play | basketball | gang | aliens) @category:{tech|science|engineering})",
         "SCORER",
         "BM25STD",
         "VSIM",
@@ -418,7 +418,7 @@ def test_hybrid_query_with_tag_filter():
 
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(toon | squad | play | basketball | gang | aliens) AND @genre:{comedy})",
+        "(~@description:(toon | squad | play | basketball | gang | aliens) @genre:{comedy})",
         "SCORER",
         "BM25STD",
         "VSIM",
@@ -452,7 +452,8 @@ def test_hybrid_query_with_numeric_filter():
     # Verify filter is included in serialized query
     args = get_query_pieces(hybrid_query)
     expected = "@age:[(30 +inf]"
-    assert args[1].endswith(f"AND {expected})")  # Check text filter
+    assert args[1].endswith(f" {expected})")  # Check text filter
+    assert " AND " not in args[1]
     assert args[8] == expected  # Check vector filter
 
 
@@ -472,7 +473,8 @@ def test_hybrid_query_with_text_filter():
     # Verify filter is included in serialized query
     args = get_query_pieces(hybrid_query)
     expected = '@job:("engineer")'
-    assert args[1].endswith(f"AND {expected})")  # Check text filter
+    assert args[1].endswith(f" {expected})")  # Check text filter
+    assert " AND " not in args[1]
     assert args[8] == expected  # Check vector filter
 
 
@@ -492,7 +494,8 @@ def test_hybrid_query_with_combined_filters():
     # Verify both filters are included in serialized query
     args = get_query_pieces(hybrid_query)
     expected = "(@genre:{comedy} @rating:[(7.0 +inf])"
-    assert args[1].endswith(f"AND {expected})")  # Check text filter
+    assert args[1].endswith(f" {expected})")  # Check text filter
+    assert " AND " not in args[1]
     assert args[8] == expected  # Check vector filter
 
 
