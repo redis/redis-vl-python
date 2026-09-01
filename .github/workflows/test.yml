@@ -112,7 +112,7 @@ jobs:
           case "$REDIS_PY_VERSION" in
             "6.x") spec="redis>=6,<7" ;;
             "7.x") spec="redis>=7,<8" ;;
-            "8.x") spec="redis>=8,<9" ;;
+            "8.x") spec="redis>=8.1,<9" ;;
             *)
               echo "::error title=Unhandled redis-py-version::Matrix value '${REDIS_PY_VERSION}' has no install rule -- add a case branch in .github/workflows/test.yml."
               exit 1

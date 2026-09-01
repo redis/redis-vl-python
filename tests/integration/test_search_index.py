@@ -3,6 +3,7 @@ from random import choice
 from unittest import mock
 
 import pytest
+import redis
 from redis import Redis
 from redis.exceptions import NoPermissionError
 
@@ -620,16 +621,38 @@ def test_batch_search(index):
     assert results[1].docs[0]["id"] == "rvl:2"
 
 
-def test_default_client_from_existing_and_batch_search(redis_url, redis_test_name):
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        pytest.param({}, id="default"),
+        pytest.param({"protocol": 3}, id="protocol-3"),
+        pytest.param(
+            {"legacy_responses": False},
+            id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+    ],
+)
+def test_client_from_existing_and_batch_search(
+    redis_url, redis_test_name, client_kwargs
+):
     """User-provided redis-py clients support introspection and batch search."""
-    name = redis_test_name("resp3_index")
+    name = redis_test_name("client_index")
     prefix = f"{name}:"
-    client = Redis.from_url(redis_url)
+    client = Redis.from_url(redis_url, **client_kwargs)
     index = SearchIndex.from_dict(
         {
             "index": {"name": name, "prefix": prefix},
             "fields": [
                 {"name": "test", "type": "tag"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"withsuffixtrie": True},
+                },
                 {
                     "name": "embedding",
                     "type": "vector",
@@ -647,7 +670,10 @@ def test_default_client_from_existing_and_batch_search(redis_url, redis_test_nam
 
     try:
         index.create()
-        index.load([{"id": "1", "test": "foo"}], id_field="id")
+        index.load(
+            [{"id": "1", "test": "foo", "title": "suffix trie"}],
+            id_field="id",
+        )
 
         reopened = SearchIndex.from_existing(name, redis_client=client)
         results = reopened.batch_search(["@test:{foo}"])

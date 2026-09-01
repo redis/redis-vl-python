@@ -25,7 +25,9 @@ classifiers = [
 dependencies = [
     "numpy>=1.26.0,<3",
     "pyyaml>=5.4,<7.0",
-    "redis>=6.3.0,<9.0",
+    # 6.3.0 first accepts SVS-VAMANA. redis-py 8.0.0 returns empty RESP3
+    # search results (redis-py #4107), so 8.1.0 is the supported 8.x floor.
+    "redis>=6.3.0,!=8.0.0,<9.0",
     "pydantic>=2,<3",
     "tenacity>=8.2.2",
     "ml-dtypes>=0.4.0,<1.0.0",

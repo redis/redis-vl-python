@@ -433,7 +433,11 @@ class MCPIndexBindingConfig(BaseModel):
         incomplete on older Redis versions. MCP needs those field identities to survive
         so schema overrides can patch the missing attrs during startup.
         """
-        from redisvl.redis.connection import convert_index_info_to_schema
+        from redisvl.redis.connection import (
+            convert_index_info_to_schema,
+            normalize_index_definition,
+            normalize_index_fields,
+        )
 
         schema_dict = convert_index_info_to_schema(index_info)
         discovered_fields = {
@@ -442,18 +446,23 @@ class MCPIndexBindingConfig(BaseModel):
             if isinstance(field, dict) and "name" in field
         }
 
-        storage_type = index_info["index_definition"][1].lower()
-        for raw_field in index_info.get("attributes", []):
-            name = raw_field[1] if storage_type == "hash" else raw_field[3]
+        definition = normalize_index_definition(index_info)
+        storage_type = definition["key_type"].lower()
+        for raw_field in normalize_index_fields(index_info):
+            name = (
+                raw_field["identifier"]
+                if storage_type == "hash"
+                else raw_field["attribute"]
+            )
             if name in discovered_fields:
                 continue
 
             field = {
                 "name": name,
-                "type": str(raw_field[5]).lower(),
+                "type": str(raw_field["type"]).lower(),
             }
             if storage_type == "json":
-                field["path"] = raw_field[1]
+                field["path"] = raw_field["identifier"]
 
             # Keep discovered field identity even when FT.INFO omitted attrs.
             schema_dict.setdefault("fields", []).append(field)

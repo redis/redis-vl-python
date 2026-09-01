@@ -3,6 +3,7 @@ from random import choice
 from unittest import mock
 
 import pytest
+import redis
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
@@ -543,18 +544,38 @@ async def test_batch_search(async_index):
 
 
 @pytest.mark.asyncio
-async def test_default_client_from_existing_and_batch_search(
-    redis_url, redis_test_name
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        pytest.param({}, id="default"),
+        pytest.param({"protocol": 3}, id="protocol-3"),
+        pytest.param(
+            {"legacy_responses": False},
+            id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+    ],
+)
+async def test_client_from_existing_and_batch_search(
+    redis_url, redis_test_name, client_kwargs
 ):
     """User-provided async redis-py clients support introspection and batch search."""
-    name = redis_test_name("async_resp3_index")
+    name = redis_test_name("async_client_index")
     prefix = f"{name}:"
-    client = AsyncRedis.from_url(redis_url)
+    client = AsyncRedis.from_url(redis_url, **client_kwargs)
     index = AsyncSearchIndex.from_dict(
         {
             "index": {"name": name, "prefix": prefix},
             "fields": [
                 {"name": "test", "type": "tag"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"withsuffixtrie": True},
+                },
                 {
                     "name": "embedding",
                     "type": "vector",
@@ -572,7 +593,10 @@ async def test_default_client_from_existing_and_batch_search(
 
     try:
         await index.create()
-        await index.load([{"id": "1", "test": "foo"}], id_field="id")
+        await index.load(
+            [{"id": "1", "test": "foo", "title": "suffix trie"}],
+            id_field="id",
+        )
 
         reopened = await AsyncSearchIndex.from_existing(name, redis_client=client)
         results = await reopened.batch_search(["@test:{foo}"])

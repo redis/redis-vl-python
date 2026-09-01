@@ -1,25 +1,12 @@
-from collections.abc import Collection, Mapping
-from typing import Any, Callable, Iterable, cast
+import json
+from collections.abc import Collection
+from typing import Any, Callable, Iterable
 
 from pydantic import BaseModel, ValidationError
-from redis import __version__ as redis_version
-
-# Add imports for Pipeline types
 from redis.asyncio.client import Pipeline as AsyncPipeline
 from redis.asyncio.cluster import ClusterPipeline as AsyncClusterPipeline
+from redis.commands.search.index_definition import IndexType
 from redis.typing import EncodableT
-
-# Redis 5.x compatibility (6 fixed the import path)
-if redis_version.startswith("5"):
-    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped]
-        IndexType,
-    )
-else:
-    from redis.commands.search.index_definition import (  # type: ignore[no-redef]
-        IndexType,
-    )
-
-import json
 
 from redisvl.exceptions import SchemaValidationError
 from redisvl.redis.utils import convert_bytes
@@ -604,6 +591,19 @@ class HashStorage(BaseStorage):
     """Hash data type for the index"""
 
     @staticmethod
+    def _mapping(obj: dict[str, Any]) -> dict[EncodableT, EncodableT]:
+        """Build a redis-py encodable hash mapping."""
+        mapping: dict[EncodableT, EncodableT] = {}
+        for key, value in obj.items():
+            if not isinstance(value, (bytes, bytearray, memoryview, str, int, float)):
+                raise TypeError(
+                    f"Hash field {key!r} has unsupported value type "
+                    f"{type(value).__name__}"
+                )
+            mapping[key] = value
+        return mapping
+
+    @staticmethod
     def _set(client: RedisClientOrPipeline, key: str, obj: dict[str, Any]):
         """Synchronously set a hash value in Redis for the given key.
 
@@ -612,10 +612,7 @@ class HashStorage(BaseStorage):
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
-        client.hset(
-            name=key,
-            mapping=cast(Mapping[EncodableT, EncodableT], obj),
-        )
+        client.hset(name=key, mapping=HashStorage._mapping(obj))
 
     @staticmethod
     async def _aset(client: AsyncRedisClientOrPipeline, key: str, obj: dict[str, Any]):
@@ -626,10 +623,11 @@ class HashStorage(BaseStorage):
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
+        mapping = HashStorage._mapping(obj)
         if isinstance(client, (AsyncPipeline, AsyncClusterPipeline)):
-            client.hset(name=key, mapping=obj)  # type: ignore
+            client.hset(name=key, mapping=mapping)
         else:
-            await client.hset(name=key, mapping=obj)  # type: ignore
+            await client.hset(name=key, mapping=mapping)
 
     @staticmethod
     def _get(client: SyncRedisClient, key: str) -> dict[str, Any]:

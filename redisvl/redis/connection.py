@@ -21,7 +21,7 @@ from redisvl.redis.constants import (
     SVS_MIN_REDIS_VERSION,
     SVS_MIN_SEARCH_VERSION,
 )
-from redisvl.redis.utils import convert_bytes, is_cluster_url
+from redisvl.redis.utils import convert_bytes, is_cluster_url, make_dict
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, deprecated_function
@@ -249,6 +249,30 @@ async def _aidentify_client(
         logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
 
 
+def _normalize_index_info_mapping(value: Any) -> dict[str, Any]:
+    """Normalize a mapping-shaped or alternating-list FT.INFO section."""
+    if isinstance(value, dict):
+        normalized = convert_bytes(dict(value))
+    elif isinstance(value, (list, tuple)):
+        normalized = convert_bytes(make_dict(list(value)))
+    else:
+        normalized = {}
+    return normalized if isinstance(normalized, dict) else {}
+
+
+def normalize_index_definition(index_info: dict[str, Any]) -> dict[str, Any]:
+    """Return the FT.INFO index definition in mapping form."""
+    return _normalize_index_info_mapping(index_info.get("index_definition"))
+
+
+def normalize_index_fields(index_info: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return FT.INFO field entries in mapping form."""
+    return [
+        _normalize_index_info_mapping(field)
+        for field in index_info.get("attributes", [])
+    ]
+
+
 def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     """Convert the output of FT.INFO into a schema-ready dictionary.
 
@@ -259,13 +283,9 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         Dict[str, Any]: Schema dictionary suitable for ``IndexSchema.from_dict()``.
     """
     index_name = index_info["index_name"]
-    index_definition = index_info["index_definition"]
-    if isinstance(index_definition, dict):
-        prefixes = index_definition["prefixes"]
-        storage_type = index_definition["key_type"].lower()
-    else:
-        prefixes = index_definition[3]
-        storage_type = index_definition[1].lower()
+    index_definition = normalize_index_definition(index_info)
+    prefixes = index_definition["prefixes"]
+    storage_type = index_definition["key_type"].lower()
     # Normalize single-element prefix lists to string for backward compatibility
     if isinstance(prefixes, list) and len(prefixes) == 1:
         prefixes = prefixes[0]
@@ -450,7 +470,6 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     def parse_attrs(attrs, field_type=None):
         # 'SORTABLE', 'NOSTEM' don't have corresponding values.
         # Their presence indicates boolean True
-        # TODO 'WITHSUFFIXTRIE' is another boolean attr, but is not returned by ft.info
         parsed_attrs = {}
 
         # Handle all boolean attributes first, regardless of position
@@ -461,6 +480,7 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             "INDEXMISSING": "index_missing",
             "INDEXEMPTY": "index_empty",
             "NOINDEX": "no_index",
+            "WITHSUFFIXTRIE": "withsuffixtrie",
         }
 
         if isinstance(attrs, dict):
@@ -470,6 +490,11 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                     parsed_attrs[python_attr] = True
             if "UNF" in flags and field_type == "TEXT":
                 parsed_attrs["unf"] = True
+            unknown_flags = sorted(
+                set(flags).difference(boolean_attrs).difference({"UNF"})
+            )
+            if unknown_flags:
+                logger.debug("Ignoring unrecognized FT.INFO flags: %s", unknown_flags)
             parsed_attrs.update(
                 {
                     str(key).lower(): value
@@ -506,30 +531,33 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
 
     schema_fields = []
 
-    for field_attrs in index_fields:
+    normalized_fields = normalize_index_fields(index_info)
+    for field_attrs, normalized_field in zip(index_fields, normalized_fields):
         # parse field info
-        if isinstance(field_attrs, dict):
-            name = field_attrs["attribute"]
-            field_type = field_attrs["type"]
-            field = {"name": name, "type": field_type.lower()}
-            if storage_type == "json":
-                field["path"] = field_attrs["identifier"]
-        else:
-            name = field_attrs[1] if storage_type == "hash" else field_attrs[3]
-            field_type = field_attrs[5]
-            field = {"name": name, "type": field_type.lower()}
-            if storage_type == "json":
-                field["path"] = field_attrs[1]
+        name = (
+            normalized_field["identifier"]
+            if storage_type == "hash"
+            else normalized_field["attribute"]
+        )
+        field_type = normalized_field["type"]
+        field = {"name": name, "type": field_type.lower()}
+        if storage_type == "json":
+            field["path"] = normalized_field["identifier"]
         # parse field attrs
         if field_type == "VECTOR":
-            attrs = parse_vector_attrs(field_attrs)
+            attrs = parse_vector_attrs(
+                normalized_field if isinstance(field_attrs, dict) else field_attrs
+            )
             if attrs is None:
                 # Vector field attributes cannot be parsed on this Redis version
                 # Skip this field - it cannot be properly reconstructed
                 continue
             field["attrs"] = attrs
         else:
-            field["attrs"] = parse_attrs(field_attrs, field_type=field_type)
+            field["attrs"] = parse_attrs(
+                normalized_field if isinstance(field_attrs, dict) else field_attrs,
+                field_type=field_type,
+            )
         # append field
         schema_fields.append(field)
 

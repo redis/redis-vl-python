@@ -249,30 +249,16 @@ _GUARD_ORIGIN_REASON = "Origin not allowed"
 
 async def _post_mcp(port: int, headers: dict) -> httpx.Response:
     """POST a minimal payload to /mcp with custom headers; return the response."""
-    reader, writer = await asyncio.open_connection("127.0.0.1", port)
-    payload = b'{"jsonrpc":"2.0","id":1,"method":"ping"}'
-    request_headers = {
-        "host": f"127.0.0.1:{port}",
-        "content-type": "application/json",
-        "accept": "application/json, text/event-stream",
-        "content-length": str(len(payload)),
-        "connection": "close",
-        **headers,
-    }
-    request = "POST /mcp HTTP/1.1\r\n" + "".join(
-        f"{name}: {value}\r\n" for name, value in request_headers.items()
-    )
-    writer.write(request.encode("ascii") + b"\r\n" + payload)
-    await writer.drain()
-
-    status_line = await reader.readline()
-    status_code = int(status_line.split()[1])
-    while await reader.readline() not in (b"\r\n", b""):
-        pass
-    body = await reader.read()
-    writer.close()
-    await writer.wait_closed()
-    return httpx.Response(status_code, content=body)
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        return await client.post(
+            f"http://127.0.0.1:{port}/mcp",
+            headers={
+                "content-type": "application/json",
+                "accept": "application/json, text/event-stream",
+                **headers,
+            },
+            json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+        )
 
 
 @pytest.mark.asyncio

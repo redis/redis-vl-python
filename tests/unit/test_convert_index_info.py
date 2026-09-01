@@ -85,7 +85,7 @@ def test_convert_index_info_resp3_definition():
                 "attribute": "category",
                 "type": "TAG",
                 "SEPARATOR": "|",
-                "flags": ["CASESENSITIVE", "SORTABLE"],
+                "flags": ["CASESENSITIVE", "SORTABLE", "WITHSUFFIXTRIE"],
             }
         ],
     }
@@ -102,8 +102,38 @@ def test_convert_index_info_resp3_definition():
             "attrs": {
                 "case_sensitive": True,
                 "sortable": True,
+                "withsuffixtrie": True,
                 "separator": "|",
             },
+        }
+    ]
+
+
+def test_convert_index_info_resp2_withsuffixtrie():
+    """Test the flag in the alternating-list FT.INFO form."""
+    index_info = {
+        "index_name": "test_resp2_index",
+        "index_definition": ["key_type", "HASH", "prefixes", ["resp2_prefix"]],
+        "attributes": [
+            [
+                "identifier",
+                "title",
+                "attribute",
+                "title",
+                "type",
+                "TEXT",
+                "WITHSUFFIXTRIE",
+            ]
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"] == [
+        {
+            "name": "title",
+            "type": "text",
+            "attrs": {"withsuffixtrie": True},
         }
     ]
 
