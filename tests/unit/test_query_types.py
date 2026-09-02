@@ -301,7 +301,7 @@ def test_text_query_with_string_filter():
     query_string = str(text_query)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string
     assert (
-        f"@{text_field_name}:(search | document | 12345) {string_filter}"
+        f"@{text_field_name}:(search | document | 12345) ({string_filter})"
         in query_string
     )
     assert " AND " not in query_string
@@ -324,7 +324,7 @@ def test_text_query_with_string_filter():
         in query_string_with_filter_expr
     )
     assert (
-        f"@{text_field_name}:(search | document | 12345) @category:{{tech}}"
+        f"@{text_field_name}:(search | document | 12345) (@category:{{tech}})"
         in query_string_with_filter_expr
     )
     assert " AND " not in query_string_with_filter_expr

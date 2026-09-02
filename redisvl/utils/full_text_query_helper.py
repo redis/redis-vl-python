@@ -62,7 +62,7 @@ class FullTextQueryHelper:
         query = f"(~@{text_field_name}:({self._tokenize_and_escape_query(text)})"
 
         if filter_expression and filter_expression != "*":
-            query += f" {filter_expression}"
+            query += f" ({filter_expression})"
 
         return query + ")"
 

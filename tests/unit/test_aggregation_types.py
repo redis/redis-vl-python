@@ -161,7 +161,7 @@ def test_hybrid_query_with_string_filter():
     query_string = str(hybrid_query)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string
     assert (
-        f"@{text_field_name}:(search | document | 12345) {string_filter}"
+        f"@{text_field_name}:(search | document | 12345) ({string_filter})"
         in query_string
     )
     assert " AND " not in query_string
@@ -186,7 +186,7 @@ def test_hybrid_query_with_string_filter():
         in query_string_with_filter_expr
     )
     assert (
-        f"@{text_field_name}:(search | document | 12345) @category:{{tech}}"
+        f"@{text_field_name}:(search | document | 12345) (@category:{{tech}})"
         in query_string_with_filter_expr
     )
     assert " AND " not in query_string_with_filter_expr
@@ -399,7 +399,7 @@ def test_multi_vector_query_string():
 
     assert (
         str(multi_vector_query)
-        == f"@{field_1}:[VECTOR_RANGE {max_distance_1} $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} AND @{field_2}:[VECTOR_RANGE {max_distance_2} $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
+        == f"@{field_1}:[VECTOR_RANGE {max_distance_1} $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} @{field_2}:[VECTOR_RANGE {max_distance_2} $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
     )
 
 
