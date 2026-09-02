@@ -27,6 +27,20 @@ _RESERVED_SCORE_METADATA_FIELDS = frozenset(
 
 
 _BUILTIN_TOOL_NAMES = frozenset({"list-indexes", "search-records", "upsert-records"})
+# Both separators are reserved because the name pattern permits either, so
+# `redisvl_search` must be refused exactly like `redisvl-search`.
+_RESERVED_TOOL_NAME_PREFIXES = ("redisvl-", "redisvl_")
+# MCP clients commonly constrain tool names to this character set, so names that
+# would be unusable on some hosts (dots, spaces, uppercase) are rejected here
+# rather than at invocation time. Hyphens match the built-ins by convention.
+_TOOL_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+# Caller-facing arguments a profile may govern. The built-in search tool also
+# exposes `index`, which is deliberately absent here: a profile pins its binding
+# through the top-level `index:` key rather than offering it to the model. Search
+# mode and tuning are binding config and never reach the model at all.
+_PROFILE_PARAM_NAMES = frozenset(
+    {"query", "limit", "offset", "filter", "return_fields"}
+)
 
 
 def reserved_score_metadata_field_names() -> frozenset[str]:
@@ -590,6 +604,162 @@ class MCPIndexBindingConfig(BaseModel):
             )
 
 
+class MCPProfileParamConfig(BaseModel):
+    """Exposure policy for one model-facing argument of a profile tool.
+
+    ``max`` caps the argument when it is exposed. When it is hidden, the cap
+    becomes the fixed value instead -- see ``register_profile_tool``.
+    """
+
+    # Extras are forbidden across the profile models because a misspelled key
+    # would otherwise be dropped in silence, leaving a tool that reads as locked
+    # in config while enforcing nothing.
+    model_config = ConfigDict(extra="forbid")
+
+    expose: bool = True
+    max: int | None = None
+
+    @model_validator(mode="after")
+    def _validate_max(self) -> "MCPProfileParamConfig":
+        """Reject a non-positive cap."""
+        if self.max is not None and self.max <= 0:
+            raise ValueError("custom_tools params max must be greater than 0")
+        return self
+
+
+class MCPProfileLockConfig(BaseModel):
+    """Author-locked arguments that the model cannot override or remove."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    return_fields: list[str] | None = None
+    filter: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _validate_lock(self) -> "MCPProfileLockConfig":
+        """Reject an empty or blank projection.
+
+        The annotations already give the rest: pydantic enforces ``list[str]``
+        and ``dict``, so a locked filter is necessarily the structured DSL form
+        rather than a raw string, which could not be safely AND-combined with a
+        caller filter.
+        """
+        if self.return_fields is not None:
+            if not self.return_fields:
+                raise ValueError(
+                    "custom_tools lock.return_fields must contain at least one field"
+                )
+            if any(not field_name.strip() for field_name in self.return_fields):
+                raise ValueError(
+                    "custom_tools lock.return_fields must contain non-empty strings"
+                )
+        return self
+
+
+class MCPCustomToolConfig(BaseModel):
+    """A declarative custom tool that specializes a built-in.
+
+    A profile is the built-in named by ``based_on`` with some arguments frozen by
+    the author and the rest still exposed to the model. Because it resolves to a
+    built-in call and nothing more, it inherits that built-in's concurrency cap,
+    timeout, read-only policy, auth scoping, and error mapping.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1)
+    kind: Literal["profile"] = "profile"
+    based_on: Literal["search-records"] = "search-records"
+    index: str | None = None
+    description: str = Field(..., min_length=1)
+    suppress_schema_hints: bool = False
+    lock: MCPProfileLockConfig = Field(default_factory=MCPProfileLockConfig)
+    params: dict[str, MCPProfileParamConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_profile(self) -> "MCPCustomToolConfig":
+        """Validate naming, parameter policy, and lock/expose coherence."""
+        if not self.description.strip():
+            # min_length alone lets whitespace through, which would publish a
+            # tool whose description is blank to the model.
+            raise ValueError(
+                f"custom_tools '{self.name}' description must not be blank"
+            )
+        if not _TOOL_NAME_PATTERN.match(self.name):
+            raise ValueError(
+                f"custom_tools name '{self.name}' is invalid; names must start with a "
+                "lowercase letter and contain only lowercase letters, digits, "
+                "hyphens, or underscores (max 64 characters)"
+            )
+        if self.name in builtin_tool_names():
+            raise ValueError(
+                f"custom_tools name '{self.name}' collides with a built-in tool; "
+                "built-in names are reserved"
+            )
+        if self.name.startswith(_RESERVED_TOOL_NAME_PREFIXES):
+            raise ValueError(
+                f"custom_tools name '{self.name}' uses a reserved prefix "
+                f"({', '.join(_RESERVED_TOOL_NAME_PREFIXES)})"
+            )
+
+        unknown_params = sorted(set(self.params) - _PROFILE_PARAM_NAMES)
+        if unknown_params:
+            raise ValueError(
+                f"custom_tools params contains unknown arguments: "
+                f"{', '.join(unknown_params)}; allowed: "
+                f"{', '.join(sorted(_PROFILE_PARAM_NAMES))}"
+            )
+
+        # Only `limit` is a bounded numeric argument, so a cap is meaningless
+        # anywhere else and is more likely a config mistake than an intent.
+        for param_name, policy in self.params.items():
+            if policy.max is not None and param_name != "limit":
+                raise ValueError(
+                    f"custom_tools params.{param_name} does not support 'max'; "
+                    "only params.limit can be capped"
+                )
+
+        query_policy = self.params.get("query")
+        if query_policy is not None and not query_policy.expose:
+            raise ValueError(
+                "custom_tools params.query cannot be hidden; a search profile "
+                "needs query text from the caller"
+            )
+
+        # Locking a projection and letting the model choose one are mutually
+        # exclusive. A filter is the deliberate exception: locked plus exposed is
+        # the narrowing case, where the caller's filter AND-combines with the
+        # locked one.
+        return_fields_policy = self.params.get("return_fields")
+        if self.lock.return_fields is not None and (
+            return_fields_policy is not None and return_fields_policy.expose
+        ):
+            raise ValueError(
+                "custom_tools cannot both lock return_fields and expose them; "
+                "set params.return_fields.expose to false or drop the lock"
+            )
+        return self
+
+    def param_exposed(self, param_name: str) -> bool:
+        """Report whether the model may supply an argument.
+
+        Unlisted arguments stay exposed, so a profile that only locks a filter
+        keeps the rest of the built-in's contract. A locked projection is the
+        exception: locking it implies the model cannot also pass one.
+        """
+        policy = self.params.get(param_name)
+        if policy is not None:
+            return policy.expose
+        if param_name == "return_fields" and self.lock.return_fields is not None:
+            return False
+        return True
+
+    def param_max(self, param_name: str) -> int | None:
+        """Return the author-declared cap for an argument, if any."""
+        policy = self.params.get(param_name)
+        return None if policy is None else policy.max
+
+
 class MCPConfig(BaseModel):
     """Validated MCP server configuration loaded from YAML.
 
@@ -600,6 +770,7 @@ class MCPConfig(BaseModel):
 
     server: MCPServerConfig
     indexes: dict[str, MCPIndexBindingConfig]
+    custom_tools: list[MCPCustomToolConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_bindings(self) -> "MCPConfig":
@@ -611,6 +782,60 @@ class MCPConfig(BaseModel):
             if not binding_id.strip():
                 raise ValueError("indexes binding id must be non-blank")
         return self
+
+    @model_validator(mode="after")
+    def _validate_custom_tools(self) -> "MCPConfig":
+        """Validate custom tool names and index pinning against the bindings.
+
+        Field-level checks that need the inspected schema (locked filter fields,
+        locked projections) run at startup once each binding's schema is known.
+        """
+        seen: set[str] = set()
+        for profile in self.custom_tools:
+            if profile.name in seen:
+                raise ValueError(
+                    f"custom_tools contains duplicate tool name '{profile.name}'"
+                )
+            seen.add(profile.name)
+
+            if profile.index is None:
+                # A profile freezes its index, so it can only default when there
+                # is exactly one binding to default to.
+                if len(self.indexes) > 1:
+                    available = ", ".join(sorted(self.indexes))
+                    raise ValueError(
+                        f"custom_tools '{profile.name}' must set 'index' when "
+                        f"multiple indexes are configured; available: {available}"
+                    )
+            elif profile.index not in self.indexes:
+                available = ", ".join(sorted(self.indexes))
+                raise ValueError(
+                    f"custom_tools '{profile.name}' references unknown index "
+                    f"'{profile.index}'; available: {available}"
+                )
+
+            # A cap above the binding's own ceiling can never be satisfied. With
+            # `limit` hidden the cap becomes the fixed request size, so every
+            # call would fail; with it exposed the cap is simply unreachable.
+            # Either way it is a config mistake, catchable before startup.
+            limit_cap = profile.param_max("limit")
+            if limit_cap is not None:
+                binding_max = self.indexes[
+                    self.resolved_profile_index(profile)
+                ].runtime.max_limit
+                if limit_cap > binding_max:
+                    raise ValueError(
+                        f"custom_tools '{profile.name}' params.limit.max "
+                        f"({limit_cap}) exceeds the bound index's "
+                        f"runtime.max_limit ({binding_max})"
+                    )
+        return self
+
+    def resolved_profile_index(self, profile: MCPCustomToolConfig) -> str:
+        """Return the binding id a profile is pinned to."""
+        if profile.index is not None:
+            return profile.index
+        return next(iter(self.indexes))
 
 
 def _substitute_env(value: Any) -> Any:
