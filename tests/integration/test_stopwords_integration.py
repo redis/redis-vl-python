@@ -136,6 +136,11 @@ def filtered_queries_stopwords_disabled_index(redis_url, redis_test_name):
                 "team": "support",
                 "embedding": array_to_buffer([1.0, 0.0], "float32"),
             },
+            {
+                "text": "quarterly summary",
+                "team": "legal",
+                "embedding": array_to_buffer([1.0, 0.0], "float32"),
+            },
         ]
     )
 
@@ -253,6 +258,32 @@ def test_filtered_text_query_with_stopwords_disabled(
         text="handbook",
         text_field_name="text",
         filter_expression=Tag("team") == "docs",
+        return_fields=["text", "team"],
+        stopwords=None,
+    )
+
+    results = filtered_queries_stopwords_disabled_index.query(query)
+
+    assert len(results) == 1
+    assert results[0]["text"] == "reference handbook"
+    assert results[0]["team"] == "docs"
+
+
+def test_filtered_text_query_with_raw_string_union_filter(
+    filtered_queries_stopwords_disabled_index,
+):
+    """A raw-string union filter must stay grouped inside the intersection.
+
+    Redis binds '|' more loosely than whitespace intersection, so without
+    parenthesization this query parses as (handbook docs) | legal and wrongly
+    returns the legal document, which matches neither the text nor the first
+    tag. FilterExpression unions self-parenthesize, so only a raw string
+    exercises this.
+    """
+    query = TextQuery(
+        text="handbook",
+        text_field_name="text",
+        filter_expression="@team:{docs} | @team:{legal}",
         return_fields=["text", "team"],
         stopwords=None,
     )
