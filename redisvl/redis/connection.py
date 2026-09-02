@@ -21,7 +21,7 @@ from redisvl.redis.constants import (
     SVS_MIN_REDIS_VERSION,
     SVS_MIN_SEARCH_VERSION,
 )
-from redisvl.redis.utils import convert_bytes, is_cluster_url
+from redisvl.redis.utils import convert_bytes, is_cluster_url, make_dict
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, deprecated_function
@@ -249,6 +249,30 @@ async def _aidentify_client(
         logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
 
 
+def _normalize_index_info_mapping(value: Any) -> dict[str, Any]:
+    """Normalize a mapping-shaped or alternating-list FT.INFO section."""
+    if isinstance(value, dict):
+        normalized = convert_bytes(dict(value))
+    elif isinstance(value, (list, tuple)):
+        normalized = convert_bytes(make_dict(list(value)))
+    else:
+        normalized = {}
+    return normalized if isinstance(normalized, dict) else {}
+
+
+def normalize_index_definition(index_info: dict[str, Any]) -> dict[str, Any]:
+    """Return the FT.INFO index definition in mapping form."""
+    return _normalize_index_info_mapping(index_info.get("index_definition"))
+
+
+def normalize_index_fields(index_info: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return FT.INFO field entries in mapping form."""
+    return [
+        _normalize_index_info_mapping(field)
+        for field in index_info.get("attributes", [])
+    ]
+
+
 def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     """Convert the output of FT.INFO into a schema-ready dictionary.
 
@@ -259,11 +283,12 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         Dict[str, Any]: Schema dictionary suitable for ``IndexSchema.from_dict()``.
     """
     index_name = index_info["index_name"]
-    prefixes = index_info["index_definition"][3]
+    index_definition = normalize_index_definition(index_info)
+    prefixes = index_definition["prefixes"]
+    storage_type = index_definition["key_type"].lower()
     # Normalize single-element prefix lists to string for backward compatibility
     if isinstance(prefixes, list) and len(prefixes) == 1:
         prefixes = prefixes[0]
-    storage_type = index_info["index_definition"][1].lower()
 
     # Parse stopwords if present in FT.INFO output
     # stopwords_list is only present when explicitly set (STOPWORDS 0 or custom list)
@@ -289,35 +314,42 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         # - Redis 7.x+: [... "VECTOR", "ALGORITHM", "FLAT", "TYPE", "FLOAT32", "DIM", "3", ...]
         #   Position 6+: all key-value pairs
 
-        # Check if we have any attributes beyond the type declaration
-        if len(attrs) <= 6:
-            # Redis 6.2.6-v9 or similar: no vector params in FT.INFO
-            # Return None to signal we can't parse this field properly
-            return None
+        if isinstance(attrs, dict):
+            vector_attrs = {
+                str(key).lower(): value
+                for key, value in attrs.items()
+                if key not in {"identifier", "attribute", "type", "flags"}
+            }
+        else:
+            # Check if we have any attributes beyond the type declaration
+            if len(attrs) <= 6:
+                # Redis 6.2.6-v9 or similar: no vector params in FT.INFO
+                # Return None to signal we can't parse this field properly
+                return None
 
-        vector_attrs = {}
-        start_pos = 6
+            vector_attrs = {}
+            start_pos = 6
 
-        # Detect format: if position 6 looks like an algorithm value (not a key),
-        # we're dealing with the older format
-        if len(attrs) > 6:
-            pos6_str = str(attrs[6]).upper()
-            # Check if position 6 is an algorithm value (FLAT, HNSW) vs a key (ALGORITHM, TYPE, DIM)
-            if pos6_str in ("FLAT", "HNSW"):
-                # Old format (Redis 6.2.x): position 6 is algorithm value, position 7 is param count
-                # Store the algorithm
-                vector_attrs["algorithm"] = pos6_str
-                # Skip to position 8 where key-value pairs start
-                start_pos = 8
+            # Detect format: if position 6 looks like an algorithm value (not a key),
+            # we're dealing with the older format
+            if len(attrs) > 6:
+                pos6_str = str(attrs[6]).upper()
+                # Check if position 6 is an algorithm value (FLAT, HNSW) vs a key (ALGORITHM, TYPE, DIM)
+                if pos6_str in ("FLAT", "HNSW"):
+                    # Old format (Redis 6.2.x): position 6 is algorithm value, position 7 is param count
+                    # Store the algorithm
+                    vector_attrs["algorithm"] = pos6_str
+                    # Skip to position 8 where key-value pairs start
+                    start_pos = 8
 
-        try:
-            for i in range(start_pos, len(attrs), 2):
-                if i + 1 < len(attrs):
-                    key = str(attrs[i]).lower()
-                    vector_attrs[key] = attrs[i + 1]
-        except (IndexError, TypeError, ValueError):
-            # Silently continue - we'll validate required fields below
-            pass
+            try:
+                for i in range(start_pos, len(attrs), 2):
+                    if i + 1 < len(attrs):
+                        key = str(attrs[i]).lower()
+                        vector_attrs[key] = attrs[i + 1]
+            except (IndexError, TypeError, ValueError):
+                # Silently continue - we'll validate required fields below
+                pass
 
         # Normalize to expected field names
         normalized = {}
@@ -438,8 +470,6 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     def parse_attrs(attrs, field_type=None):
         # 'SORTABLE', 'NOSTEM' don't have corresponding values.
         # Their presence indicates boolean True
-        # TODO 'WITHSUFFIXTRIE' is another boolean attr, but is not returned by ft.info
-        original = attrs.copy()
         parsed_attrs = {}
 
         # Handle all boolean attributes first, regardless of position
@@ -450,7 +480,31 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             "INDEXMISSING": "index_missing",
             "INDEXEMPTY": "index_empty",
             "NOINDEX": "no_index",
+            "WITHSUFFIXTRIE": "withsuffixtrie",
         }
+
+        if isinstance(attrs, dict):
+            flags = attrs.get("flags", []).copy()
+            for redis_attr, python_attr in boolean_attrs.items():
+                if redis_attr in flags:
+                    parsed_attrs[python_attr] = True
+            if "UNF" in flags and field_type == "TEXT":
+                parsed_attrs["unf"] = True
+            unknown_flags = sorted(
+                set(flags).difference(boolean_attrs).difference({"UNF"})
+            )
+            if unknown_flags:
+                logger.debug("Ignoring unrecognized FT.INFO flags: %s", unknown_flags)
+            parsed_attrs.update(
+                {
+                    str(key).lower(): value
+                    for key, value in attrs.items()
+                    if key not in {"identifier", "attribute", "type", "flags"}
+                }
+            )
+            return parsed_attrs
+
+        original = attrs.copy()
 
         # Special handling for UNF:
         # - For NUMERIC fields, Redis always adds UNF when SORTABLE is present
@@ -477,22 +531,33 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
 
     schema_fields = []
 
-    for field_attrs in index_fields:
+    normalized_fields = normalize_index_fields(index_info)
+    for field_attrs, normalized_field in zip(index_fields, normalized_fields):
         # parse field info
-        name = field_attrs[1] if storage_type == "hash" else field_attrs[3]
-        field = {"name": name, "type": field_attrs[5].lower()}
+        name = (
+            normalized_field["identifier"]
+            if storage_type == "hash"
+            else normalized_field["attribute"]
+        )
+        field_type = normalized_field["type"]
+        field = {"name": name, "type": field_type.lower()}
         if storage_type == "json":
-            field["path"] = field_attrs[1]
+            field["path"] = normalized_field["identifier"]
         # parse field attrs
-        if field_attrs[5] == "VECTOR":
-            attrs = parse_vector_attrs(field_attrs)
+        if field_type == "VECTOR":
+            attrs = parse_vector_attrs(
+                normalized_field if isinstance(field_attrs, dict) else field_attrs
+            )
             if attrs is None:
                 # Vector field attributes cannot be parsed on this Redis version
                 # Skip this field - it cannot be properly reconstructed
                 continue
             field["attrs"] = attrs
         else:
-            field["attrs"] = parse_attrs(field_attrs, field_type=field_attrs[5])
+            field["attrs"] = parse_attrs(
+                normalized_field if isinstance(field_attrs, dict) else field_attrs,
+                field_type=field_type,
+            )
         # append field
         schema_fields.append(field)
 
@@ -570,6 +635,9 @@ class RedisConnectionFactory:
                 variable is not set.
         """
         url = redis_url or get_address_from_env()
+        # redis-py 8 defaults to RESP3, which changes raw Search command reply
+        # shapes. Keep RedisVL's existing RESP2 behavior unless requested.
+        kwargs.setdefault("protocol", 2)
         client: SyncRedisClient
         if url.startswith("redis+sentinel"):
             client = RedisConnectionFactory._redis_sentinel_client(url, Redis, **kwargs)
@@ -609,6 +677,8 @@ class RedisConnectionFactory:
         """
         _deprecated_url = kwargs.pop("url", None)
         url = _deprecated_url or redis_url or get_address_from_env()
+        # Keep sync and async clients on the same backward-compatible default.
+        kwargs.setdefault("protocol", 2)
 
         client: AsyncRedisClient
         if url.startswith("redis+sentinel"):
@@ -661,6 +731,7 @@ class RedisConnectionFactory:
         )
         _deprecated_url = kwargs.pop("url", None)
         url = _deprecated_url or redis_url or get_address_from_env()
+        kwargs.setdefault("protocol", 2)
 
         if url.startswith("redis+sentinel"):
             return RedisConnectionFactory._redis_sentinel_client(
@@ -686,6 +757,7 @@ class RedisConnectionFactory:
     ) -> RedisCluster:
         """Creates and returns a synchronous Redis client for a Redis cluster."""
         url = redis_url or get_address_from_env()
+        kwargs.setdefault("protocol", 2)
         return RedisCluster.from_url(url, **kwargs)
 
     @staticmethod
@@ -695,6 +767,7 @@ class RedisConnectionFactory:
     ) -> AsyncRedisCluster:
         """Creates and returns an asynchronous Redis client for a Redis cluster."""
         url = redis_url or get_address_from_env()
+        kwargs.setdefault("protocol", 2)
         # Strip 'cluster' parameter as AsyncRedisCluster doesn't accept it
         cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(url, **kwargs)
         return AsyncRedisCluster.from_url(cleaned_url, **cleaned_kwargs)

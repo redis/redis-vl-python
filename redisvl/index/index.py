@@ -47,21 +47,9 @@ if TYPE_CHECKING:
     from redis.commands.search.result import Result
     from redisvl.query.query import BaseQuery
 
-from redis import __version__ as redis_version
 from redis.client import NEVER_DECODE
 from redis.commands.search.aggregation import AggregateRequest, Cursor
-
-from redisvl.utils.redis_protocol import get_protocol_version
-
-# Redis 5.x compatibility (6 fixed the import path)
-if redis_version.startswith("5"):
-    from redis.commands.search.indexDefinition import (
-        IndexDefinition,  # type: ignore[import-untyped]
-    )
-else:
-    from redis.commands.search.index_definition import (
-        IndexDefinition,  # type: ignore[no-redef]
-    )
+from redis.commands.search.index_definition import IndexDefinition
 
 # Need Result outside TYPE_CHECKING for cast
 from redis.commands.search.result import Result
@@ -101,8 +89,42 @@ from redisvl.schema.fields import (
     VectorIndexAlgorithm,
 )
 from redisvl.utils.log import get_logger
+from redisvl.utils.redis_protocol import get_protocol_version
 
 logger = get_logger(__name__)
+
+
+def _parse_batch_search_result(
+    search: Any, result: Any, query: Any, duration: float
+) -> Result:
+    """Parse a pipelined FT.SEARCH response across supported redis-py versions."""
+    parsed_result = search._parse_results(  # type: ignore
+        "FT.SEARCH", result, query=query, duration=duration
+    )
+    if not isinstance(parsed_result, dict):
+        return parsed_result
+
+    resp3_parser = getattr(search, "_parse_search_resp3", None)
+    if resp3_parser is not None:
+        return resp3_parser(parsed_result, query=query, duration=duration)
+
+    # redis-py 6.x returns the raw RESP3 map from _parse_results. Convert it to
+    # the RESP2 shape expected by its private _parse_search callback.
+    def value(mapping: dict[Any, Any], key: str, default: Any = None) -> Any:
+        return mapping.get(key, mapping.get(key.encode(), default))
+
+    response: list[Any] = [value(parsed_result, "total_results", 0)]
+    for document in value(parsed_result, "results", []):
+        response.append(value(document, "id", ""))
+        if query._with_scores:
+            response.append(value(document, "score", 0))
+        if query._with_payloads:
+            response.append(value(document, "payload"))
+        if not query._no_content:
+            fields = value(document, "extra_attributes", {})
+            response.append([item for pair in fields.items() for item in pair])
+    return search._parse_search(response, query=query, duration=duration)
+
 
 _HYBRID_SEARCH_ERROR_MESSAGE = "Hybrid search is not available in this version of redis-py. Please upgrade to redis-py >= 7.1.0."
 
@@ -1799,10 +1821,8 @@ class SearchIndex(BaseSearchIndex):
 
                 for j, query_results in enumerate(results):
                     _built_query = batch_built_queries[j]
-                    parsed_result = search._parse_search(  # type: ignore
-                        query_results,
-                        query=_built_query,
-                        duration=duration,
+                    parsed_result = _parse_batch_search_result(
+                        search, query_results, _built_query, duration
                     )
                     # Return a parsed Result object for each query
                     all_results.append(parsed_result)
@@ -2998,10 +3018,8 @@ class AsyncSearchIndex(BaseSearchIndex):
 
                 for j, query_results in enumerate(results):
                     _built_query = batch_built_queries[j]
-                    parsed_result = search._parse_search(  # type: ignore
-                        query_results,
-                        query=_built_query,
-                        duration=duration,
+                    parsed_result = _parse_batch_search_result(
+                        search, query_results, _built_query, duration
                     )
                     # Return a parsed Result object for each query
                     all_results.append(parsed_result)

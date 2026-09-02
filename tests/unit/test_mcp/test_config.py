@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from redisvl.mcp.config import MCPConfig, builtin_tool_names, load_mcp_config
+from redisvl.mcp.config import (
+    MCPConfig,
+    MCPIndexBindingConfig,
+    builtin_tool_names,
+    load_mcp_config,
+)
 from redisvl.schema import IndexSchema
 
 
@@ -47,6 +52,26 @@ def _inspected_schema() -> dict:
             },
         ],
     }
+
+
+def test_mcp_inspection_normalizes_resp3_fields():
+    """Dictionary-shaped FT.INFO preserves incomplete field identities."""
+    index_info = {
+        "index_name": "docs-index",
+        "index_definition": {"key_type": "HASH", "prefixes": ["doc"]},
+        "attributes": [
+            {
+                "identifier": "embedding",
+                "attribute": "embedding",
+                "type": "VECTOR",
+                "flags": [],
+            }
+        ],
+    }
+
+    inspected = MCPIndexBindingConfig.inspected_schema_from_index_info(index_info)
+
+    assert inspected["fields"] == [{"name": "embedding", "type": "vector"}]
 
 
 def test_load_mcp_config_file_not_found():

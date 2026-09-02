@@ -13,8 +13,12 @@ from redisvl.cli.utils import (
 )
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
-from redisvl.redis.connection import RedisConnectionFactory
-from redisvl.redis.utils import convert_bytes, make_dict
+from redisvl.redis.connection import (
+    RedisConnectionFactory,
+    normalize_index_definition,
+    normalize_index_fields,
+)
+from redisvl.redis.utils import convert_bytes
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
 
@@ -275,27 +279,11 @@ class Index:
 
 def _index_info_for_json(index_info: dict) -> dict:
     """Build the JSON payload from the same fields shown in table mode."""
-    definition_src = index_info.get("index_definition")
-    if isinstance(definition_src, list):
-        definition = convert_bytes(make_dict(definition_src))
-    elif isinstance(definition_src, tuple):
-        definition = convert_bytes(make_dict(list(definition_src)))
-    elif isinstance(definition_src, dict):
-        definition = convert_bytes(dict(definition_src))
-    else:
-        definition = {}
-    attributes = index_info.get("attributes", [])
+    definition = normalize_index_definition(index_info)
+    attributes = normalize_index_fields(index_info)
     index_fields = []
 
-    for attrs in attributes:
-        if isinstance(attrs, list):
-            attr = convert_bytes(make_dict(attrs))
-        elif isinstance(attrs, tuple):
-            attr = convert_bytes(make_dict(list(attrs)))
-        elif isinstance(attrs, dict):
-            attr = convert_bytes(dict(attrs))
-        else:
-            attr = {}
+    for attr in attributes:
         field = {
             "name": attr.get("identifier"),
             "attribute": attr.get("attribute"),
@@ -325,8 +313,8 @@ def _index_info_for_json(index_info: dict) -> dict:
 
 def _display_in_table(index_info):
     print("\n")
-    attributes = index_info.get("attributes", [])
-    definition = make_dict(index_info.get("index_definition"))
+    attributes = normalize_index_fields(index_info)
+    definition = normalize_index_definition(index_info)
     index_info = [
         index_info.get("index_name"),
         definition.get("key_type"),
@@ -370,18 +358,14 @@ def _display_in_table(index_info):
         "Type",
     ]
 
-    for attrs in attributes:
-        attr = make_dict(attrs)
-
+    for attr in attributes:
         values = [attr.get("identifier"), attr.get("attribute"), attr.get("type")]
-        if len(attrs) > 5:
-            options = make_dict(attrs)
-            for k, v in options.items():
-                if k not in ["identifier", "attribute", "type"]:
-                    headers.append("Field Option")
-                    headers.append("Option Value")
-                    values.append(k)
-                    values.append(v)
+        for k, v in attr.items():
+            if k not in ["identifier", "attribute", "type"]:
+                headers.append("Field Option")
+                headers.append("Option Value")
+                values.append(k)
+                values.append(v)
         attr_values.append(values)
 
     # Display the attributes in tabular format

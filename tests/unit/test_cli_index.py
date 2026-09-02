@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from redisvl.cli.index import Index, _index_info_for_json
+from redisvl.cli.index import Index, _display_in_table, _index_info_for_json
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 
@@ -219,6 +219,33 @@ def test_info_json_normalize():
             }
         ],
     }
+
+
+def test_info_table_normalizes_resp3(capsys):
+    """Tests that human output accepts dictionary-shaped FT.INFO sections."""
+    raw = {
+        "index_name": "test_index",
+        "index_definition": {
+            "key_type": "HASH",
+            "prefixes": ["prefix_a"],
+        },
+        "attributes": [
+            {
+                "identifier": "user",
+                "attribute": "user",
+                "type": "TAG",
+                "flags": ["SORTABLE"],
+            }
+        ],
+    }
+
+    _display_in_table(raw)
+
+    output = capsys.readouterr().out
+    assert "test_index" in output
+    assert "HASH" in output
+    assert "user" in output
+    assert "SORTABLE" in output
 
 
 def test_info_json(monkeypatch, capsys, redis_url, cli_index):
