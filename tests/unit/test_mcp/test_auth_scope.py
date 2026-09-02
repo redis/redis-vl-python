@@ -6,7 +6,13 @@ import pytest
 # imports fastmcp; skip the module when the optional extra is absent.
 pytest.importorskip("fastmcp", reason="fastmcp not installed (install redisvl[mcp])")
 
-from redisvl.mcp.auth import authorization_values, ensure_tool_scope, token_has_scope
+from redisvl.mcp.auth import (
+    authorization_values,
+    ensure_read_scope,
+    ensure_tool_scope,
+    ensure_write_scope,
+    token_has_scope,
+)
 from redisvl.mcp.config import MCPAuthConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 
@@ -18,14 +24,24 @@ class _AccessToken:
 
 
 class _Cfg:
-    def __init__(self, authorization_claim="scp"):
+    def __init__(self, authorization_claim="scp", read_scope=None, write_scope=None):
         self.authorization_claim = authorization_claim
+        self.read_scope = read_scope
+        self.write_scope = write_scope
 
 
 class _Server:
-    def __init__(self, enabled=True, authorization_claim="scp"):
+    def __init__(
+        self,
+        enabled=True,
+        authorization_claim="scp",
+        read_scope=None,
+        write_scope=None,
+    ):
         self._auth_enabled = enabled
-        self.auth_config = _Cfg(authorization_claim) if enabled else None
+        self.auth_config = (
+            _Cfg(authorization_claim, read_scope, write_scope) if enabled else None
+        )
 
 
 # --- claim selection -------------------------------------------------------
@@ -118,3 +134,59 @@ def test_ensure_tool_scope_noop_when_no_token(monkeypatch):
         "fastmcp.server.dependencies.get_access_token", lambda: None, raising=False
     )
     ensure_tool_scope(_Server(), "kb.search.read")
+
+
+# --- ensure_read_scope / ensure_write_scope --------------------------------
+
+
+def test_scope_helpers_resolve_their_configured_scope(monkeypatch):
+    # The helper reads the scope name off the server, so a wrapper never has to
+    # know which auth_config field its side of the gate uses.
+    tok = _AccessToken(claims={"roles": ["kb.search.read"]})
+    monkeypatch.setattr(
+        "fastmcp.server.dependencies.get_access_token", lambda: tok, raising=False
+    )
+    server = _Server(
+        authorization_claim="roles",
+        read_scope="kb.search.read",
+        write_scope="kb.search.write",
+    )
+
+    ensure_read_scope(server)
+
+    with pytest.raises(RedisVLMCPError) as exc:
+        ensure_write_scope(server)
+    assert exc.value.code == MCPErrorCode.FORBIDDEN
+
+
+def test_scope_helpers_noop_when_auth_disabled():
+    server = _Server(enabled=False)
+    ensure_read_scope(server)
+    ensure_write_scope(server)
+
+
+def test_scope_gate_fails_closed_when_auth_config_is_unreachable(monkeypatch):
+    # Renaming the server's auth_config attribute used to make every call site
+    # resolve a None scope and return early, silently ungating every tool.
+    tok = _AccessToken(claims={"roles": []})
+    monkeypatch.setattr(
+        "fastmcp.server.dependencies.get_access_token", lambda: tok, raising=False
+    )
+    server = _Server(authorization_claim="roles", read_scope="kb.search.read")
+    server._renamed_auth_config = server.auth_config
+    del server.auth_config
+
+    with pytest.raises(RedisVLMCPError) as exc:
+        ensure_read_scope(server)
+    assert exc.value.code == MCPErrorCode.INTERNAL_ERROR
+    assert exc.value.retryable is False
+
+
+def test_scope_helper_raises_when_the_config_field_is_renamed():
+    # An unguarded getattr, so a renamed MCPAuthConfig field is a loud failure
+    # rather than a None scope that turns the gate into a no-op.
+    server = _Server(read_scope="kb.search.read")
+    del server.auth_config.read_scope
+
+    with pytest.raises(AttributeError):
+        ensure_read_scope(server)

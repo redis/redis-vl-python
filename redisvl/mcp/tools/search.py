@@ -2,7 +2,7 @@ import asyncio
 import inspect
 from typing import Any
 
-from redisvl.mcp.auth import ensure_tool_scope
+from redisvl.mcp.auth import ensure_read_scope
 from redisvl.mcp.config import reserved_score_metadata_field_names
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.mcp.filters import parse_filter
@@ -707,9 +707,7 @@ def register_search_tool(
         return_fields: list[str] | None = None,
     ):
         """FastMCP wrapper for the `search-records` tool."""
-        auth_config = getattr(server, "auth_config", None)
-        read_scope = auth_config.read_scope if auth_config is not None else None
-        ensure_tool_scope(server, read_scope)
+        ensure_read_scope(server)
         return await search_records(
             server,
             query=query,
