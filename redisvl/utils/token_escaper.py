@@ -10,9 +10,12 @@ class TokenEscaper:
 
     # Characters that Redis Search requires us to escape during queries.
     # Source: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/escaping/
-    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ \?]"
+    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~|\/ \?]"
 
-    # Same as above but excludes * and ? to allow wildcard patterns
+    # Same as above but excludes * and ? to allow wildcard patterns, and `|`
+    # because the `%` (LIKE) operator documents it as a union between wildcard
+    # patterns -- see `Tag.__mod__`. On the default path `|` is escaped, since
+    # a value carrying one would otherwise widen its clause into a union.
     ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ ]"
 
     def __init__(self, escape_chars_re: Pattern | None = None):

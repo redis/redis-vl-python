@@ -121,3 +121,24 @@ def test_escape_long_string(escaper):
     # Use pytest's benchmark fixture to check performance
     escaped = escaper.escape(long_str)
     assert escaped == expected
+
+
+@pytest.mark.parametrize(
+    ("test_input,expected"),
+    [
+        ("acme|victim", r"acme\|victim"),
+        ("a|b|c", r"a\|b\|c"),
+        ("|leading", r"\|leading"),
+    ],
+    ids=["pair", "chain", "leading"],
+)
+def test_escape_pipe_on_the_default_path(escaper, test_input, expected):
+    # A `|` is RediSearch's union operator and binds looser than the implicit
+    # intersection, so one reaching the query string raw widens its clause.
+    assert escaper.escape(test_input) == expected
+
+
+def test_pipe_stays_live_when_wildcards_are_preserved(escaper):
+    # The `%` operator documents `|` as a union between wildcard patterns, so
+    # the no-wildcard class must not escape it.
+    assert escaper.escape("elec*|*soft", preserve_wildcards=True) == "elec*|*soft"
