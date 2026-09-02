@@ -1,4 +1,4 @@
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, intersect_with_filter
 from redisvl.utils.stopwords import get_stopwords
 from redisvl.utils.token_escaper import TokenEscaper
 
@@ -56,15 +56,11 @@ class FullTextQueryHelper:
         filter_expression: str | FilterExpression | None = None,
     ) -> str:
         """Build the full-text query string for text search with optional filtering."""
-        if isinstance(filter_expression, FilterExpression):
-            filter_expression = str(filter_expression)
+        # The text clause is optional (~) so that it contributes to scoring
+        # without excluding documents; the filter stays required.
+        text_clause = f"~@{text_field_name}:({self._tokenize_and_escape_query(text)})"
 
-        query = f"(~@{text_field_name}:({self._tokenize_and_escape_query(text)})"
-
-        if filter_expression and filter_expression != "*":
-            query += f" ({filter_expression})"
-
-        return query + ")"
+        return f"({intersect_with_filter(text_clause, filter_expression)})"
 
     def _get_stopwords(self, stopwords: str | set[str] | None = "english") -> set[str]:
         """Get the stopwords to use in the query.

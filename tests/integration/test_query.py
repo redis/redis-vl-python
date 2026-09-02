@@ -1409,3 +1409,69 @@ def test_missing_fields_workflow_filtering(missing_fields_index):
     else:
         # If not indexed, that's also acceptable behavior for this test
         pass
+
+
+# A raw-string union filter is what exercises the parenthesization of a filter
+# clause: FilterExpression unions self-parenthesize via `format_expression`, so
+# only a raw string can bind across the surrounding intersection. Regression
+# coverage for issue #708.
+UNION_FILTER = "@credit_score:{high} | @credit_score:{medium}"
+
+
+def test_vector_query_with_raw_string_union_filter(index):
+    """A multi-clause KNN pre-filter must be parenthesized to be valid at all.
+
+    Redis rejects a bare multi-clause pre-filter, so before the fix this query
+    raised a syntax error rather than returning wrong results. The credit score
+    assertion additionally proves the filter is applied rather than dropped.
+    """
+    query = VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        filter_expression=UNION_FILTER,
+        return_fields=["user", "credit_score"],
+        num_results=10,
+    )
+
+    results = index.query(query)
+
+    assert {result["credit_score"] for result in results} == {"high", "medium"}
+    assert {result["user"] for result in results} == {
+        "john",
+        "nancy",
+        "tyler",
+        "tim",
+        "joe",
+    }
+
+
+def test_vector_range_query_with_raw_string_union_filter(index):
+    """A union filter must stay grouped inside the vector range intersection.
+
+    Only john and mary sit at distance 0 from the query vector, and john is the
+    only one of the two with a credit score the filter admits. Without its own
+    parentheses the query parses as (range AND high) OR medium, which also
+    returns joe -- a document whose embedding is the negation of the query
+    vector and so nowhere near the range.
+
+    `return_score=False` is load-bearing, not incidental. Redis yields no
+    distance for a document matched only through the stray union branch, and
+    with the distance requested `process_results` drops any such document as a
+    suspected Redis 8.8 expiry race. That silently masks the extra result, so
+    with the default `return_score=True` this test passes even on the unfixed
+    code -- verified against v0.27.0, which returns ["john"] with the score
+    requested and ["john", "joe"] without it.
+    """
+    query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        distance_threshold=0.01,
+        filter_expression=UNION_FILTER,
+        return_fields=["user", "credit_score"],
+        num_results=10,
+        return_score=False,
+    )
+
+    results = index.query(query)
+
+    assert [result["user"] for result in results] == ["john"]

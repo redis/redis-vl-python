@@ -380,27 +380,54 @@ def test_multi_vector_query_string():
     weight_2 = 0.7
     max_distance_1 = 0.7
     max_distance_2 = 1.8
-    multi_vector_query = MultiVectorQuery(
-        vectors=[
-            Vector(
-                vector=sample_vector_2,
-                field_name=field_1,
-                weight=weight_1,
-                max_distance=max_distance_1,
-            ),
-            Vector(
-                vector=sample_vector_3,
-                field_name=field_2,
-                weight=weight_2,
-                max_distance=max_distance_2,
-            ),
-        ]
-    )
+    vectors = [
+        Vector(
+            vector=sample_vector_2,
+            field_name=field_1,
+            weight=weight_1,
+            max_distance=max_distance_1,
+        ),
+        Vector(
+            vector=sample_vector_3,
+            field_name=field_2,
+            weight=weight_2,
+            max_distance=max_distance_2,
+        ),
+    ]
+    multi_vector_query = MultiVectorQuery(vectors=vectors)
 
     assert (
         str(multi_vector_query)
         == f"@{field_1}:[VECTOR_RANGE {max_distance_1} $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} @{field_2}:[VECTOR_RANGE {max_distance_2} $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
     )
+
+    # The filter is intersected with whitespace and parenthesized, so a union
+    # inside it cannot bind across the vector range clauses. Regression
+    # coverage for issue #708.
+    range_clauses = (
+        f"@{field_1}:[VECTOR_RANGE {max_distance_1} $vector_0]"
+        f"=>{{$YIELD_DISTANCE_AS: distance_0}} "
+        f"@{field_2}:[VECTOR_RANGE {max_distance_2} $vector_1]"
+        f"=>{{$YIELD_DISTANCE_AS: distance_1}}"
+    )
+
+    def query_string_for(filter_expression):
+        return MultiVectorQuery(
+            vectors=vectors, filter_expression=filter_expression
+        )._build_query_string()
+
+    assert query_string_for(Tag("category") == "tech") == (
+        f"{range_clauses} (@category:{{tech}})"
+    )
+    assert (
+        query_string_for("@a:{x} | @b:{y}") == f"{range_clauses} (@a:{{x}} | @b:{{y}})"
+    )
+
+    # A wildcard filter contributes no clause. This class had no such guard, so
+    # it emitted "(...) (*)", which Redis rejects with a syntax error -- "(*)"
+    # is valid as a KNN pre-filter but never as an intersection operand.
+    assert query_string_for("*") == range_clauses
+    assert query_string_for(None) == range_clauses
 
 
 def test_vector_object_validation():
