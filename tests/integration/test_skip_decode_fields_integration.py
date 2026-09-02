@@ -19,7 +19,8 @@ def _result_field(index: SearchIndex, doc: dict, field: str, *, decode: bool = T
     if field in doc:
         value = doc[field]
     else:
-        # Redis latest can omit projected hash fields from redis-py 5 results.
+        # A projected hash field can be absent from the result document, so fall
+        # back to reading it directly rather than failing the assertion.
         value = index.client.hget(doc["id"], field)
     return _decode(value) if decode else value
 

@@ -110,7 +110,7 @@ jobs:
 
           # Must cover every redis-py-version matrix value; unhandled values fail.
           case "$REDIS_PY_VERSION" in
-            "6.x") spec="redis>=6,<7" ;;
+            "6.x") spec="redis>=6.3,<7" ;;
             "7.x") spec="redis>=7,<8" ;;
             "8.x") spec="redis>=8.1,<9" ;;
             *)
@@ -120,7 +120,17 @@ jobs:
           esac
 
           uv pip install "$spec"
-          uv run python -c 'import redis; print("redis-py:", redis.__version__)'
+
+          # Assert rather than print. `uv run` re-syncing to the lockfile version
+          # is what left this axis inert before #689, and a printed version
+          # scrolls past in a green log. Comparing the major catches that revert
+          # on any cell whose major differs from the lockfile's.
+          installed="$(uv run python -c 'import redis; print(redis.__version__)')"
+          if [[ "${installed%%.*}" != "${REDIS_PY_VERSION%%.*}" ]]; then
+            echo "::error title=redis-py version mismatch::Matrix asked for ${REDIS_PY_VERSION}, but ${installed} is installed."
+            exit 1
+          fi
+          echo "redis-py ${installed} matches matrix cell ${REDIS_PY_VERSION}"
 
       - name: Run tests
         run: |
