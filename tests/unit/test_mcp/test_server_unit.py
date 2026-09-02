@@ -162,6 +162,21 @@ def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[st
         lambda server, index_ids=None: registered.append("upsert-records"),
     )
 
+    def fake_register_profile_tools(server):
+        registered.append("register-profile-tools")
+        server_config = getattr(server, "config", None)
+        names = (
+            []
+            if server_config is None
+            else [profile.name for profile in server_config.custom_tools]
+        )
+        registered.extend(names)
+        return names
+
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_profile_tools", fake_register_profile_tools
+    )
+
     server = RedisVLMCPServer.__new__(RedisVLMCPServer)
     server._bindings = bindings
     server._tools_registered = False
@@ -174,7 +189,7 @@ def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[st
     return registered
 
 
-def _config_with(*, builtin_tools=None) -> MCPConfig:
+def _config_with(*, builtin_tools=None, custom_tools=None) -> MCPConfig:
     """Build a real validated config so the gating logic sees the real methods."""
     server_config: dict = {"redis_url": "redis://localhost:6379"}
     if builtin_tools is not None:
@@ -189,6 +204,7 @@ def _config_with(*, builtin_tools=None) -> MCPConfig:
                     "runtime": {"text_field_name": "content"},
                 }
             },
+            "custom_tools": custom_tools or [],
         }
     )
 
@@ -227,7 +243,12 @@ def test_register_tools_registers_every_builtin_when_no_config_is_attached(monke
         monkeypatch, {"knowledge": _binding_runtime("knowledge")}
     )
 
-    assert registered == ["list-indexes", "search-records", "upsert-records"]
+    assert registered == [
+        "list-indexes",
+        "search-records",
+        "upsert-records",
+        "register-profile-tools",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -261,7 +282,10 @@ def test_register_tools_warns_when_the_whole_tool_surface_is_empty(monkeypatch, 
 
     # The surface really is empty, so the warning is not passing for some other
     # reason.
-    assert registered == []
+    # Only the profile-registration call itself ran, and it produced no names,
+    # so the surface really is empty and the warning is not passing for another
+    # reason.
+    assert registered == ["register-profile-tools"]
     # A client sees a server that connects and then offers nothing, which is
     # indistinguishable from a broken deployment unless the operator is told.
     assert [
@@ -457,7 +481,146 @@ def test_register_tools_warns_when_discovery_is_disabled_on_a_write_only_surface
         )
 
     # Only upsert is published, so a check keyed on search-records would miss it.
-    assert registered == ["upsert-records"]
+    assert registered == ["upsert-records", "register-profile-tools"]
     messages = [r.message for r in caplog.records if "cannot discover" in r.message]
     assert messages
     assert "upsert-records" in messages[0]
+
+
+def test_register_tools_registers_configured_profiles(monkeypatch):
+    registered = _register_tools_with(
+        monkeypatch,
+        {"knowledge": _binding_runtime("knowledge")},
+        config=_config_with(
+            custom_tools=[
+                {"name": "resolved-search", "description": "Search resolved."},
+                {"name": "open-search", "description": "Search open."},
+            ]
+        ),
+    )
+
+    assert registered[-2:] == ["resolved-search", "open-search"]
+
+
+def test_register_tools_is_idempotent(monkeypatch):
+    """A second call must not re-register the same names on the FastMCP object."""
+    registered: list[str] = []
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_list_indexes_tool",
+        lambda server: registered.append("list-indexes"),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server, schema, index_ids=None: registered.append("search-records"),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_upsert_tool",
+        lambda server, index_ids=None: registered.append("upsert-records"),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_profile_tools",
+        lambda server: registered.append("register-profile-tools") or [],
+    )
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {"knowledge": _binding_runtime("knowledge")}
+    server._tools_registered = False
+    server.tool = object()
+    server.config = None
+    server.mcp_settings = SimpleNamespace(read_only=False)
+
+    server._register_tools()
+    server._register_tools()
+
+    assert registered.count("register-profile-tools") == 1
+
+
+def test_validate_custom_tools_checks_each_profile_against_its_bound_schema(
+    monkeypatch,
+):
+    validated: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "redisvl.mcp.server.validate_profile_against_schema",
+        lambda profile, schema: validated.append((profile.name, schema.marker)),
+    )
+
+    config = MCPConfig.model_validate(
+        {
+            "server": {"redis_url": "redis://localhost:6379"},
+            "indexes": {
+                "knowledge": {
+                    "redis_name": "docs-index",
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                },
+                "tickets": {
+                    "redis_name": "tickets-index",
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                },
+            },
+            "custom_tools": [
+                {
+                    "name": "resolved-search",
+                    "description": "Search resolved.",
+                    "index": "tickets",
+                }
+            ],
+        }
+    )
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server.config = config
+    server._bindings = {
+        "knowledge": _binding_runtime("knowledge"),
+        "tickets": _binding_runtime("tickets"),
+    }
+    server._bindings["knowledge"].schema.marker = "knowledge-schema"
+    server._bindings["tickets"].schema.marker = "tickets-schema"
+
+    server._validate_custom_tools()
+
+    # Each profile is validated against the schema of the binding it is pinned to.
+    assert validated == [("resolved-search", "tickets-schema")]
+
+
+def test_register_tools_warns_when_profile_config_changed_after_registration(
+    monkeypatch, caplog
+):
+    """Profiles bake their lock in at registration, so a reload cannot retighten it."""
+    registered = _register_tools_with(
+        monkeypatch,
+        {"knowledge": _binding_runtime("knowledge")},
+        config=_config_with(
+            custom_tools=[{"name": "open-search", "description": "Search open."}]
+        ),
+    )
+    assert "open-search" in registered
+
+    # Simulate a restart that reloaded a *tightened* config: same server object,
+    # tools already registered, different profile set.
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {"knowledge": _binding_runtime("knowledge")}
+    server.tool = object()
+    server._tools_registered = True
+    server._registered_tool_fingerprint = ""
+    server.config = _config_with(
+        custom_tools=[
+            {
+                "name": "open-search",
+                "description": "Search open.",
+                "lock": {"filter": {"field": "category", "op": "eq", "value": "safe"}},
+            }
+        ]
+    )
+
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        server._register_tools()
+
+    # The dangerous direction: an operator tightens a lock, restarts, and believes
+    # it took effect while the old profile is still the one enforcing.
+    assert [
+        record.message
+        for record in caplog.records
+        if "changed since tools were registered" in record.message
+    ]

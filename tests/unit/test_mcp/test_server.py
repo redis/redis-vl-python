@@ -68,6 +68,7 @@ def _startup_config(indexes=None):
             builtin_tool_enabled=lambda _name: True,
         ),
         indexes=indexes or {"knowledge": _binding_namespace()},
+        custom_tools=[],
     )
 
 
