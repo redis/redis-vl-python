@@ -300,7 +300,11 @@ def test_text_query_with_string_filter():
     # Check that the generated query string includes both text search and filter
     query_string = str(text_query)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string
-    assert f"AND {string_filter}" in query_string
+    assert (
+        f"@{text_field_name}:(search | document | 12345) ({string_filter})"
+        in query_string
+    )
+    assert " AND " not in query_string
 
     # Test with FilterExpression - should also work (existing functionality)
     filter_expression = Tag("category") == "tech"
@@ -319,7 +323,11 @@ def test_text_query_with_string_filter():
         f"@{text_field_name}:(search | document | 12345)"
         in query_string_with_filter_expr
     )
-    assert "AND @category:{tech}" in query_string_with_filter_expr
+    assert (
+        f"@{text_field_name}:(search | document | 12345) (@category:{{tech}})"
+        in query_string_with_filter_expr
+    )
+    assert " AND " not in query_string_with_filter_expr
 
     # Test with no filter - should only have text search
     text_query_no_filter = TextQuery(
@@ -331,7 +339,7 @@ def test_text_query_with_string_filter():
     assert f"@{text_field_name}:(search | document | 12345)" in query_string_no_filter
     assert "AND" not in query_string_no_filter
 
-    # Test with wildcard filter - should only have text search (no AND clause)
+    # Test with wildcard filter - should only have text search (no filter clause)
     text_query_wildcard = TextQuery(
         text=text,
         text_field_name=text_field_name,

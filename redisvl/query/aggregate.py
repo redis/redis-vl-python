@@ -380,14 +380,14 @@ class MultiVectorQuery(AggregationQuery):
                 f"@{field}:[VECTOR_RANGE {max_dist} $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
             )
 
-        range_query = " AND ".join(range_queries)
+        range_query = " ".join(range_queries)
 
         filter_expression = self._filter_expression
         if isinstance(self._filter_expression, FilterExpression):
             filter_expression = str(self._filter_expression)
 
         if filter_expression:
-            return f"({range_query}) AND ({filter_expression})"
+            return f"({range_query}) ({filter_expression})"
         else:
             return f"{range_query}"
 

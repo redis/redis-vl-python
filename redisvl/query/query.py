@@ -1569,5 +1569,5 @@ class TextQuery(BaseQuery):
             text = "(" + " | ".join(field_queries) + ")"
 
         if filter_expression and filter_expression != "*":
-            text += f" AND {filter_expression}"
+            text += f" ({filter_expression})"
         return text
