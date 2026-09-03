@@ -1,5 +1,3 @@
-import os
-
 import pytest
 from redis.exceptions import ConnectionError, NoPermissionError
 
@@ -98,20 +96,16 @@ def test_convert_index_info_to_schema():
 
 
 class TestGetRedisConnection:
-    """URL-resolution error paths, covered nowhere else in the suite.
+    """URL-resolution error paths for the sync factory.
 
-    These moved off the removed RedisConnectionFactory.connect(); the two
-    tests that only asserted the dispatcher returned a sync or async client
-    went with it, since every fixture in the suite builds clients this way.
+    Nothing else in the suite covers them; every other test and fixture
+    passes a working redis_url.
     """
 
-    def test_missing_env_var(self):
-        redis_url = os.getenv("REDIS_URL")
-        if redis_url:
-            del os.environ["REDIS_URL"]
-            with pytest.raises(ValueError):
-                RedisConnectionFactory.get_redis_connection()
-            os.environ["REDIS_URL"] = redis_url
+    def test_missing_env_var(self, monkeypatch):
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        with pytest.raises(ValueError):
+            RedisConnectionFactory.get_redis_connection()
 
     def test_invalid_url_format(self):
         with pytest.raises(ValueError):

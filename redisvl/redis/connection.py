@@ -32,16 +32,22 @@ logger = get_logger(__name__)
 # Old spellings and their current equivalents. Kept as tables so **kwargs
 # cannot swallow one in silence: a caller who passes an old name is told the
 # current one, rather than having it ignored or forwarded to redis-py as an
-# unexpected argument. Split by entry point so a caller is only told about
-# keywords its own door ever accepted.
-REMOVED_INDEX_KWARGS = {
+# unexpected argument.
+#
+# One table per entry point, so a caller is only told about keywords its own
+# door ever accepted. Add a new entry to the table for the door that used to
+# accept it: _REMOVED_INDEX_KWARGS for the SearchIndex and AsyncSearchIndex
+# constructors and their from_existing, _REMOVED_FACTORY_KWARGS for the
+# RedisConnectionFactory.get_*_connection functions. A keyword both doors
+# accepted belongs in both. Entries are safe to drop once no supported
+# caller still passes them; until then they cost nothing.
+_REMOVED_INDEX_KWARGS = {
     "connection_args": "connection_kwargs",
     "redis_kwargs": "connection_kwargs",
     "_owns_redis_client": "owns_client",
 }
 
-# Connection factory entry points.
-REMOVED_FACTORY_KWARGS = {"url": "redis_url"}
+_REMOVED_FACTORY_KWARGS = {"url": "redis_url"}
 
 
 def _reject_removed_kwargs(
@@ -54,7 +60,14 @@ def _reject_removed_kwargs(
     credential into an exception string and from there into logs.
 
     It says "not a supported keyword" rather than "no longer supported"
-    because a caller may never have accepted the name in the first place.
+    because even within one table a name need not have been accepted
+    everywhere: ``url`` reached the two async factories but never
+    ``get_redis_connection``.
+
+    Args:
+        kwargs: The caller's leftover keyword arguments.
+        removed: The table for this entry point, either
+            ``_REMOVED_INDEX_KWARGS`` or ``_REMOVED_FACTORY_KWARGS``.
     """
     for name, replacement in removed.items():
         if name in kwargs:
@@ -71,7 +84,7 @@ def _split_from_existing_kwargs(
     keywords are rejected first, so a stale spelling fails here rather than
     reaching redis-py as an unexpected argument.
     """
-    _reject_removed_kwargs(kwargs, REMOVED_INDEX_KWARGS)
+    _reject_removed_kwargs(kwargs, _REMOVED_INDEX_KWARGS)
 
     init_kwargs: dict[str, Any] = {}
     connection_kwargs: dict[str, Any] = {}
@@ -631,19 +644,22 @@ class RedisConnectionFactory:
         """Creates and returns a synchronous Redis client.
 
         Args:
-            url (Optional[str]): The URL of the Redis server. If not provided,
-                the environment variable REDIS_URL is used.
+            redis_url (Optional[str]): The URL of the Redis server. If not
+                provided, the environment variable REDIS_URL is used.
             **kwargs: Additional keyword arguments to be passed to the Redis
                 client constructor.
 
         Returns:
-            Redis: A synchronous Redis client instance.
+            SyncRedisClient: A Redis or RedisCluster client, depending on the
+                URL.
 
         Raises:
-            ValueError: If url is not provided and REDIS_URL environment
-                variable is not set.
+            ValueError: If ``redis_url`` is not provided and the REDIS_URL
+                environment variable is not set.
+            TypeError: If a keyword that no longer exists is passed. ``url``
+                is now ``redis_url``.
         """
-        _reject_removed_kwargs(kwargs, REMOVED_FACTORY_KWARGS)
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         # redis-py 8 defaults to RESP3, which changes raw Search command reply
         # shapes. Keep RedisVL's existing RESP2 behavior unless requested.
@@ -675,13 +691,16 @@ class RedisConnectionFactory:
                 Redis client constructor.
 
         Returns:
-            AsyncRedisClient: An asynchronous Redis client instance (either AsyncRedis or AsyncRedisCluster).
+            AsyncRedisClient: An AsyncRedis or AsyncRedisCluster client,
+                depending on the URL.
 
         Raises:
-            ValueError: If url is not provided and REDIS_URL environment
-                variable is not set.
+            ValueError: If ``redis_url`` is not provided and the REDIS_URL
+                environment variable is not set.
+            TypeError: If a keyword that no longer exists is passed. ``url``
+                is now ``redis_url``.
         """
-        _reject_removed_kwargs(kwargs, REMOVED_FACTORY_KWARGS)
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         # Keep sync and async clients on the same backward-compatible default.
         kwargs.setdefault("protocol", 2)
@@ -714,6 +733,17 @@ class RedisConnectionFactory:
     ) -> AsyncRedisClient:
         """Creates and returns an asynchronous Redis client.
 
+        Synchronous today; it will become a coroutine in a future major
+        release, at which point callers will have to await it. It warns on
+        every call as notice of that change. It is not being removed, and
+        there is no replacement to migrate to.
+
+        Unlike the client the index builds for itself, the client returned
+        here has not been identified to the server with CLIENT SETINFO, so
+        it reports no library name and defers its first connection to the
+        first command. To avoid managing a client at all, pass ``redis_url``
+        to :class:`~redisvl.index.AsyncSearchIndex` and let it build one.
+
         Args:
             redis_url (Optional[str]): The URL of the Redis server. If not
                 provided, the environment variable REDIS_URL is used.
@@ -721,17 +751,26 @@ class RedisConnectionFactory:
                 Redis client constructor.
 
         Returns:
-            AsyncRedis: An asynchronous Redis client instance.
+            AsyncRedisClient: An AsyncRedis or AsyncRedisCluster client,
+                depending on the URL.
 
         Raises:
-            ValueError: If url is not provided and REDIS_URL environment
-                variable is not set.
+            ValueError: If ``redis_url`` is not provided and the REDIS_URL
+                environment variable is not set.
+            TypeError: If a keyword that no longer exists is passed. ``url``
+                is now ``redis_url``.
+
+        Warns:
+            DeprecationWarning: Always, as notice of the coming signature
+                change. This function is not being removed.
         """
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         warn(
-            "get_async_redis_connection will become async in a future release.",
+            "get_async_redis_connection will become a coroutine in a future "
+            "major release and will then need to be awaited.",
             DeprecationWarning,
+            stacklevel=2,
         )
-        _reject_removed_kwargs(kwargs, REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         kwargs.setdefault("protocol", 2)
 
@@ -758,6 +797,7 @@ class RedisConnectionFactory:
         **kwargs,
     ) -> RedisCluster:
         """Creates and returns a synchronous Redis client for a Redis cluster."""
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         kwargs.setdefault("protocol", 2)
         return RedisCluster.from_url(url, **kwargs)
@@ -768,6 +808,7 @@ class RedisConnectionFactory:
         **kwargs,
     ) -> AsyncRedisCluster:
         """Creates and returns an asynchronous Redis client for a Redis cluster."""
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         kwargs.setdefault("protocol", 2)
         # Strip 'cluster' parameter as AsyncRedisCluster doesn't accept it
