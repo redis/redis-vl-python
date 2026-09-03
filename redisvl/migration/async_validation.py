@@ -74,13 +74,10 @@ class AsyncMigrationValidator:
         validation.doc_count_match = source_total == target_total
 
         key_sample = plan.source.keyspace.key_sample
-        client = target_index.client
         if not key_sample:
             validation.key_sample_exists = True
-        elif client is None:
-            validation.key_sample_exists = False
-            validation.errors.append("Failed to get Redis client for key sample check")
         else:
+            client = await target_index._get_client()
             # Handle prefix change: transform key_sample to use new prefix.
             # Must match the executor's RENAME logic exactly:
             #   new_key = new_prefix + key[len(old_prefix):]
@@ -140,9 +137,7 @@ class AsyncMigrationValidator:
 
     async def _count_index_keys(self, index: AsyncSearchIndex) -> int:
         """Count keys matching the target index prefixes with SCAN."""
-        client = index.client
-        if client is None:
-            raise ValueError("Redis client is required to count index keys")
+        client = await index._get_client()
 
         prefixes = index.schema.index.prefix
         prefix_list = prefixes if isinstance(prefixes, list) else [prefixes]
@@ -181,25 +176,16 @@ class AsyncMigrationValidator:
                 )
             )
 
-        client = target_index.client
+        client = await target_index._get_client()
         for key in query_checks.get("keys_exist", []):
-            if client is None:
-                results.append(
-                    QueryCheckResult(
-                        name=f"key:{key}",
-                        passed=False,
-                        details="Failed to get Redis client",
-                    )
+            exists = bool(await client.exists(key))
+            results.append(
+                QueryCheckResult(
+                    name=f"key:{key}",
+                    passed=exists,
+                    details="Key exists" if exists else "Key not found",
                 )
-            else:
-                exists = bool(await client.exists(key))
-                results.append(
-                    QueryCheckResult(
-                        name=f"key:{key}",
-                        passed=exists,
-                        details="Key exists" if exists else "Key not found",
-                    )
-                )
+            )
 
         return results
 

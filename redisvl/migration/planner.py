@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import yaml
 
@@ -18,6 +18,7 @@ from redisvl.migration.models import (
 )
 from redisvl.redis.connection import supports_svs
 from redisvl.schema.schema import IndexSchema
+from redisvl.types import SyncRedisClient
 
 
 class MigrationPlanner:
@@ -226,7 +227,7 @@ class MigrationPlanner:
                 prefixes=prefix_list,
                 key_separator=index.schema.index.key_separator,
                 key_sample=self._sample_keys(
-                    client=index.client,
+                    client=index._redis_client,
                     prefixes=prefix_list,
                     key_separator=index.schema.index.key_separator,
                 ),
@@ -647,10 +648,10 @@ class MigrationPlanner:
             yaml.safe_dump(plan.model_dump(exclude_none=True), f, sort_keys=False)
 
     def _sample_keys(
-        self, *, client: Any, prefixes: List[str], key_separator: str
+        self, *, client: SyncRedisClient, prefixes: List[str], key_separator: str
     ) -> List[str]:
         key_sample: List[str] = []
-        if client is None or self.key_sample_limit <= 0:
+        if self.key_sample_limit <= 0:
             return key_sample
 
         for prefix in prefixes:
@@ -666,10 +667,13 @@ class MigrationPlanner:
                 match_pattern = f"{prefix}*"
             cursor = 0
             while True:
-                cursor, keys = client.scan(
-                    cursor=cursor,
-                    match=match_pattern,
-                    count=max(self.key_sample_limit, 1000),
+                cursor, keys = cast(
+                    tuple[int, list[Any]],
+                    client.scan(
+                        cursor=cursor,
+                        match=match_pattern,
+                        count=max(self.key_sample_limit, 1000),
+                    ),
                 )
                 for key in keys:
                     decoded_key = key.decode() if isinstance(key, bytes) else str(key)
