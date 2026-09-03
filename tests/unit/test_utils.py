@@ -242,7 +242,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed" " in a future release."
+            "Argument old_arg is deprecated and will be removed in a future release."
         )
 
         # As a positional arg
@@ -251,7 +251,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed" " in a future release."
+            "Argument old_arg is deprecated and will be removed in a future release."
         )
 
         with assert_no_warnings():

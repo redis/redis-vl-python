@@ -867,8 +867,6 @@ class AsyncMigrationExecutor:
 
         try:
             client = await source_index._get_client()
-            if client is None:
-                raise ValueError("Failed to get Redis client from source index")
             aof_enabled = await self._detect_aof_enabled(client)
             disk_estimate = estimate_disk_space(plan, aof_enabled=aof_enabled)
             if disk_estimate.has_quantization:

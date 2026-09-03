@@ -87,9 +87,8 @@ class MigrationValidator:
                     keys_to_check.append(translated)
             # Check keys one at a time to avoid Redis Cluster cross-slot
             # errors from multi-key EXISTS commands.
-            existing_count = sum(
-                target_index._redis_client.exists(key) for key in keys_to_check
-            )
+            client = target_index._redis_client
+            existing_count = sum(client.exists(key) for key in keys_to_check)
             validation.key_sample_exists = existing_count == len(keys_to_check)
 
         # Run automatic functional checks (always).

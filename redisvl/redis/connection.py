@@ -726,7 +726,7 @@ class RedisConnectionFactory:
                 variable is not set.
         """
         warn(
-            "get_async_redis_connection will become async in the next major release.",
+            "get_async_redis_connection will become async in a future release.",
             DeprecationWarning,
         )
         _deprecated_url = kwargs.pop("url", None)

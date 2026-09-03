@@ -644,9 +644,7 @@ class RedisVLMCPServer(FastMCP):
     def _make_index(schema: IndexSchema, client: Any) -> AsyncSearchIndex:
         """Bind an inspected schema and Redis client into an async index."""
         # The server acquired this client explicitly during startup, so hand
-        # ownership to the index for a single shutdown path. Passing
-        # owns_client at construction also registers the GC finalizer, which a
-        # post-construction flag flip would be too late for.
+        # ownership to the index for a single shutdown path.
         return AsyncSearchIndex(schema=schema, redis_client=client, owns_client=True)
 
     async def _initialize_vectorizer(

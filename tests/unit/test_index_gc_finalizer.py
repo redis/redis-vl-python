@@ -229,9 +229,10 @@ class TestOwnsClientHandover:
     """``owns_client`` overrides who closes the client.
 
     By default an index closes only a client it created itself. These tests
-    cover the two explicit overrides, which are the only way to hand a
-    pre-built client over (or to keep one the index would otherwise own) now
-    that ``set_client()`` is gone.
+    cover the two explicit overrides at construction, which is where
+    ownership should be stated: the deprecated ``set_client()`` inherits
+    whatever ownership the index already had, so it can hand the index a
+    caller's client and then close it.
     """
 
     def test_sync_injected_client_closed_when_ownership_handed_over(self):
