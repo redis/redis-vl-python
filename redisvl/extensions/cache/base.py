@@ -139,7 +139,7 @@ class BaseCache:
                 url = cast(str | None, self.redis_kwargs["redis_url"])
                 kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
                 self._async_redis_client = (
-                    RedisConnectionFactory.get_async_redis_connection(
+                    await RedisConnectionFactory._get_aredis_connection(
                         redis_url=url, **kwargs
                     )
                 )
