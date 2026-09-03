@@ -75,6 +75,7 @@ from redisvl.query import (
 from redisvl.query.aggregate import AggregateHybridQuery
 from redisvl.query.filter import FilterExpression, is_match_all_filter
 from redisvl.redis.connection import (
+    REMOVED_INDEX_KWARGS,
     RedisConnectionFactory,
     _reject_removed_kwargs,
     _split_from_existing_kwargs,
@@ -934,7 +935,7 @@ class SearchIndex(BaseSearchIndex):
                 keyword that no longer exists is passed. ``connection_args``
                 and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        _reject_removed_kwargs(kwargs)
+        _reject_removed_kwargs(kwargs, REMOVED_INDEX_KWARGS)
 
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
@@ -2321,7 +2322,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 keyword that no longer exists is passed. ``connection_args``
                 and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        _reject_removed_kwargs(kwargs)
+        _reject_removed_kwargs(kwargs, REMOVED_INDEX_KWARGS)
 
         # final validation on schema object
         if not isinstance(schema, IndexSchema):

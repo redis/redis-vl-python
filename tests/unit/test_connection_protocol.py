@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.utils.utils import assert_no_warnings
 
 
 def test_sync_connection_defaults_to_resp2():
@@ -109,3 +110,41 @@ def test_async_cluster_connection_preserves_explicit_protocol():
         )
 
     from_url.assert_called_once_with("redis://localhost:6379", protocol=3)
+
+
+@pytest.mark.asyncio
+async def test_aredis_connection_emits_no_warning_on_the_modern_spelling():
+    """The main async factory must stay warning-free.
+
+    Carried over from the deleted url-deprecation tests, and load-bearing:
+    BaseCache builds its async client through this factory specifically to
+    avoid warning users about an API they never called.
+    """
+    with patch(
+        "redisvl.redis.connection.AsyncRedis.from_url", return_value=AsyncMock()
+    ):
+        with assert_no_warnings():
+            await RedisConnectionFactory._get_aredis_connection(
+                redis_url="redis://localhost:6379"
+            )
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: RedisConnectionFactory.get_redis_connection(url="redis://x:6379"),
+        lambda: RedisConnectionFactory.get_async_redis_connection(url="redis://x:6379"),
+    ],
+    ids=["sync", "async"],
+)
+def test_factories_reject_the_removed_url_keyword(call):
+    """url= now names its replacement instead of failing obscurely.
+
+    Left unguarded it reaches is_cluster_url, which takes url positionally,
+    and raises "got multiple values for argument 'url'" — an error naming
+    neither RedisVL nor the rename.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        call()
+
+    assert "redis_url" in str(excinfo.value)
