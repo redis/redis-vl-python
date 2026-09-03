@@ -275,16 +275,6 @@ def test_search_index_client(client, index_schema):
     assert index.client == client
 
 
-def test_search_index_rejects_async_client(async_client, index_schema):
-    """A sync index must not accept an async client.
-
-    Previously only reachable through the removed set_client(); the
-    constructor now rejects it before any connection is attempted.
-    """
-    with pytest.raises(TypeError):
-        SearchIndex(schema=index_schema, redis_client=async_client)
-
-
 def test_search_index_create(index):
     index.create(overwrite=True, drop=True)
     assert index.exists()

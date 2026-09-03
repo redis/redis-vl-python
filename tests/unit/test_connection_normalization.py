@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
 
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.router.semantic import SemanticRouter
@@ -476,3 +478,39 @@ def test_rejection_message_never_echoes_the_value():
         )
 
     assert "s3cr3t-do-not-log" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "index_cls, wrong_client",
+    [
+        (SearchIndex, AsyncRedis.from_url("redis://localhost:6379")),
+        (AsyncSearchIndex, Redis.from_url("redis://localhost:6379")),
+    ],
+    ids=["sync-index-async-client", "async-index-sync-client"],
+)
+def test_constructors_reject_the_wrong_client_flavour(index_cls, wrong_client):
+    """A mismatched client fails at construction, not at first use.
+
+    For the sync index this rejection was previously reachable only through
+    the removed set_client(); for the async index the removed
+    _validate_client() silently converted the client instead.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        index_cls(IndexSchema.from_dict(_schema_dict()), redis_client=wrong_client)
+
+    assert "Redis client" in str(excinfo.value)
+
+
+def test_wrong_flavour_guard_catches_specced_mocks():
+    """Pins the isinstance choice the guard documents.
+
+    Mock(spec=...) sets __class__, so isinstance catches a mis-flavoured
+    spec'd mock where issubclass(type(...)) would not. An unspecced mock must
+    still pass, because much of the suite injects one.
+    """
+    schema = IndexSchema.from_dict(_schema_dict())
+
+    with pytest.raises(TypeError):
+        SearchIndex(schema, redis_client=MagicMock(spec=AsyncRedis))
+
+    assert SearchIndex(schema, redis_client=MagicMock()) is not None

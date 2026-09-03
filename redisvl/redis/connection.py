@@ -30,25 +30,30 @@ from redisvl.utils.utils import deprecated_argument, deprecated_function
 logger = get_logger(__name__)
 
 
-# Connection keywords that were removed rather than renamed. Kept as a table so
-# a caller who passes one gets told what to use instead, rather than having the
-# name silently ignored or forwarded to redis-py as an unexpected argument.
-REMOVED_CONNECTION_KWARGS = {
+# Old spellings and their current equivalents. Kept as a table so **kwargs
+# cannot swallow one in silence: a caller who passes an old name is told the
+# current one, rather than having it ignored or forwarded to redis-py as an
+# unexpected argument.
+_REMOVED_CONNECTION_KWARGS = {
     "connection_args": "connection_kwargs",
     "redis_kwargs": "connection_kwargs",
+    "_owns_redis_client": "owns_client",
 }
 
 
 def _reject_removed_kwargs(kwargs: Mapping[str, Any]) -> None:
-    """Raise if a caller passed a keyword that has been removed.
+    """Raise if a caller passed a keyword that no longer exists.
 
     The message names the keyword and its replacement only. Connection
     keywords carry passwords, so echoing a rejected value would put a live
     credential into an exception string and from there into logs.
+
+    It says "not a supported keyword" rather than "no longer supported"
+    because the callers sharing this table never all accepted every name.
     """
-    for name, replacement in REMOVED_CONNECTION_KWARGS.items():
+    for name, replacement in _REMOVED_CONNECTION_KWARGS.items():
         if name in kwargs:
-            raise TypeError(f"{name} is no longer supported; use {replacement} instead")
+            raise TypeError(f"{name} is not a supported keyword; use {replacement}")
 
 
 def _split_from_existing_kwargs(

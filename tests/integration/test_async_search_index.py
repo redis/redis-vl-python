@@ -206,17 +206,6 @@ async def test_search_index_client(async_client, index_schema):
     assert async_index.client == async_client
 
 
-def test_async_search_index_rejects_sync_client(client, index_schema):
-    """An async index must not accept a sync client.
-
-    The removed set_client() silently converted one via
-    sync_to_async_redis; the constructor now rejects it outright, so the
-    mismatch surfaces at construction rather than at the first await.
-    """
-    with pytest.raises(TypeError):
-        AsyncSearchIndex(schema=index_schema, redis_client=client)
-
-
 @pytest.mark.asyncio
 async def test_search_index_create(async_index):
     await async_index.create(overwrite=True, drop=True)
@@ -477,7 +466,7 @@ async def test_search_index_that_owns_client_disconnect(index_schema, redis_url)
 async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis_url):
     async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     await async_index.create(overwrite=True, drop=True)
-    await async_index.disconnect()
+    async_index.disconnect_sync()
     assert async_index._redis_client is None
 
 
