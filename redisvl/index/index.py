@@ -848,6 +848,18 @@ class SearchIndex(BaseSearchIndex):
         # delete index and data
         index.delete(drop=True)
 
+    Pass ``redis_client`` to use a client you configured yourself. The index
+    leaves such a client open when it is disconnected or garbage collected;
+    pass ``owns_client=True`` to hand that responsibility over.
+
+    .. code-block:: python
+
+        from redis import Redis
+        from redisvl.index import SearchIndex
+
+        client = Redis.from_url("redis://localhost:6379", socket_timeout=5)
+        index = SearchIndex.from_yaml("schemas/schema.yaml", redis_client=client)
+
     """
 
     def __init__(
@@ -879,6 +891,12 @@ class SearchIndex(BaseSearchIndex):
                 only if it created one itself. Pass True to hand over a client
                 you created, or False to keep one the index would otherwise
                 close, in which case closing it becomes your responsibility.
+
+        Raises:
+            ValueError: If ``schema`` is not an IndexSchema.
+            TypeError: If ``redis_client`` is the wrong flavour, or if a
+                keyword that no longer exists is passed. ``connection_args``
+                and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
         _reject_removed_kwargs(kwargs)
 
@@ -953,6 +971,10 @@ class SearchIndex(BaseSearchIndex):
             owns_client (Optional[bool], optional): Whether the index closes
                 the client. Defaults to True when this method created the
                 client from `redis_url`, and False when you supplied one.
+            connection_kwargs (Optional[Dict[str, Any]]): Redis client
+                connection args, used only when this method creates the
+                client from ``redis_url``. Other keyword arguments are
+                treated the same way.
 
         Raises:
             ValueError: If redis_url or redis_client is not provided.
@@ -2138,6 +2160,18 @@ class AsyncSearchIndex(BaseSearchIndex):
         # delete index and data
         await index.delete(drop=True)
 
+    Pass ``redis_client`` to use a client you configured yourself. The index
+    leaves such a client open when it is disconnected or garbage collected;
+    pass ``owns_client=True`` to hand that responsibility over.
+
+    .. code-block:: python
+
+        from redis.asyncio import Redis
+        from redisvl.index import AsyncSearchIndex
+
+        client = Redis.from_url("redis://localhost:6379", socket_timeout=5)
+        index = AsyncSearchIndex.from_yaml("schemas/schema.yaml", redis_client=client)
+
     """
 
     def __init__(
@@ -2169,6 +2203,12 @@ class AsyncSearchIndex(BaseSearchIndex):
                 only if it created one itself. Pass True to hand over a client
                 you created, or False to keep one the index would otherwise
                 close, in which case closing it becomes your responsibility.
+
+        Raises:
+            ValueError: If ``schema`` is not an IndexSchema.
+            TypeError: If ``redis_client`` is the wrong flavour, or if a
+                keyword that no longer exists is passed. ``connection_args``
+                and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
         _reject_removed_kwargs(kwargs)
 
@@ -2234,6 +2274,10 @@ class AsyncSearchIndex(BaseSearchIndex):
             owns_client (Optional[bool], optional): Whether the index closes
                 the client. Defaults to True when this method created the
                 client from `redis_url`, and False when you supplied one.
+            connection_kwargs (Optional[Dict[str, Any]]): Redis client
+                connection args, used only when this method creates the
+                client from ``redis_url``. Other keyword arguments are
+                treated the same way.
         """
         # Split before the presence check below: redis_kwargs was the async
         # alias, so a caller passing it with no client would otherwise get the

@@ -59,6 +59,13 @@ def _reject_removed_kwargs(kwargs: Mapping[str, Any]) -> None:
 def _split_from_existing_kwargs(
     kwargs: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split ``from_existing`` kwargs into constructor and connection halves.
+
+    Consumes ``kwargs`` in place. ``connection_kwargs`` is merged flat into
+    the connection half, so a caller may either nest or spread it. Removed
+    keywords are rejected first, so a stale spelling fails here rather than
+    reaching redis-py as an unexpected argument.
+    """
     _reject_removed_kwargs(kwargs)
 
     init_kwargs: dict[str, Any] = {}
