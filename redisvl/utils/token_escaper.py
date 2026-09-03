@@ -10,13 +10,21 @@ class TokenEscaper:
 
     # Characters that Redis Search requires us to escape during queries.
     # Source: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/escaping/
-    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~|\/ \?]"
+    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ \?]"
 
-    # Same as above but excludes * and ? to allow wildcard patterns, and `|`
-    # because the `%` (LIKE) operator documents it as a union between wildcard
-    # patterns -- see `Tag.__mod__`. On the default path `|` is escaped, since
-    # a value carrying one would otherwise widen its clause into a union.
+    # Same as above but excludes * and ? to allow wildcard patterns
     ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ ]"
+
+    # The default set plus `|`, for tag equality values only. A tag clause holds
+    # its alternatives directly in braces -- `@f:{a|b}` -- so an unescaped `|`
+    # inside a single value silently turns an equality match into a union.
+    #
+    # Deliberately not added to the default set: a text query string joins its
+    # own terms with `|`, so escaping it there turns a documented union into a
+    # literal that matches nothing. The wildcard path is likewise unaffected,
+    # because the `%` operator documents `|` as a union between patterns -- see
+    # `Tag.__mod__`.
+    TAG_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~|\/ \?]"
 
     def __init__(self, escape_chars_re: Pattern | None = None):
         if escape_chars_re:

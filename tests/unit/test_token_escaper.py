@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from redisvl.utils.token_escaper import TokenEscaper
@@ -123,6 +125,11 @@ def test_escape_long_string(escaper):
     assert escaped == expected
 
 
+@pytest.fixture
+def tag_escaper():
+    return TokenEscaper(escape_chars_re=re.compile(TokenEscaper.TAG_ESCAPED_CHARS))
+
+
 @pytest.mark.parametrize(
     ("test_input,expected"),
     [
@@ -132,13 +139,21 @@ def test_escape_long_string(escaper):
     ],
     ids=["pair", "chain", "leading"],
 )
-def test_escape_pipe_on_the_default_path(escaper, test_input, expected):
-    # A `|` is RediSearch's union operator and binds looser than the implicit
-    # intersection, so one reaching the query string raw widens its clause.
-    assert escaper.escape(test_input) == expected
+def test_tag_escaper_escapes_pipe(tag_escaper, test_input, expected):
+    # A `|` is RediSearch's union operator, and a tag clause holds its
+    # alternatives directly in braces, so one reaching the query string raw
+    # turns an equality match into a union.
+    assert tag_escaper.escape(test_input) == expected
 
 
-def test_pipe_stays_live_when_wildcards_are_preserved(escaper):
+def test_default_escaper_leaves_pipe_live(escaper):
+    # A text query string joins its own terms with `|`, so escaping it on the
+    # default path would turn a documented union into a literal matching
+    # nothing -- see TextQuery(text="engineer|doctor").
+    assert escaper.escape("engineer|doctor") == "engineer|doctor"
+
+
+def test_pipe_stays_live_when_wildcards_are_preserved(tag_escaper):
     # The `%` operator documents `|` as a union between wildcard patterns, so
-    # the no-wildcard class must not escape it.
-    assert escaper.escape("elec*|*soft", preserve_wildcards=True) == "elec*|*soft"
+    # the no-wildcard class must not escape it even for a tag.
+    assert tag_escaper.escape("elec*|*soft", preserve_wildcards=True) == "elec*|*soft"

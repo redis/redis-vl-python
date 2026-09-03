@@ -120,6 +120,14 @@ def test_tag_equality_escapes_pipe_but_list_still_unions():
     assert str(Tag("category") % "elec*|*soft") == "@category:{elec*|*soft}"
 
 
+def test_text_query_pipe_is_still_a_union():
+    """Escaping `|` is scoped to tags; a text query joins its own terms with it."""
+    from redisvl.query import TextQuery
+
+    query = TextQuery(text="engineer|doctor", text_field_name="job")
+    assert "@job:(engineer|doctor)" in str(query)
+
+
 def test_tag_wildcard_combined_with_exact_match():
     """Test combining wildcard and exact match Tag filters in the same query."""
     # Create filters with different operators
