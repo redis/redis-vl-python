@@ -171,10 +171,7 @@ class SemanticRouter(BaseModel):
         overwrite = kwargs.pop("overwrite", False)
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs",),
-        )
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
         lib_name = init_kwargs.get("lib_name")
         index_kwargs: dict[str, Any] = {}
         created_redis_client = False

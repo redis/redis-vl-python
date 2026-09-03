@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 from pydantic import ValidationError
 from redis import Redis
@@ -187,8 +187,11 @@ class SemanticCache(BaseLLMCache):
         self._index = SearchIndex(
             schema=schema,
             redis_client=self._redis_client,
-            redis_url=self.redis_kwargs["redis_url"],
-            connection_kwargs=self.redis_kwargs["connection_kwargs"] or None,
+            redis_url=cast(str | None, self.redis_kwargs["redis_url"]),
+            connection_kwargs=cast(
+                "dict[str, Any] | None", self.redis_kwargs["connection_kwargs"]
+            )
+            or None,
         )
         self._aindex = None
 
@@ -260,8 +263,11 @@ class SemanticCache(BaseLLMCache):
             self._aindex = AsyncSearchIndex(
                 schema=self._index.schema,
                 redis_client=async_client,
-                redis_url=self.redis_kwargs["redis_url"],
-                connection_kwargs=self.redis_kwargs["connection_kwargs"] or None,
+                redis_url=cast(str | None, self.redis_kwargs["redis_url"]),
+                connection_kwargs=cast(
+                    "dict[str, Any] | None", self.redis_kwargs["connection_kwargs"]
+                )
+                or None,
             )
         return self._aindex
 

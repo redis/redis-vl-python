@@ -1,5 +1,6 @@
 import os
-from typing import Any, Sequence, TypeVar, overload
+from collections.abc import Mapping
+from typing import Any, TypeVar, overload
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
 
@@ -29,9 +30,32 @@ from redisvl.utils.utils import deprecated_argument, deprecated_function
 logger = get_logger(__name__)
 
 
+# Connection keywords that were removed rather than renamed. Kept as a table so
+# a caller who passes one gets told what to use instead, rather than having the
+# name silently ignored or forwarded to redis-py as an unexpected argument.
+REMOVED_CONNECTION_KWARGS = {
+    "connection_args": "connection_kwargs",
+    "redis_kwargs": "connection_kwargs",
+}
+
+
+def _reject_removed_kwargs(kwargs: Mapping[str, Any]) -> None:
+    """Raise if a caller passed a keyword that has been removed.
+
+    The message names the keyword and its replacement only. Connection
+    keywords carry passwords, so echoing a rejected value would put a live
+    credential into an exception string and from there into logs.
+    """
+    for name, replacement in REMOVED_CONNECTION_KWARGS.items():
+        if name in kwargs:
+            raise TypeError(f"{name} is no longer supported; use {replacement} instead")
+
+
 def _split_from_existing_kwargs(
-    kwargs: dict[str, Any], *, nested_connection_keys: Sequence[str]
+    kwargs: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    _reject_removed_kwargs(kwargs)
+
     init_kwargs: dict[str, Any] = {}
     connection_kwargs: dict[str, Any] = {}
 
@@ -43,10 +67,9 @@ def _split_from_existing_kwargs(
         if key.startswith("_"):
             init_kwargs[key] = kwargs.pop(key)
 
-    for key in nested_connection_keys:
-        nested_kwargs = kwargs.pop(key, None)
-        if nested_kwargs is not None:
-            connection_kwargs.update(nested_kwargs)
+    nested_kwargs = kwargs.pop("connection_kwargs", None)
+    if nested_kwargs is not None:
+        connection_kwargs.update(nested_kwargs)
 
     connection_kwargs.update(kwargs)
     return init_kwargs, connection_kwargs

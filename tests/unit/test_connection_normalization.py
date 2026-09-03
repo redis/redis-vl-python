@@ -8,6 +8,7 @@ from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.router.semantic import SemanticRouter
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.sql import SQLQuery
+from redisvl.schema import IndexSchema
 from redisvl.utils.utils import assert_no_warnings
 
 
@@ -436,3 +437,42 @@ def test_sql_query_does_not_create_new_connection_when_client_provided():
         schema_cache_strategy="lazy",
     )
     assert command == "FT.SEARCH idx *"
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda **kw: SearchIndex(IndexSchema.from_dict(_schema_dict()), **kw),
+        lambda **kw: AsyncSearchIndex(IndexSchema.from_dict(_schema_dict()), **kw),
+    ],
+    ids=["sync", "async"],
+)
+@pytest.mark.parametrize("removed", ["connection_args", "redis_kwargs"])
+def test_constructors_reject_removed_connection_kwargs(factory, removed):
+    """Removed keywords must fail loudly, not be swallowed by **kwargs."""
+    with pytest.raises(TypeError) as excinfo:
+        factory(**{removed: {"decode_responses": True}})
+
+    assert removed in str(excinfo.value)
+    assert "connection_kwargs" in str(excinfo.value)
+
+
+def test_from_existing_rejects_removed_connection_kwargs():
+    """The from_existing path routed these into connection_kwargs before."""
+    with pytest.raises(TypeError) as excinfo:
+        SearchIndex.from_existing(
+            "idx", redis_url="redis://localhost:6379", connection_args={"db": 1}
+        )
+
+    assert "connection_kwargs" in str(excinfo.value)
+
+
+def test_rejection_message_never_echoes_the_value():
+    """Connection kwargs carry passwords; the message names keys only."""
+    with pytest.raises(TypeError) as excinfo:
+        SearchIndex(
+            IndexSchema.from_dict(_schema_dict()),
+            connection_args={"password": "s3cr3t-do-not-log"},
+        )
+
+    assert "s3cr3t-do-not-log" not in str(excinfo.value)

@@ -1,10 +1,8 @@
-import warnings
 from random import choice
 from unittest import mock
 
 import pytest
 import redis
-from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
@@ -208,27 +206,15 @@ async def test_search_index_client(async_client, index_schema):
     assert async_index.client == async_client
 
 
-@pytest.mark.asyncio
-async def test_search_index_set_client(client, redis_url, index_schema):
-    # Use async with for the index that owns its initial client via redis_url
-    async with AsyncSearchIndex(
-        schema=index_schema, redis_url=redis_url
-    ) as async_index:
-        # Ignore deprecation warnings for set_client
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
-            await async_index.create(overwrite=True, drop=True)
-            assert isinstance(async_index.client, AsyncRedis)
+def test_async_search_index_rejects_sync_client(client, index_schema):
+    """An async index must not accept a sync client.
 
-            # Tests deprecated sync -> async conversion behavior
-            assert isinstance(client, SyncRedis)
-
-            await async_index.set_client(client)
-            assert isinstance(async_index.client, AsyncRedis)
-
-            if async_index.client:
-                await async_index.disconnect()
-            assert async_index.client is None
+    The removed set_client() silently converted one via
+    sync_to_async_redis; the constructor now rejects it outright, so the
+    mismatch surfaces at construction rather than at the first await.
+    """
+    with pytest.raises(TypeError):
+        AsyncSearchIndex(schema=index_schema, redis_client=client)
 
 
 @pytest.mark.asyncio
@@ -777,17 +763,6 @@ async def test_search_index_validates_query_with_hnsw_algorithm(
     )
     # Should not raise
     await async_hnsw_index.query(query)
-
-
-@pytest.mark.asyncio
-async def test_async_search_index_connect(index_schema, redis_url):
-    """Test that AsyncSearchIndex.connect() works with redis_url parameter."""
-    async_index = AsyncSearchIndex(schema=index_schema)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        await async_index.connect(redis_url=redis_url)
-    assert async_index.client is not None
-    await async_index.disconnect()
 
 
 @pytest.mark.asyncio
