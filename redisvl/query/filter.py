@@ -1,4 +1,6 @@
 import datetime
+import math
+import numbers
 import re
 from enum import Enum
 from functools import wraps
@@ -353,10 +355,9 @@ class Num(FilterField):
         FilterOperator.LT: "@%s:[-inf (%s]",
         FilterOperator.GE: "@%s:[%s +inf]",
         FilterOperator.LE: "@%s:[-inf %s]",
-        FilterOperator.BETWEEN: "@%s:[%s %s]",
     }
 
-    SUPPORTED_VAL_TYPES = (int, float, tuple, type(None))
+    SUPPORTED_VAL_TYPES = (int, float, type(None))
 
     def __eq__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric equality filter expression.
@@ -462,8 +463,41 @@ class Num(FilterField):
                 f"Invalid inclusive value must be: {[i.value for i in Inclusive]}"
             )
 
+    @classmethod
+    def _coerce_numeric(cls, value: Any, name: str = "value") -> int | float:
+        """Return a numeric filter value as a plain int or float.
+
+        Coercion rather than the type check is the guard: every numeric value is
+        formatted into the query string, so a subclass overriding __str__ would
+        satisfy isinstance and inject syntax. int() and float() return builtins
+        regardless, which strips the override.
+        """
+        if isinstance(value, numbers.Integral):
+            return int(value)
+        if isinstance(value, numbers.Real):
+            coerced = float(value)
+            if math.isnan(coerced):
+                # Renders `@field:[nan ...]`, which RediSearch rejects outright.
+                raise ValueError(f"{cls.__name__} {name} cannot be NaN")
+            return coerced
+        raise TypeError(
+            f"{cls.__name__} {name} must be an int, a float, or another "
+            f"numbers.Real; got {type(value).__name__}"
+        )
+
+    def _set_value(
+        self,
+        val: Any,
+        val_type: type | tuple[type, ...],
+        operator: FilterOperator,
+    ):
+        """Type-check as usual, then coerce, so no operator formats a subclass."""
+        super()._set_value(val, val_type, operator)
+        if self._value is not None:
+            self._value = self._coerce_numeric(self._value)
+
     def _format_inclusive_between(
-        self, inclusive: Inclusive, start: int, end: int
+        self, inclusive: Inclusive, start: int | float, end: int | float
     ) -> str:
         if inclusive.value == Inclusive.BOTH.value:
             return f"@{self._field}:[{start} {end}]"
@@ -480,24 +514,44 @@ class Num(FilterField):
         raise ValueError(f"Inclusive value not found")
 
     def between(
-        self, start: int, end: int, inclusive: str = "both"
+        self, start: int | float, end: int | float, inclusive: str = "both"
     ) -> "FilterExpression":
-        """Operator for searching values between two numeric values."""
-        inclusive = self._validate_inclusive_string(inclusive)
-        expression = self._format_inclusive_between(inclusive, start, end)
+        """Operator for searching values between two numeric values.
 
-        return FilterExpression(expression)
+        Args:
+            start (Union[int, float]): The lower bound of the range.
+            end (Union[int, float]): The upper bound of the range.
+            inclusive (str, optional): Which bounds to include: "both",
+                "neither", "left" or "right". Defaults to "both".
+
+        Raises:
+            TypeError: If either bound is not an ``int``, a ``float``, or
+                another ``numbers.Real``. numpy scalars qualify; ``Decimal``
+                and ``str`` do not.
+            ValueError: If either bound is NaN, or if ``inclusive`` is not one
+                of the four accepted values.
+
+        .. code-block:: python
+
+            from redisvl.query.filter import Num
+
+            f = Num("age").between(18, 65)
+            f = Num("age").between(18, 65, inclusive="neither")
+
+        """
+        # between() is the one operator that never reaches _set_value.
+        checked_start = self._coerce_numeric(start, "start")
+        checked_end = self._coerce_numeric(end, "end")
+        inclusive_value = self._validate_inclusive_string(inclusive)
+
+        return FilterExpression(
+            self._format_inclusive_between(inclusive_value, checked_start, checked_end)
+        )
 
     def __str__(self) -> str:
         """Return the Redis Query string for the Numeric filter"""
         if self._value is None:
             return "*"
-        if self._operator == FilterOperator.BETWEEN:
-            return self.OPERATOR_MAP[self._operator] % (
-                self._field,
-                self._value[0],
-                self._value[1],
-            )
         if self._operator == FilterOperator.EQ or self._operator == FilterOperator.NE:
             return self.OPERATOR_MAP[self._operator] % (
                 self._field,
@@ -508,8 +562,29 @@ class Num(FilterField):
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
 
+# A double quote is the only character that can terminate a quoted phrase, so it
+# is the only one that needs replacing. (A trailing backslash does not terminate
+# one either -- `@f:("x\")` parses as the term `x\`.)
+#
+# Replaced rather than escaped, because escaping is symmetric: a backslash joins
+# the separator into the term, so `@f:("say \"hi\" now")` asks for a term with a
+# quote in it, and RedisVL writes documents unescaped. On `==` that matches
+# nothing, and on `!=` the unmatchable phrase makes the negation match
+# everything. A space is what the tokenizer left at that position anyway.
+_PHRASE_UNSAFE = re.compile(r'"')
+
+
 class Text(FilterField):
-    """A Text is a FilterField representing a text field in a Redis index."""
+    """A Text is a FilterField representing a text field in a Redis index.
+
+    Note:
+        ``==`` and ``!=`` match the value as a quoted phrase. Any ``"`` in the
+        value becomes a space first, so the value cannot close that phrase; a
+        quote already separates tokens at index time, so this matches the same
+        documents that escaping it never could. A value of nothing but quotes
+        therefore selects everything, like an empty value. ``%`` is the pattern
+        operator and interpolates its value untouched.
+    """
 
     OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
@@ -522,6 +597,12 @@ class Text(FilterField):
         FilterOperator.LIKE: "@%s:(%s)",
     }
     SUPPORTED_VAL_TYPES = (str, type(None))
+
+    # `%` is the pattern operator: its value is raw by design, which is what
+    # makes `*`, `%%` and `|` work. Listing the exception rather than the rule
+    # means a new operator -- or a subclass adding one -- is contained unless it
+    # opts out here.
+    _RAW_VALUE_OPERATORS = frozenset({FilterOperator.LIKE})
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
@@ -578,6 +659,13 @@ class Text(FilterField):
             f = Text("job") % "engineer|doctor" # contains either term in field
             f = Text("job") % "engineer doctor" # contains both terms in field
 
+        Note:
+            The value is interpolated raw, which is what makes ``*``, ``%%`` and
+            ``|`` work. A value carrying a ``)`` therefore closes this clause and
+            has its remainder parsed as query syntax, past any surrounding
+            filter. Pass only patterns your own code composes; for a value you
+            did not construct, use ``==``, which matches it as a literal phrase.
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
         return FilterExpression(str(self))
@@ -587,9 +675,17 @@ class Text(FilterField):
         if not self._value:
             return "*"
 
+        value = self._value
+        if self._operator not in self._RAW_VALUE_OPERATORS:
+            value = _PHRASE_UNSAFE.sub(" ", value)
+            if not value.strip():
+                # Nothing but quotes. An empty phrase matches no document, so
+                # `!=` would match every one -- report "no filter" instead.
+                return "*"
+
         return self.OPERATOR_MAP[self._operator] % (
             self._field,
-            self._value,
+            value,
         )
 
 

@@ -123,33 +123,6 @@ def test_parse_filter_rejects_malformed_payload():
 
 
 @pytest.mark.parametrize(
-    ("op", "operand"),
-    [
-        ("eq", 'alpha") | (-@category:{secret}'),
-        ("ne", 'alpha") | (-@category:{secret}'),
-        ("like", "alpha) | (-@category:{secret}"),
-        ("in", ['alpha") | (-@category:{secret}']),
-    ],
-)
-def test_parse_filter_escapes_text_values_so_they_cannot_leave_their_clause(
-    op, operand
-):
-    parsed = parse_filter({"field": "content", "op": op, "value": operand}, _schema())
-
-    # Text operator templates interpolate the value into `@field:("...")` or
-    # `@field:(...)`, so an unescaped quote or paren would close the clause and
-    # let the rest of the value inject query syntax -- including a `|` that
-    # escapes an enclosing AND. Stripping escape pairs leaves the structural
-    # skeleton: the payload must contribute no syntax to it.
-    skeleton = _strip_escapes(_render_filter(parsed))
-    # The clause boundary survives: quotes and parens from the payload are
-    # escaped, so its `|` stays scoped inside this field's own query instead of
-    # splitting the whole expression into a union.
-    assert skeleton.count("(") == skeleton.count(")")
-    assert skeleton.count('"') % 2 == 0
-
-
-@pytest.mark.parametrize(
     ("value", "rendered"),
     [
         # Each metacharacter that gives a `like` pattern its meaning. Escaping any
@@ -167,6 +140,20 @@ def test_parse_filter_preserves_like_pattern_metacharacters(value, rendered):
     parsed = parse_filter({"field": "content", "op": "like", "value": value}, _schema())
 
     assert _render_filter(parsed) == rendered
+
+
+def test_parse_filter_does_not_double_handle_text_eq_values():
+    """`Text` neutralizes eq/ne itself, so this boundary must not treat them again.
+
+    The boundary escaper this replaced escaped the space as well, so an ordinary
+    multi-word value rendered as a literal that matched nothing.
+    """
+    parsed = parse_filter(
+        {"field": "content", "op": "eq", "value": "senior engineer (50% off)"},
+        _schema(),
+    )
+
+    assert _render_filter(parsed) == '@content:("senior engineer (50% off)")'
 
 
 def test_parse_filter_like_matches_library_semantics_for_patterns():
@@ -303,6 +290,16 @@ def test_merge_locked_filter_ands_a_multi_value_tag_in_caller_filter():
         # as a group. Skipping the span wholesale would also skip a `|` inside it,
         # letting a union hide behind brackets.
         ("pipe hidden inside a range span", "@rating:[4 | @category:{secret}]"),
+        # A quoted phrase is skipped wholesale, so the skip has to resynchronize
+        # on the payload's own quote and still catch what follows. Both of these
+        # are what a raw quote reaching the rendering would actually look like.
+        (
+            "balanced raw quote then pipe",
+            '@content:("hello") | (-@category:{secret} @content:"x")',
+        ),
+        # Balanced parens, so only the phrase branch can refuse this: skipping to
+        # end-of-string instead would swallow the injected union.
+        ("unterminated phrase", '@content:"unterminated | @category:{secret}'),
     ],
 )
 def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
@@ -313,10 +310,10 @@ def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
         {"field": "category", "op": "eq", "value": "science"}, _schema()
     )
 
-    # Simulates a field type that renders a value unescaped. Text values are
-    # escaped today, so this path is unreachable through the DSL -- which is
-    # exactly why it needs an explicit test: without one, deleting the guard
-    # leaves the whole suite green.
+    # Simulates a field type that renders a value unescaped. No DSL path produces
+    # these shapes today -- values are neutralized, escaped or type-checked --
+    # which is exactly why this needs an explicit test: without one, deleting the
+    # guard leaves the whole suite green.
     with pytest.raises(RedisVLMCPError) as exc_info:
         merge_locked_filter(locked, FilterExpression(rendered))
 
@@ -332,6 +329,14 @@ def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
         (
             "windows path",
             {"field": "content", "op": "like", "value": "C:\\\\Users\\\\"},
+        ),
+        # Text eq/ne leave brackets and parens raw, so the backstop has to know a
+        # quoted phrase is literal rather than counting its delimiters. Brackets
+        # are the case the range-span skip would otherwise mishandle, and parens
+        # only survive today when they happen to balance.
+        (
+            "unbalanced bracket in a value",
+            {"field": "content", "op": "eq", "value": "a[b"},
         ),
         (
             "compound with exclusive bound",
@@ -392,10 +397,19 @@ def test_merge_locked_filter_returns_each_side_unchanged_when_the_other_is_absen
         ("exclusive lower bound", "@rating:[(5 +inf]"),
         ("exclusive upper bound", "@rating:[-inf (5]"),
         ("plain inclusive range", "@rating:[4 +inf]"),
+        # The pipe lies beyond the `]`, so the range scan must stop at the span
+        # end. Unbounded it reads this as a union hidden in the range and
+        # refuses, and it costs the whole remaining string on every `[`.
+        ("pipe after a range span", "(@rating:[4 5] | @category:{sports})"),
+        # The phrase skip must honour `\\"`. No DSL path emits this today -- eq/ne
+        # replace a quote, and `like`/`Tag` escape one outside any phrase -- so it
+        # comes in as a rendering. An escape-blind scan ends the phrase at the
+        # escaped quote and refuses every quote-bearing value on a locked tool.
+        ("escaped quote inside a phrase", '@content:("say \\"hi\\" now")'),
     ],
 )
-def test_merge_locked_filter_still_accepts_legitimate_range_bounds(label, rendered):
-    """Narrowing the range skip to parens must not start rejecting real ranges."""
+def test_merge_locked_filter_accepts_a_legitimate_rendering(label, rendered):
+    """Narrowing the skips must not start rejecting renderings the DSL can emit."""
     del label
     locked = parse_filter(
         {"field": "category", "op": "eq", "value": "science"}, _schema()
@@ -403,5 +417,4 @@ def test_merge_locked_filter_still_accepts_legitimate_range_bounds(label, render
 
     merged = merge_locked_filter(locked, FilterExpression(rendered))
 
-    assert isinstance(merged, FilterExpression)
-    assert "@category:{science}" in str(merged)
+    assert str(merged) == f"(@category:{{science}} {rendered})"
