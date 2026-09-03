@@ -3373,6 +3373,9 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         For callers outside an event loop, such as ``__del__`` or a shutdown
         hook. Honours ``owns_client`` exactly as :meth:`disconnect` does.
+
+        Does nothing if a loop is already running, since it cannot await the
+        close from inside one. Use :meth:`disconnect` there.
         """
         if self._redis_client is None or not self._owns_redis_client:
             return

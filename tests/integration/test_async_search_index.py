@@ -463,10 +463,25 @@ async def test_search_index_that_owns_client_disconnect(index_schema, redis_url)
 
 
 @pytest.mark.asyncio
-async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis_url):
+async def test_disconnect_sync_is_a_no_op_inside_a_running_loop(
+    index_schema, redis_url
+):
+    """disconnect_sync() does nothing when a loop is already running.
+
+    It exists for callers outside an event loop, such as __del__ and
+    shutdown hooks: sync_wrapper calls loop.run_until_complete, which raises
+    on an already-running loop and is swallowed. Asserting the no-op here
+    documents behaviour that would otherwise look like a silent bug. The
+    path that does close the client is covered outside a loop by
+    tests/unit/test_index_gc_finalizer.py.
+    """
     async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     await async_index.create(overwrite=True, drop=True)
+
     async_index.disconnect_sync()
+
+    assert async_index._redis_client is not None
+    await async_index.disconnect()
     assert async_index._redis_client is None
 
 
