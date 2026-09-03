@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Coroutine, Sequence, TypeVar
+from typing import Any, Callable, Coroutine, ParamSpec, Sequence, TypeVar, cast
 from warnings import warn
 
 from pydantic import BaseModel
@@ -16,6 +16,9 @@ from redis import Redis
 from ulid import ULID
 
 T = TypeVar("T")
+R = TypeVar("R")
+P = ParamSpec("P")
+C = TypeVar("C", bound=type)
 
 
 def create_ulid() -> str:
@@ -75,7 +78,9 @@ def deserialize(data: str) -> Any:
     return json.loads(data)
 
 
-def deprecated_argument(argument: str, replacement: str | None = None) -> Callable:
+def deprecated_argument(
+    argument: str, replacement: str | None = None
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to warn if a deprecated argument is passed.
 
@@ -97,13 +102,16 @@ def deprecated_argument(argument: str, replacement: str | None = None) -> Callab
     if replacement:
         message += f" Use {replacement} instead."
 
-    def decorator(func):
-        # Check if the function is a classmethod or staticmethod
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        # The documented usage puts this decorator inside
+        # @classmethod/@staticmethod, so this branch only covers the reversed
+        # order; a classmethod object is not a Callable to the type system,
+        # hence the casts.
         if isinstance(func, (classmethod, staticmethod)):
-            underlying = func.__func__
+            underlying = cast(Callable[P, R], func.__func__)
 
             @wraps(underlying)
-            def inner_wrapped(*args, **kwargs):
+            def inner_wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
                 if argument in kwargs:
                     warn(message, DeprecationWarning, stacklevel=2)
                 else:
@@ -114,13 +122,13 @@ def deprecated_argument(argument: str, replacement: str | None = None) -> Callab
                 return underlying(*args, **kwargs)
 
             if isinstance(func, classmethod):
-                return classmethod(inner_wrapped)
+                return cast(Callable[P, R], classmethod(inner_wrapped))
             else:
-                return staticmethod(inner_wrapped)
+                return cast(Callable[P, R], staticmethod(inner_wrapped))
         else:
 
             @wraps(func)
-            def inner_normal(*args, **kwargs):
+            def inner_normal(*args: P.args, **kwargs: P.kwargs) -> R:
                 if argument in kwargs:
                     warn(message, DeprecationWarning, stacklevel=2)
                 else:
@@ -145,7 +153,9 @@ def assert_no_warnings():
         yield
 
 
-def deprecated_function(name: str | None = None, replacement: str | None = None):
+def deprecated_function(
+    name: str | None = None, replacement: str | None = None
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to mark a function as deprecated.
 
@@ -153,7 +163,7 @@ def deprecated_function(name: str | None = None, replacement: str | None = None)
     warning.
     """
 
-    def decorator(func):
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         fn_name = name or func.__name__
         warning_message = (
             f"Function {fn_name} is deprecated and will be "
@@ -163,7 +173,7 @@ def deprecated_function(name: str | None = None, replacement: str | None = None)
             warning_message += replacement
 
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             warn(warning_message, category=DeprecationWarning, stacklevel=3)
             return func(*args, **kwargs)
 
@@ -172,7 +182,9 @@ def deprecated_function(name: str | None = None, replacement: str | None = None)
     return decorator
 
 
-def deprecated_class(name: str | None = None, replacement: str | None = None):
+def deprecated_class(
+    name: str | None = None, replacement: str | None = None
+) -> Callable[[C], C]:
     """
     Decorator to mark a class as deprecated.
 
@@ -190,7 +202,7 @@ def deprecated_class(name: str | None = None, replacement: str | None = None):
             pass
     """
 
-    def decorator(cls):
+    def decorator(cls: C) -> C:
         class_name = name or cls.__name__
         warning_message = (
             f"Class {class_name} is deprecated and will be "
@@ -199,10 +211,12 @@ def deprecated_class(name: str | None = None, replacement: str | None = None):
         if replacement:
             warning_message += replacement
 
-        original_init = cls.__init__
+        # getattr/setattr rather than attribute access: `cls` is typed as a
+        # class object, so mypy resolves `cls.__init__` to the metaclass slot.
+        original_init = getattr(cls, "__init__")
 
         @wraps(original_init)
-        def new_init(self, *args, **kwargs):
+        def new_init(self: Any, *args: Any, **kwargs: Any) -> None:
             # Emit only once per instance. When a deprecated subclass wraps a
             # deprecated parent, both __init__ wrappers run via super().__init__;
             # the sentinel keeps that to a single warning.
@@ -214,7 +228,7 @@ def deprecated_class(name: str | None = None, replacement: str | None = None):
                     pass
             original_init(self, *args, **kwargs)
 
-        cls.__init__ = new_init
+        setattr(cls, "__init__", new_init)
         return cls
 
     return decorator
