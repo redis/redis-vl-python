@@ -816,11 +816,11 @@ class SearchIndex(BaseSearchIndex):
         redis_url: str | None = None,
         connection_kwargs: dict[str, Any] | None = None,
         validate_on_load: bool = False,
+        owns_client: bool | None = None,
         **kwargs,
     ):
-        """Initialize the RedisVL search index with a schema, Redis client
-        (or URL string with other connection args), connection_args, and other
-        kwargs.
+        """Initialize the RedisVL search index with a schema and either a Redis
+        client or a URL string with other connection kwargs.
 
         Args:
             schema (IndexSchema): Index schema object.
@@ -832,6 +832,12 @@ class SearchIndex(BaseSearchIndex):
                 args.
             validate_on_load (bool, optional): Whether to validate data against schema
                 when loading. Defaults to False.
+            owns_client (Optional[bool]): Whether the index should close the
+                Redis client when it is disconnected or garbage collected. By
+                default the index owns only a client it created itself from
+                `redis_url`, and never closes a client passed as
+                `redis_client`. Pass True to hand over a client you created,
+                or False to keep one the index would otherwise own.
         """
         if "connection_args" in kwargs:
             connection_kwargs = kwargs.pop("connection_args")
@@ -851,7 +857,13 @@ class SearchIndex(BaseSearchIndex):
         self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
+        # An index owns the client it created itself, so a caller-supplied
+        # client is not closed unless the caller hands ownership over with
+        # owns_client=True. Assigned before the finalizer is registered,
+        # because _register_client_finalizer reads this flag.
+        self._owns_redis_client = (
+            redis_client is None if owns_client is None else owns_client
+        )
         self._client_finalizer = None
         # Close the owned client when this index is garbage collected. When
         # the client is created lazily, registration happens at creation time
@@ -923,7 +935,9 @@ class SearchIndex(BaseSearchIndex):
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
         if created_redis_client:
-            init_kwargs["_owns_redis_client"] = True
+            # The index created this client, so it owns it unless the caller
+            # explicitly said otherwise.
+            init_kwargs.setdefault("owns_client", True)
             return cls(
                 schema,
                 redis_client=redis_client,
@@ -2131,6 +2145,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         redis_client: AsyncRedisClient | None = None,
         connection_kwargs: dict[str, Any] | None = None,
         validate_on_load: bool = False,
+        owns_client: bool | None = None,
         **kwargs,
     ):
         """Initialize the RedisVL async search index with a schema.
@@ -2145,6 +2160,12 @@ class AsyncSearchIndex(BaseSearchIndex):
                 args.
             validate_on_load (bool, optional): Whether to validate data against schema
                 when loading. Defaults to False.
+            owns_client (Optional[bool]): Whether the index should close the
+                Redis client when it is disconnected or garbage collected. By
+                default the index owns only a client it created itself from
+                `redis_url`, and never closes a client passed as
+                `redis_client`. Pass True to hand over a client you created,
+                or False to keep one the index would otherwise own.
         """
         if "redis_kwargs" in kwargs:
             connection_kwargs = kwargs.pop("redis_kwargs")
@@ -2157,7 +2178,11 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._validate_on_load = validate_on_load
         self._lib_name: str | None = kwargs.pop("lib_name", None)
 
-        # Store connection parameters
+        # Store connection parameters. Note the asymmetry with SearchIndex:
+        # there, _redis_client is a property that lazily creates the client,
+        # whereas here it is a plain attribute that stays None until
+        # _get_client() creates one. Read it through _get_client(), never
+        # directly, unless you specifically want the un-created state.
         self._redis_client = redis_client
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
@@ -2165,7 +2190,11 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
+        # See the note on SearchIndex.__init__: ownership follows from who
+        # created the client, and owns_client=True hands it to the index.
+        self._owns_redis_client = (
+            redis_client is None if owns_client is None else owns_client
+        )
         self._client_finalizer = None
         # Close the owned client when this index is garbage collected. When
         # the client is created lazily, registration happens at creation time
@@ -2231,7 +2260,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
         if created_redis_client:
-            init_kwargs["_owns_redis_client"] = True
+            # The index created this client, so it owns it unless the caller
+            # explicitly said otherwise.
+            init_kwargs.setdefault("owns_client", True)
             return cls(
                 schema,
                 redis_client=redis_client,

@@ -223,3 +223,57 @@ class TestUnownedClientIsNeverClosed:
         collect()
 
         fake_client.aclose.assert_not_awaited()
+
+
+class TestOwnsClientHandover:
+    """``owns_client`` overrides who closes the client.
+
+    By default an index closes only a client it created itself. These tests
+    cover the two explicit overrides, which are the only way to hand a
+    pre-built client over (or to keep one the index would otherwise own) now
+    that ``set_client()`` is gone.
+    """
+
+    def test_sync_injected_client_closed_when_ownership_handed_over(self):
+        schema = IndexSchema.from_dict(SCHEMA_DICT)
+        fake_client = mock.MagicMock(name="handed_over_sync_client")
+        index = SearchIndex(schema, redis_client=fake_client, owns_client=True)
+
+        del index
+        collect()
+
+        fake_client.close.assert_called_once()
+
+    def test_async_injected_client_closed_when_ownership_handed_over(self):
+        schema = IndexSchema.from_dict(SCHEMA_DICT)
+        fake_client = mock.MagicMock(name="handed_over_async_client")
+        fake_client.aclose = mock.AsyncMock()
+        index = AsyncSearchIndex(schema, redis_client=fake_client, owns_client=True)
+
+        del index
+        collect()
+
+        fake_client.aclose.assert_awaited_once()
+
+    def test_sync_lazily_created_client_kept_when_ownership_declined(self):
+        """``owns_client=False`` keeps a client the index would have owned.
+
+        Only covered on the sync class: the flag is read by shared
+        ``__init__`` code, and the per-flavour close paths are covered above.
+        """
+        schema = IndexSchema.from_dict(SCHEMA_DICT)
+        fake_client = mock.MagicMock(name="lazily_created_sync_client")
+
+        with mock.patch(
+            "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+            return_value=fake_client,
+        ):
+            index = SearchIndex(
+                schema, redis_url="redis://fake:6379", owns_client=False
+            )
+            assert index._redis_client is fake_client
+
+        del index
+        collect()
+
+        fake_client.close.assert_not_called()
