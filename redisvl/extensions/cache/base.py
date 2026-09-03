@@ -4,6 +4,7 @@ This module defines the abstract base cache interface that is implemented by
 specific cache types such as LLM caches and embedding caches.
 """
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -59,7 +60,13 @@ class BaseCache:
         # Initialize Redis clients
         self._async_redis_client = async_redis_client
         self._redis_client = redis_client
+        # Guards lazy async client creation, which suspends on an await and so
+        # cannot rely on a bare check-then-set. Mirrors AsyncSearchIndex._lock.
+        self._async_client_lock = asyncio.Lock()
 
+        # Caches never close a caller-supplied client and register no GC
+        # finalizer, so the index's owns_client handover has no cache
+        # equivalent by design.
         if redis_client or async_redis_client:
             self._owns_redis_client = False
         else:
@@ -128,22 +135,26 @@ class BaseCache:
         Returns:
             AsyncRedisClient: An async Redis client instance.
         """
-        if not hasattr(self, "_async_redis_client") or self._async_redis_client is None:
-            client = self.redis_kwargs.get("redis_client")
-
-            if client and isinstance(client, (Redis, RedisCluster)):
-                self._async_redis_client = RedisConnectionFactory.sync_to_async_redis(
-                    client
-                )
-            else:
-                url = cast(str | None, self.redis_kwargs["redis_url"])
-                kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
-                self._async_redis_client = (
-                    await RedisConnectionFactory._get_aredis_connection(
-                        redis_url=url, **kwargs
-                    )
-                )
-        return self._async_redis_client
+        client = getattr(self, "_async_redis_client", None)
+        if client is None:
+            async with self._async_client_lock:
+                # Double-check: another task may have created the client while
+                # this one waited on the lock or on the factory's round trip.
+                client = getattr(self, "_async_redis_client", None)
+                if client is None:
+                    provided = self.redis_kwargs.get("redis_client")
+                    if provided and isinstance(provided, (Redis, RedisCluster)):
+                        client = RedisConnectionFactory.sync_to_async_redis(provided)
+                    else:
+                        url = cast(str | None, self.redis_kwargs["redis_url"])
+                        kwargs = cast(
+                            dict[str, Any], self.redis_kwargs["connection_kwargs"]
+                        )
+                        client = await RedisConnectionFactory._get_aredis_connection(
+                            redis_url=url, **kwargs
+                        )
+                    self._async_redis_client = client
+        return client
 
     def expire(self, key: str, ttl: int | None = None) -> None:
         """Set or refresh the expiration time for a key in the cache.

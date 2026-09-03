@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -357,6 +358,35 @@ async def test_base_cache_async_client_creation_emits_no_warning():
 
     mock_get_connection.assert_awaited_once_with(redis_url="redis://localhost:6379")
     assert client is mock_client
+
+
+@pytest.mark.asyncio
+async def test_base_cache_async_client_creation_is_serialised():
+    """Concurrent callers must share one client, not orphan a connection pool.
+
+    Building the client awaits a CLIENT SETINFO round trip, so a bare
+    check-then-set would let two tasks each create one and leave the first
+    unreachable and never closed.
+    """
+    cache = EmbeddingsCache(redis_url="redis://localhost:6379")
+    created = []
+
+    async def factory(*args, **kwargs):
+        await asyncio.sleep(0)  # the suspension the real factory introduces
+        client = MagicMock(name=f"client{len(created)}")
+        created.append(client)
+        return client
+
+    with patch(
+        "redisvl.extensions.cache.base.RedisConnectionFactory._get_aredis_connection",
+        new=factory,
+    ):
+        first, second = await asyncio.gather(
+            cache._get_async_redis_client(), cache._get_async_redis_client()
+        )
+
+    assert len(created) == 1
+    assert first is second
 
 
 def test_sql_query_uses_connection_factory_for_redis_url():
