@@ -2023,6 +2023,33 @@ class SearchIndex(BaseSearchIndex):
             # Increment the offset for the next batch of pagination
             offset += page_size
 
+    def iter(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> Generator[str, None, None]:
+        """Iterate lazily over document keys matching a filter expression.
+
+        Delegates to :meth:`_iter_keys_by_filter`, which pages with
+        ``FT.AGGREGATE ... WITHCURSOR`` rather than ``FT.SEARCH`` + ``LIMIT``, so
+        this is not subject to the ``MAXSEARCHRESULTS`` limit. See that method's
+        docstring for why keys are de-duplicated and why memory is
+        ``O(match count)`` rather than truly streaming.
+
+        Args:
+            filter_expression (Union[str, FilterExpression, None]): Selects the
+                documents to iterate over. Defaults to None (all documents).
+            batch_size (int): Number of keys fetched per cursor page. Defaults to 500.
+
+        Yields:
+            str: Document key matching the filter.
+        """
+        filter_expr = (
+            FilterExpression("*") if filter_expression is None else filter_expression
+        )
+        for batch in self._iter_keys_by_filter(filter_expr, batch_size):
+            yield from batch
+
     def listall(self) -> list[str]:
         """List all search indices in Redis database.
 
@@ -3263,6 +3290,34 @@ class AsyncSearchIndex(BaseSearchIndex):
                 break
             yield results
             first += page_size
+
+    async def aiter(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> AsyncGenerator[str, None]:
+        """Iterate lazily over document keys matching a filter expression asynchronously.
+
+        Delegates to :meth:`_iter_keys_by_filter`, which pages with
+        ``FT.AGGREGATE ... WITHCURSOR`` rather than ``FT.SEARCH`` + ``LIMIT``, so
+        this is not subject to the ``MAXSEARCHRESULTS`` limit. See that method's
+        docstring for why keys are de-duplicated and why memory is
+        ``O(match count)`` rather than truly streaming.
+
+        Args:
+            filter_expression (Union[str, FilterExpression, None]): Selects the
+                documents to iterate over. Defaults to None (all documents).
+            batch_size (int): Number of keys fetched per cursor page. Defaults to 500.
+
+        Yields:
+            str: Document key matching the filter.
+        """
+        filter_expr = (
+            FilterExpression("*") if filter_expression is None else filter_expression
+        )
+        async for batch in self._iter_keys_by_filter(filter_expr, batch_size):
+            for key in batch:
+                yield key
 
     async def listall(self) -> list[str]:
         """List all search indices in Redis database.
