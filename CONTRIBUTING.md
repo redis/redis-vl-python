@@ -171,11 +171,16 @@ make test-all
 # Run tests on a specific file
 uv run pytest tests/unit/test_fields.py -v
 
+# Run the Redis Cluster tests, which are skipped by default
+uv run pytest --run-cluster-tests -m requires_cluster
+
 # Run tests with coverage
 uv run pytest --cov=redisvl --cov-report=html
 ```
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
+
+**Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running.
 
 ## Documentation
 
