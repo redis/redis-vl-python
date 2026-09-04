@@ -407,7 +407,9 @@ class GeoRadius(GeoSpec):
             # is a syntax error at DIALECT 1 -- the Redis 8 server default, which
             # is what a rendered filter meets if it is run outside a RedisVL
             # query class. Every float that large is integral, so an int renders
-            # the same value without an exponent.
+            # the same value without an exponent. Only a positive exponent is a
+            # problem; `1e-05` parses at both dialects, so a small radius needs
+            # no treatment.
             radius = int(radius)
         self._radius = radius
 
