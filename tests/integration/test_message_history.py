@@ -2,7 +2,7 @@ import warnings
 from contextlib import suppress
 
 import pytest
-from redis.exceptions import ConnectionError
+from redis.exceptions import ConnectionError, NoPermissionError
 
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
@@ -826,3 +826,55 @@ def test_deprecated_dtype_argument(client, redis_url, redis_test_name):
                 history.clear()
             with suppress(Exception):
                 history.delete()
+
+
+def test_create_index_false_clear_works_under_a_read_write_acl(
+    app_name, client, redis_url, acl_user
+):
+    """The `FT.INFO` removal from `SearchIndex.clear()`, end to end.
+
+    `MessageHistory.clear()` delegates to `SearchIndex.clear()`, which used to
+    read `FT.INFO` -- `@search` only, and so denied to the credential this flag
+    serves. This extension needs no vectorizer, making it the cheap place to
+    prove the fix against a real restricted credential rather than a mock.
+    """
+    skip_if_no_redis_search(client)
+    name = app_name
+
+    owner = MessageHistory(name=name, redis_url=redis_url)
+    try:
+        owner.add_messages(
+            [
+                {"role": "user", "content": "hello"},
+                {"role": "llm", "content": "hi there"},
+            ]
+        )
+        assert len(owner.get_recent(top_k=10)) == 2
+
+        with acl_user(
+            "~*", "&*", "+@read", "+@write", "-@dangerous", name="acl_history_user"
+        ) as user:
+            restricted = MessageHistory(
+                name=name,
+                redis_url=redis_url,
+                connection_kwargs={
+                    "username": user.username,
+                    "password": user.password,
+                },
+                create_index=False,
+            )
+
+            # Pin the premise: this credential cannot read FT.INFO.
+            with pytest.raises(NoPermissionError):
+                user.connect().execute_command("FT.INFO", name)
+
+            restricted.clear()
+
+        # Read back through the owner: the restricted instance is gone.
+        assert owner.get_recent(top_k=10) == []
+        # And clearing left the index standing, so the history is still usable.
+        assert owner._index.exists()
+        owner.add_messages([{"role": "user", "content": "again"}])
+        assert len(owner.get_recent(top_k=10)) == 1
+    finally:
+        owner.delete()

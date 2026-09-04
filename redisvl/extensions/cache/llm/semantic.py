@@ -14,7 +14,7 @@ from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
     CREATE_INDEX_OVERWRITE_CONFLICT,
     ENTRY_ID_FIELD_NAME,
-    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
+    EXTERNAL_INDEX_DROP_CONFLICT,
     INSERTED_AT_FIELD_NAME,
     METADATA_FIELD_NAME,
     PROMPT_FIELD_NAME,
@@ -309,28 +309,46 @@ class SemanticCache(BaseLLMCache):
         self._distance_threshold = float(distance_threshold)
 
     def delete(self) -> None:
-        """Delete the cache and its index entirely."""
+        """Delete the cache and its index entirely.
+
+        Raises:
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
+                empty the cache and leave the index standing.
+        """
         if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         self._index.delete(drop=True)
 
     async def adelete(self) -> None:
-        """Async delete the cache and its index entirely."""
+        """Async delete the cache and its index entirely.
+
+        Raises:
+            ValueError: If ``create_index=False``. See :meth:`delete`.
+        """
         if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         aindex = await self._get_async_index()
         await aindex.delete(drop=True)
 
     def clear(self) -> None:
-        """Clear all cache keys when RedisVL manages the index lifecycle."""
-        if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        """Delete every cache entry, leaving the index in place.
+
+        Clears by key prefix, not by index membership, so it removes every key
+        under ``{name}:`` and nothing outside it. Available under
+        ``create_index=False``; dropping the index is :meth:`delete`.
+
+        Warning:
+            Under ``create_index=False`` the prefix is unverified, so this can
+            delete keys the index never covered and miss entries it does. See
+            :doc:`/user_guide/installation`.
+        """
         super().clear()
 
     async def aclear(self) -> None:
-        """Async clear all cache keys when RedisVL manages the index lifecycle."""
-        if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        """Async delete every cache entry, leaving the index in place.
+
+        See :meth:`clear` for the caveats, which apply identically here.
+        """
         await super().aclear()
 
     def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
