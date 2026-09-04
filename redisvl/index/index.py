@@ -11,6 +11,7 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
+    ClassVar,
     Generator,
     Iterable,
     Iterator,
@@ -39,7 +40,7 @@ from redisvl.redis.utils import (
     make_dict,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
-from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
+from redisvl.utils.utils import deprecated_argument, sync_wrapper
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -75,6 +76,7 @@ from redisvl.query.aggregate import AggregateHybridQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
+    _reject_removed_kwargs,
     _split_from_existing_kwargs,
     convert_index_info_to_schema,
     supports_svs,
@@ -570,8 +572,43 @@ class BaseSearchIndex:
 
     _client_finalizer: "weakref.finalize | None" = None
 
+    # Set per subclass: the client classes this index cannot use, what it
+    # needs instead, and where to send the caller.
+    _wrong_flavour_clients: ClassVar[tuple[type, ...]]
+    _wrong_flavour_needs: ClassVar[str]
+    _wrong_flavour_advice: ClassVar[str]
+
     def __init__(*args, **kwargs):
         pass
+
+    @classmethod
+    def _reject_wrong_client_flavour(cls, redis_client: Any) -> None:
+        """Reject a sync client on an async index, or the reverse.
+
+        Uses ``isinstance`` rather than ``issubclass(type(...))`` so a
+        ``Mock(spec=...)`` of the wrong flavour is caught, since it sets
+        ``__class__``, while an unspecced mock still passes. Rests on the sync
+        and async client hierarchies staying disjoint, which holds across the
+        supported redis-py range.
+
+        Deliberately one-sided: it rejects the wrong flavour but does not
+        assert the object is a Redis client at all, so a connection pool or
+        an unrelated object still gets through and fails later. A positive
+        check would reject the unspecced mocks the test suite relies on.
+
+        Called from ``__init__`` and, ahead of the broader
+        ``validate_sync_redis``/``validate_async_redis``, from
+        ``from_existing``, so this message wins on both paths.
+        """
+        if isinstance(redis_client, cls._wrong_flavour_clients):
+            wrong = type(redis_client)
+            # Qualified name because redis.Redis and redis.asyncio.Redis share
+            # a bare __name__, which would make the message useless here.
+            raise TypeError(
+                f"{cls.__name__} requires {cls._wrong_flavour_needs}, got "
+                f"{wrong.__module__}.{wrong.__qualname__}. "
+                f"{cls._wrong_flavour_advice}"
+            )
 
     def _register_client_finalizer(self, client: Any) -> None:
         """Register a finalizer that closes ``client`` once this index is
@@ -811,9 +848,20 @@ class SearchIndex(BaseSearchIndex):
         # delete index and data
         index.delete(drop=True)
 
+    Pass ``redis_client`` to use a client you configured yourself. The index
+    leaves such a client open when it is disconnected or garbage collected;
+    pass ``owns_client=True`` to hand that responsibility over.
+
+    .. code-block:: python
+
+        from redis import Redis
+        from redisvl.index import SearchIndex
+
+        client = Redis.from_url("redis://localhost:6379", socket_timeout=5)
+        index = SearchIndex.from_yaml("schemas/schema.yaml", redis_client=client)
+
     """
 
-    @deprecated_argument("connection_args", "Use connection_kwargs instead.")
     def __init__(
         self,
         schema: IndexSchema,
@@ -843,12 +891,19 @@ class SearchIndex(BaseSearchIndex):
                 only if it created one itself. Pass True to hand over a client
                 you created, or False to keep one the index would otherwise
                 close, in which case closing it becomes your responsibility.
+
+        Raises:
+            ValueError: If ``schema`` is not an IndexSchema.
+            TypeError: If ``redis_client`` is the wrong flavour, or if a
+                keyword that no longer exists is passed. ``connection_args``
+                and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        if "connection_args" in kwargs:
-            connection_kwargs = kwargs.pop("connection_args")
+        _reject_removed_kwargs(kwargs)
 
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
+
+        self._reject_wrong_client_flavour(redis_client)
 
         self.schema = schema
         self._validate_on_load = validate_on_load
@@ -862,13 +917,6 @@ class SearchIndex(BaseSearchIndex):
         self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        if "_owns_redis_client" in kwargs:
-            # Underscore-prefixed kwargs are forwarded verbatim by
-            # _split_from_existing_kwargs, so this would otherwise be dropped
-            # in silence and leak the connection it used to control.
-            raise TypeError(
-                "_owns_redis_client is no longer accepted; use owns_client instead"
-            )
         # Must be assigned before _register_client_finalizer, which gates on
         # this flag.
         self._owns_redis_client = (
@@ -881,6 +929,11 @@ class SearchIndex(BaseSearchIndex):
         self._register_client_finalizer(redis_client)
 
     _finalizer_close_client = staticmethod(_close_owned_sync_client)
+    _wrong_flavour_clients = (AsyncRedis, AsyncRedisCluster)
+    _wrong_flavour_needs = "a sync Redis client"
+    _wrong_flavour_advice = (
+        "Pass a sync client here, or use AsyncSearchIndex for async clients."
+    )
 
     def disconnect(self):
         """Close the Redis client if this index owns it.
@@ -918,18 +971,21 @@ class SearchIndex(BaseSearchIndex):
             owns_client (Optional[bool], optional): Whether the index closes
                 the client. Defaults to True when this method created the
                 client from `redis_url`, and False when you supplied one.
+            connection_kwargs (Optional[Dict[str, Any]]): Redis client
+                connection args, used only when this method creates the
+                client from ``redis_url``. Other keyword arguments are
+                treated the same way.
 
         Raises:
             ValueError: If redis_url or redis_client is not provided.
         """
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs", "connection_args"),
-        )
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
         lib_name = cast(str | None, init_kwargs.get("lib_name"))
         created_redis_client = False
 
         if redis_client:
+            # Ahead of validate_*_redis, whose message is generic.
+            cls._reject_wrong_client_flavour(redis_client)
             # Validate client type and set lib name
             RedisConnectionFactory.validate_sync_redis(redis_client, lib_name)
             # Mark that client was already validated to avoid duplicate calls
@@ -995,52 +1051,6 @@ class SearchIndex(BaseSearchIndex):
             )
             self._validated_client = True
         return self.__redis_client
-
-    @deprecated_function("connect", "Pass connection parameters in __init__.")
-    def connect(self, redis_url: str | None = None, **kwargs):
-        """Connect to a Redis instance using the provided `redis_url`, falling
-        back to the `REDIS_URL` environment variable (if available).
-
-        Note: Additional keyword arguments (`**kwargs`) can be used to provide
-        extra options specific to the Redis connection.
-
-        Args:
-            redis_url (Optional[str], optional): The URL of the Redis server to
-                connect to.
-
-        Raises:
-            redis.exceptions.ConnectionError: If the connection to the Redis
-                server fails.
-            ValueError: If the Redis URL is not provided nor accessible
-                through the `REDIS_URL` environment variable.
-            ModuleNotFoundError: If required Redis modules are not installed.
-        """
-        self.invalidate_sql_schema_cache()
-        self.__redis_client = RedisConnectionFactory.get_redis_connection(
-            redis_url=redis_url, **kwargs
-        )
-        self._register_client_finalizer(self.__redis_client)
-
-    @deprecated_function("set_client", "Pass connection parameters in __init__.")
-    def set_client(self, redis_client: SyncRedisClient, **kwargs):
-        """Manually set the Redis client to use with the search index.
-
-        This method configures the search index to use a specific Redis or
-        Async Redis client. It is useful for cases where an external,
-        custom-configured client is preferred instead of creating a new one.
-
-        Args:
-            redis_client (Redis): A Redis or Async Redis
-                client instance to be used for the connection.
-
-        Raises:
-            TypeError: If the provided client is not valid.
-        """
-        RedisConnectionFactory.validate_sync_redis(redis_client)
-        self.invalidate_sql_schema_cache()
-        self.__redis_client = redis_client
-        self._register_client_finalizer(redis_client)
-        return self
 
     def _check_svs_support(self) -> None:
         """Validate SVS-VAMANA support.
@@ -2150,9 +2160,20 @@ class AsyncSearchIndex(BaseSearchIndex):
         # delete index and data
         await index.delete(drop=True)
 
+    Pass ``redis_client`` to use a client you configured yourself. The index
+    leaves such a client open when it is disconnected or garbage collected;
+    pass ``owns_client=True`` to hand that responsibility over.
+
+    .. code-block:: python
+
+        from redis.asyncio import Redis
+        from redisvl.index import AsyncSearchIndex
+
+        client = Redis.from_url("redis://localhost:6379", socket_timeout=5)
+        index = AsyncSearchIndex.from_yaml("schemas/schema.yaml", redis_client=client)
+
     """
 
-    @deprecated_argument("redis_kwargs", "Use connection_kwargs instead.")
     def __init__(
         self,
         schema: IndexSchema,
@@ -2182,13 +2203,20 @@ class AsyncSearchIndex(BaseSearchIndex):
                 only if it created one itself. Pass True to hand over a client
                 you created, or False to keep one the index would otherwise
                 close, in which case closing it becomes your responsibility.
+
+        Raises:
+            ValueError: If ``schema`` is not an IndexSchema.
+            TypeError: If ``redis_client`` is the wrong flavour, or if a
+                keyword that no longer exists is passed. ``connection_args``
+                and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        if "redis_kwargs" in kwargs:
-            connection_kwargs = kwargs.pop("redis_kwargs")
+        _reject_removed_kwargs(kwargs)
 
         # final validation on schema object
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
+
+        self._reject_wrong_client_flavour(redis_client)
 
         self.schema = schema
         self._validate_on_load = validate_on_load
@@ -2206,13 +2234,6 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        if "_owns_redis_client" in kwargs:
-            # Underscore-prefixed kwargs are forwarded verbatim by
-            # _split_from_existing_kwargs, so this would otherwise be dropped
-            # in silence and leak the connection it used to control.
-            raise TypeError(
-                "_owns_redis_client is no longer accepted; use owns_client instead"
-            )
         # Must be assigned before _register_client_finalizer, which gates on
         # this flag.
         self._owns_redis_client = (
@@ -2225,6 +2246,13 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._register_client_finalizer(redis_client)
 
     _finalizer_close_client = staticmethod(_close_owned_async_client)
+    _wrong_flavour_clients = (Redis, RedisCluster)
+    _wrong_flavour_needs = "an async Redis client"
+    _wrong_flavour_advice = (
+        "Pass an async client here, use SearchIndex for sync clients, or "
+        "convert a non-cluster client with "
+        "RedisConnectionFactory.sync_to_async_redis()."
+    )
 
     @classmethod
     async def from_existing(
@@ -2246,20 +2274,26 @@ class AsyncSearchIndex(BaseSearchIndex):
             owns_client (Optional[bool], optional): Whether the index closes
                 the client. Defaults to True when this method created the
                 client from `redis_url`, and False when you supplied one.
+            connection_kwargs (Optional[Dict[str, Any]]): Redis client
+                connection args, used only when this method creates the
+                client from ``redis_url``. Other keyword arguments are
+                treated the same way.
         """
+        # Split before the presence check below: redis_kwargs was the async
+        # alias, so a caller passing it with no client would otherwise get the
+        # generic ValueError rather than being told the current spelling.
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
+
         if not redis_url and not redis_client:
             raise ValueError(
                 "Must provide either a redis_url or redis_client to fetch Redis index info."
             )
-
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs", "redis_kwargs"),
-        )
         lib_name = cast(str | None, init_kwargs.get("lib_name"))
         created_redis_client = False
 
         if redis_client:
+            # Ahead of validate_*_redis, whose message is generic.
+            cls._reject_wrong_client_flavour(redis_client)
             # Validate client type and set lib name
             await RedisConnectionFactory.validate_async_redis(redis_client, lib_name)
             # Mark that client was already validated to avoid duplicate calls
@@ -2301,33 +2335,6 @@ class AsyncSearchIndex(BaseSearchIndex):
         """The underlying redis-py client object."""
         return self._redis_client
 
-    @deprecated_function("connect", "Pass connection parameters in __init__.")
-    async def connect(self, redis_url: str | None = None, **kwargs):
-        """[DEPRECATED] Connect to a Redis instance. Use connection parameters in __init__."""
-        warnings.warn(
-            "connect() is deprecated; pass connection parameters in __init__",
-            DeprecationWarning,
-        )
-        self.invalidate_sql_schema_cache()
-        client = await RedisConnectionFactory._get_aredis_connection(
-            redis_url=redis_url, **kwargs
-        )
-        await self.set_client(client)
-
-    @deprecated_function("set_client", "Pass connection parameters in __init__.")
-    async def set_client(self, redis_client: AsyncRedisClient | SyncRedisClient):
-        """
-        [DEPRECATED] Manually set the Redis client to use with the search index.
-        This method is deprecated; please provide connection parameters in __init__.
-        """
-        redis_client = await self._validate_client(redis_client)
-        self.invalidate_sql_schema_cache()
-        await self.disconnect()
-        async with self._lock:
-            self._redis_client = redis_client
-        self._register_client_finalizer(redis_client)
-        return self
-
     async def _get_client(self) -> AsyncRedisClient:
         """Lazily instantiate and return the async Redis client."""
         if self._redis_client is None:
@@ -2352,30 +2359,6 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
             self._validated_client = True
         return self._redis_client
-
-    async def _validate_client(
-        self, redis_client: AsyncRedisClient | SyncRedisClient
-    ) -> AsyncRedisClient:
-        # Handle deprecated sync client conversion
-        if isinstance(redis_client, (Redis, RedisCluster)):
-            warnings.warn(
-                "Passing a sync Redis client to AsyncSearchIndex is deprecated "
-                "and will be removed in the next major version. Please use an "
-                "async Redis client instead.",
-                DeprecationWarning,
-            )
-            # Use a new variable name
-            async_redis_client: AsyncRedisClient = (
-                RedisConnectionFactory.sync_to_async_redis(redis_client)
-            )
-            return async_redis_client  # Return the converted client
-        # Check if it's a valid async client (standard or cluster)
-        elif not isinstance(redis_client, (AsyncRedis, AsyncRedisCluster)):
-            raise ValueError(
-                "Invalid async client type: must be AsyncRedis or AsyncRedisCluster"
-            )
-        # If it passed the elif, it's already an AsyncRedisClient
-        return redis_client
 
     @staticmethod
     async def _info(name: str, redis_client: AsyncRedisClient) -> dict[str, Any]:
@@ -3390,6 +3373,9 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         For callers outside an event loop, such as ``__del__`` or a shutdown
         hook. Honours ``owns_client`` exactly as :meth:`disconnect` does.
+
+        Does nothing if a loop is already running, since it cannot await the
+        close from inside one. Use :meth:`disconnect` there.
         """
         if self._redis_client is None or not self._owns_redis_client:
             return

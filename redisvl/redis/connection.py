@@ -1,5 +1,6 @@
 import os
-from typing import Any, Sequence, TypeVar, overload
+from collections.abc import Mapping
+from typing import Any, TypeVar, overload
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
 
@@ -29,9 +30,44 @@ from redisvl.utils.utils import deprecated_argument, deprecated_function
 logger = get_logger(__name__)
 
 
+# Old spellings and their current equivalents. Kept as a table so **kwargs
+# cannot swallow one in silence: a caller who passes an old name is told the
+# current one, rather than having it ignored or forwarded to redis-py as an
+# unexpected argument.
+_REMOVED_CONNECTION_KWARGS = {
+    "connection_args": "connection_kwargs",
+    "redis_kwargs": "connection_kwargs",
+    "_owns_redis_client": "owns_client",
+}
+
+
+def _reject_removed_kwargs(kwargs: Mapping[str, Any]) -> None:
+    """Raise if a caller passed a keyword that no longer exists.
+
+    The message names the keyword and its replacement only. Connection
+    keywords carry passwords, so echoing a rejected value would put a live
+    credential into an exception string and from there into logs.
+
+    It says "not a supported keyword" rather than "no longer supported"
+    because the callers sharing this table never all accepted every name.
+    """
+    for name, replacement in _REMOVED_CONNECTION_KWARGS.items():
+        if name in kwargs:
+            raise TypeError(f"{name} is not a supported keyword; use {replacement}")
+
+
 def _split_from_existing_kwargs(
-    kwargs: dict[str, Any], *, nested_connection_keys: Sequence[str]
+    kwargs: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split ``from_existing`` kwargs into constructor and connection halves.
+
+    Consumes ``kwargs`` in place. ``connection_kwargs`` is merged flat into
+    the connection half, so a caller may either nest or spread it. Removed
+    keywords are rejected first, so a stale spelling fails here rather than
+    reaching redis-py as an unexpected argument.
+    """
+    _reject_removed_kwargs(kwargs)
+
     init_kwargs: dict[str, Any] = {}
     connection_kwargs: dict[str, Any] = {}
 
@@ -43,10 +79,9 @@ def _split_from_existing_kwargs(
         if key.startswith("_"):
             init_kwargs[key] = kwargs.pop(key)
 
-    for key in nested_connection_keys:
-        nested_kwargs = kwargs.pop(key, None)
-        if nested_kwargs is not None:
-            connection_kwargs.update(nested_kwargs)
+    nested_kwargs = kwargs.pop("connection_kwargs", None)
+    if nested_kwargs is not None:
+        connection_kwargs.update(nested_kwargs)
 
     connection_kwargs.update(kwargs)
     return init_kwargs, connection_kwargs
