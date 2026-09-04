@@ -15,6 +15,8 @@ from redisvl.query.filter import (
     Tag,
     Text,
     Timestamp,
+    intersect_with_filter,
+    render_filter,
 )
 
 
@@ -864,3 +866,63 @@ def test_is_missing_filter_combinations():
     assert "ismissing(@brand)" in complex_str
     assert "@price:[(100 +inf]" in complex_str
     assert "@category:{electronics}" in complex_str
+
+
+# Regression coverage for issue #708. These two helpers are the single place
+# that decides how a filter is joined to a query, so their edge cases are
+# asserted directly rather than only through the six query classes that use them.
+@pytest.mark.parametrize(
+    "filter_expression,expected",
+    [
+        (None, None),
+        ("", None),
+        ("*", None),
+        # Whitespace is stripped before the wildcard test: emitting "( * )" or
+        # "(  )" as an intersection operand is a Redis syntax error.
+        ("  ", None),
+        (" * ", None),
+        ("\t*\n", None),
+        ("@a:{x}", "@a:{x}"),
+        (" @a:{x} ", "@a:{x}"),
+        ("@a:{x} | @b:{y}", "@a:{x} | @b:{y}"),
+    ],
+)
+def test_render_filter(filter_expression, expected):
+    assert render_filter(filter_expression) == expected
+
+
+def test_render_filter_with_filter_expression_inputs():
+    """A FilterExpression is rendered via `str()`, and the input is left alone.
+
+    The coercion is not incidental: `FilterField.__eq__` is overloaded to build
+    a filter and mutates the receiver in place, so comparing an un-narrowed
+    field against "*" would both return a truthy FilterExpression -- silently
+    dropping the filter -- and corrupt the caller's object.
+    """
+    assert render_filter(Tag("category") == "tech") == "@category:{tech}"
+
+    # An empty filter renders as "*", which means "no filtering".
+    assert render_filter(Tag("category") == []) is None
+
+    field = Tag("category")
+    before = str(field)
+    assert render_filter(field) is None
+    assert str(field) == before
+
+
+@pytest.mark.parametrize(
+    "filter_expression,expected",
+    [
+        # A filter that selects everything contributes no clause at all.
+        (None, "@text:(fox)"),
+        ("", "@text:(fox)"),
+        ("*", "@text:(fox)"),
+        (" * ", "@text:(fox)"),
+        # Redis has no AND keyword, and the filter is parenthesized so that a
+        # union inside it cannot bind across the intersection.
+        ("@a:{x}", "@text:(fox) (@a:{x})"),
+        ("@a:{x} | @b:{y}", "@text:(fox) (@a:{x} | @b:{y})"),
+    ],
+)
+def test_intersect_with_filter(filter_expression, expected):
+    assert intersect_with_filter("@text:(fox)", filter_expression) == expected

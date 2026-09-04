@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from redis.commands.search.query import Filter
 
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, render_filter
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
 
@@ -276,13 +276,8 @@ def build_base_query(
     elif vector_search_method is not None:
         raise ValueError(f"Unknown vector search method: {vector_search_method}")
 
-    if isinstance(filter_expression, FilterExpression):
-        filter_expression = str(filter_expression)
-
-    if filter_expression and filter_expression != "*":
-        vsim_filter = Filter("FILTER", str(filter_expression))
-    else:
-        vsim_filter = None
+    rendered_filter = render_filter(filter_expression)
+    vsim_filter = Filter("FILTER", rendered_filter) if rendered_filter else None
 
     # Serialize the vector similarity query
     vsim_query = HybridVsimQuery(

@@ -351,6 +351,63 @@ def test_text_query_with_string_filter():
     assert "AND" not in query_string_wildcard
 
 
+def test_vector_query_prefilter_shapes():
+    """A KNN pre-filter is parenthesized unless it is the bare wildcard.
+
+    Redis rejects a bare multi-clause pre-filter outright, so a union filter
+    could not run at all, and an empty filter produced "=>[KNN ...]", which is
+    also a syntax error. Match-everything stays the bare "*", which is the
+    documented form and the one shape where "(*)" would be needless churn.
+    Regression coverage for issue #708.
+    """
+    knn = "[KNN 10 @embedding $vector AS vector_distance]"
+
+    def prefilter_for(filter_expression):
+        return VectorQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            filter_expression=filter_expression,
+        )._build_query_string()
+
+    # A real filter is parenthesized, single clause included.
+    assert prefilter_for("@category:{tech}") == f"(@category:{{tech}})=>{knn}"
+    assert prefilter_for(Tag("category") == "tech") == f"(@category:{{tech}})=>{knn}"
+
+    # A top-level union must not bind across the "=>" pre-filter boundary.
+    assert prefilter_for("@a:{x} | @b:{y}") == f"(@a:{{x}} | @b:{{y}})=>{knn}"
+
+    assert prefilter_for(None) == f"*=>{knn}"
+    assert prefilter_for("*") == f"*=>{knn}"
+    assert prefilter_for("") == f"*=>{knn}"
+
+
+def test_vector_range_query_filter_is_parenthesised():
+    """The filter clause carries its own parentheses rather than the whole query.
+
+    Without them a raw-string union binds across the intersection, so the query
+    matches documents outside the vector range. The outer parentheses the old
+    form wrapped around everything were redundant: the string is always a
+    complete FT.SEARCH argument, never an embedded operand. See issue #708.
+    """
+    base = (
+        "@embedding:[VECTOR_RANGE $distance_threshold $vector]"
+        "=>{$YIELD_DISTANCE_AS: vector_distance}"
+    )
+
+    def query_string_for(filter_expression):
+        return VectorRangeQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            distance_threshold=0.2,
+            filter_expression=filter_expression,
+        )._build_query_string()
+
+    assert query_string_for("@category:{tech}") == f"{base} (@category:{{tech}})"
+    assert query_string_for("@a:{x} | @b:{y}") == f"{base} (@a:{{x}} | @b:{{y}})"
+    assert query_string_for(None) == base
+    assert query_string_for("*") == base
+
+
 @pytest.mark.skip("Test is flaking")
 def test_text_query_word_weights():
     # verify word weights get added into the raw Redis query syntax

@@ -781,6 +781,60 @@ class FilterExpression:
         return self._filter
 
 
+def render_filter(filter_expression: str | FilterExpression | None) -> str | None:
+    """Render a filter expression, or None when it selects every document.
+
+    A ``None``, empty, or wildcard (``*``) filter contributes no clause to a
+    query: ``*`` is only valid as an entire query, never as one operand of an
+    intersection.
+
+    A string filter is returned verbatim and is never escaped, so an untrusted
+    value must be built through ``Tag``/``Text``/``Num`` rather than
+    interpolated into a filter string by the caller.
+
+    Internal helper; not part of the public API.
+    """
+    if filter_expression is None:
+        return None
+
+    # Coerce before comparing: `FilterField.__eq__` is overloaded to build a
+    # filter, so comparing an un-narrowed value against "*" would return a
+    # truthy FilterExpression and silently drop the filter.
+    if not isinstance(filter_expression, str):
+        filter_expression = str(filter_expression)
+
+    filter_expression = filter_expression.strip()
+    if not filter_expression or filter_expression == "*":
+        return None
+
+    return filter_expression
+
+
+def intersect_with_filter(
+    query: str, filter_expression: str | FilterExpression | None
+) -> str:
+    """Intersect a query clause with a filter expression.
+
+    Redis Search has no ``AND`` keyword -- intersection is expressed by
+    whitespace between clauses, and a literal ``AND`` would be parsed as an
+    ordinary search term. The filter is parenthesized so that a ``|`` union
+    inside it cannot bind across the intersection.
+
+    ``query`` is inserted unparenthesized, so it must not itself contain a
+    top-level ``|``; callers that build a union clause parenthesize it
+    themselves. The result is likewise ungrouped -- parenthesize it before
+    embedding it as an operand, as a KNN pre-filter does. A wildcard or absent
+    filter adds no clause and leaves ``query`` unchanged.
+
+    Internal helper; not part of the public API.
+    """
+    rendered = render_filter(filter_expression)
+    if rendered is None:
+        return query
+
+    return f"{query} ({rendered})"
+
+
 class Timestamp(Num):
     """
     A timestamp filter for querying date/time fields in Redis.
