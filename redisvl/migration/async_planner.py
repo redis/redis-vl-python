@@ -235,9 +235,7 @@ class AsyncMigrationPlanner:
         prefixes = index.schema.index.prefix
         prefix_list = prefixes if isinstance(prefixes, list) else [prefixes]
 
-        client = index.client
-        if client is None:
-            raise ValueError("Failed to get Redis client from index")
+        client = await index._get_client()
 
         return SourceSnapshot(
             index_name=index_name,

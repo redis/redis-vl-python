@@ -93,7 +93,9 @@ def deprecated_argument(argument: str, replacement: str | None = None) -> Callab
             def test_method(cls, old_arg=None, new_arg=None):
                 pass
     """
-    message = f"Argument {argument} is deprecated and will be removed in the next major release."
+    message = (
+        f"Argument {argument} is deprecated and will be removed in a future release."
+    )
     if replacement:
         message += f" Use {replacement} instead."
 
@@ -157,7 +159,7 @@ def deprecated_function(name: str | None = None, replacement: str | None = None)
         fn_name = name or func.__name__
         warning_message = (
             f"Function {fn_name} is deprecated and will be "
-            "removed in the next major release. "
+            "removed in a future release. "
         )
         if replacement:
             warning_message += replacement
@@ -194,7 +196,7 @@ def deprecated_class(name: str | None = None, replacement: str | None = None):
         class_name = name or cls.__name__
         warning_message = (
             f"Class {class_name} is deprecated and will be "
-            "removed in the next major release. "
+            "removed in a future release. "
         )
         if replacement:
             warning_message += replacement

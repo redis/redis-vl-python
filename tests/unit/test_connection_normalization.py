@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,6 +8,7 @@ from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.router.semantic import SemanticRouter
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.sql import SQLQuery
+from redisvl.utils.utils import assert_no_warnings
 
 
 def _schema_dict(name: str = "idx") -> dict:
@@ -103,6 +105,41 @@ def test_search_index_from_existing_owns_factory_created_client():
     index.disconnect()
 
     created_client.close.assert_called_once_with()
+
+
+def test_search_index_from_existing_honours_explicit_owns_client():
+    """``owns_client`` is an init kwarg, not a connection kwarg.
+
+    Without the allow-list entry in ``_split_from_existing_kwargs`` it would
+    fall through to ``connection_kwargs`` and redis-py would reject it. An
+    explicit value also wins over the ownership ``from_existing`` would
+    otherwise assume for a client it created itself.
+    """
+    created_client = MagicMock()
+
+    with (
+        patch(
+            "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+            return_value=created_client,
+        ) as mock_get_connection,
+        patch.object(SearchIndex, "_info", return_value={}),
+        patch(
+            "redisvl.index.index.convert_index_info_to_schema",
+            return_value=_schema_dict("search-index"),
+        ),
+    ):
+        index = SearchIndex.from_existing(
+            "search-index",
+            redis_url="redis://localhost:6380",
+            owns_client=False,
+        )
+
+    mock_get_connection.assert_called_once_with(redis_url="redis://localhost:6380")
+    assert index._owns_redis_client is False
+
+    index.disconnect()
+
+    created_client.close.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -278,7 +315,7 @@ def test_semantic_router_from_existing_rebuilds_from_redis_url():
     assert mock_from_dict.call_args.kwargs["_index_kwargs"] == {
         "_internal_flag": True,
         "_client_validated": True,
-        "_owns_redis_client": True,
+        "owns_client": True,
     }
     assert result is loaded_router
 
@@ -298,6 +335,58 @@ def test_base_cache_sync_client_creation_uses_connection_factory():
         redis_url="redis+sentinel://localhost:26379/mymaster"
     )
     assert client is mock_client
+
+
+@pytest.mark.asyncio
+async def test_base_cache_async_client_creation_emits_no_warning():
+    """Creating a cache's async client must not warn.
+
+    ``_get_async_redis_client`` used to call ``get_async_redis_connection``,
+    which warns unconditionally, so cache users saw a DeprecationWarning for
+    an API they never called. A suite-wide filter in pyproject.toml hid it.
+    This is the guard that replaced that filter.
+    """
+    cache = EmbeddingsCache(redis_url="redis://localhost:6379")
+    mock_client = MagicMock()
+
+    with patch(
+        "redisvl.extensions.cache.base.RedisConnectionFactory._get_aredis_connection",
+        new=AsyncMock(return_value=mock_client),
+    ) as mock_get_connection:
+        with assert_no_warnings():
+            client = await cache._get_async_redis_client()
+
+    mock_get_connection.assert_awaited_once_with(redis_url="redis://localhost:6379")
+    assert client is mock_client
+
+
+@pytest.mark.asyncio
+async def test_base_cache_async_client_creation_is_serialised():
+    """Concurrent callers must share one client, not orphan a connection pool.
+
+    Building the client awaits a CLIENT SETINFO round trip, so a bare
+    check-then-set would let two tasks each create one and leave the first
+    unreachable and never closed.
+    """
+    cache = EmbeddingsCache(redis_url="redis://localhost:6379")
+    created = []
+
+    async def factory(*args, **kwargs):
+        await asyncio.sleep(0)  # the suspension the real factory introduces
+        client = MagicMock(name=f"client{len(created)}")
+        created.append(client)
+        return client
+
+    with patch(
+        "redisvl.extensions.cache.base.RedisConnectionFactory._get_aredis_connection",
+        new=factory,
+    ):
+        first, second = await asyncio.gather(
+            cache._get_async_redis_client(), cache._get_async_redis_client()
+        )
+
+    assert len(created) == 1
+    assert first is second
 
 
 def test_sql_query_uses_connection_factory_for_redis_url():

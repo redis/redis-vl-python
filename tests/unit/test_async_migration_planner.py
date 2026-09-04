@@ -35,8 +35,8 @@ class AsyncDummyIndex:
         self._stats = stats
         self._client = AsyncDummyClient(keys)
 
-    @property
-    def client(self):
+    async def _get_client(self):
+        """Mirrors AsyncSearchIndex._get_client, the lazy async getter."""
         return self._client
 
     async def info(self):

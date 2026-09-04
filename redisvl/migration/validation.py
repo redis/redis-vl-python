@@ -12,7 +12,6 @@ from redisvl.migration.models import (
     QueryCheckResult,
 )
 from redisvl.migration.utils import build_scan_match_patterns, load_yaml, schemas_equal
-from redisvl.types import SyncRedisClient
 
 
 class MigrationValidator:
@@ -88,9 +87,8 @@ class MigrationValidator:
                     keys_to_check.append(translated)
             # Check keys one at a time to avoid Redis Cluster cross-slot
             # errors from multi-key EXISTS commands.
-            existing_count = sum(
-                target_index.client.exists(key) for key in keys_to_check
-            )
+            client = target_index._redis_client
+            existing_count = sum(client.exists(key) for key in keys_to_check)
             validation.key_sample_exists = existing_count == len(keys_to_check)
 
         # Run automatic functional checks (always).
@@ -128,10 +126,7 @@ class MigrationValidator:
 
     def _count_index_keys(self, index: SearchIndex) -> int:
         """Count keys matching the target index prefixes with SCAN."""
-        raw_client = index.client
-        if raw_client is None:
-            raise ValueError("Redis client is required to count index keys")
-        client = cast(SyncRedisClient, raw_client)
+        client = index._redis_client
 
         prefixes = index.schema.index.prefix
         prefix_list = prefixes if isinstance(prefixes, list) else [prefixes]
@@ -173,10 +168,8 @@ class MigrationValidator:
                 )
             )
 
+        client = target_index._redis_client
         for key in query_checks.get("keys_exist", []):
-            client = target_index.client
-            if client is None:
-                raise ValueError("Redis client not connected")
             exists = bool(client.exists(key))
             results.append(
                 QueryCheckResult(
