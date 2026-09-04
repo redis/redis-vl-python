@@ -428,11 +428,14 @@ def test_filters(index, query, sample_datetimes):
     n4 = Num("age") != 18
     search(query, index, n4, 6, age_range=(0, 0, 18))
 
-    # Geographic filters
-    g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
+    # Geographic filters. A fractional radius on purpose: truncating it would
+    # render `0`, which the server rejects outright, so this is what catches a
+    # radius that stops being sent as given. The matching documents sit on the
+    # centre, so a whole-kilometre radius would give the same counts.
+    g = Geo("location") == GeoRadius(-122.4194, 37.7749, 0.5, unit="km")
     search(query, index, g, 3, location="-122.4194,37.7749")
 
-    g = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
+    g = Geo("location") != GeoRadius(-122.4194, 37.7749, 0.5, unit="km")
     search(query, index, g, 4, location="-110.0839,37.3861")
 
     # Text filters
