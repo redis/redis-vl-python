@@ -12,6 +12,7 @@ from redis.cluster import RedisCluster
 
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.types import AsyncRedisClient, SyncRedisClient
+from redisvl.utils.utils import match_pattern
 
 
 class BaseCache:
@@ -184,12 +185,12 @@ class BaseCache:
     def clear(self) -> None:
         """Clear the cache of all keys."""
         client = self._get_redis_client()
-        prefix = self._get_prefix()
+        pattern = match_pattern(self._get_prefix())
 
         # Scan for all keys with our prefix
         cursor = 0  # Start with cursor 0
         while True:
-            cursor_int, keys = client.scan(cursor=cursor, match=f"{prefix}*", count=100)  # type: ignore
+            cursor_int, keys = client.scan(cursor=cursor, match=pattern, count=100)  # type: ignore
             if keys:
                 client.delete(*keys)
             if cursor_int == 0:  # Redis returns 0 when scan is complete
@@ -206,13 +207,13 @@ class BaseCache:
     async def aclear(self) -> None:
         """Async clear the cache of all keys."""
         client = await self._get_async_redis_client()
-        prefix = self._get_prefix()
+        pattern = match_pattern(self._get_prefix())
 
         # Scan for all keys with our prefix
         cursor = 0  # Start with cursor 0
         while True:
             cursor_int, keys = await client.scan(
-                cursor=cursor, match=f"{prefix}*", count=100
+                cursor=cursor, match=pattern, count=100
             )  # type: ignore
             if keys:
                 await client.delete(*keys)

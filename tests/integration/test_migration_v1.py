@@ -5,7 +5,7 @@ import yaml
 from redisvl.index import SearchIndex
 from redisvl.migration import MigrationExecutor, MigrationPlanner, MigrationValidator
 from redisvl.migration.utils import load_migration_plan, schemas_equal
-from redisvl.redis.utils import array_to_buffer
+from redisvl.redis.utils import array_to_buffer, convert_bytes
 
 
 def test_drop_recreate_plan_apply_validate_flow(redis_url, worker_id, tmp_path):
@@ -128,3 +128,32 @@ def test_drop_recreate_plan_apply_validate_flow(redis_url, worker_id, tmp_path):
     finally:
         live_index = SearchIndex.from_existing(index_name, redis_url=redis_url)
         live_index.delete(drop=True)
+
+
+def test_scan_patterns_select_only_the_named_prefix(client, redis_test_name):
+    """Redis, not a reimplementation of its glob, decides what a pattern matches.
+
+    Exercises the patterns the migration and router builders emit for a prefix
+    carrying glob metacharacters: unescaped, ``base[ab]*`` selects ``basea``
+    and ``baseb`` and misses ``base[ab]`` entirely.
+    """
+    from redisvl.migration.utils import build_scan_match_patterns
+    from redisvl.utils.utils import match_pattern
+
+    base = redis_test_name("glob_prefix")
+    owned = {f"{base}[ab]:1", f"{base}[ab]:2"}
+    others = {f"{base}a:1", f"{base}b:1"}
+    for key in owned | others:
+        client.set(key, "1")
+
+    (pattern,) = build_scan_match_patterns([f"{base}[ab]"], ":")
+    assert set(convert_bytes(list(client.scan_iter(match=pattern)))) == owned
+
+    route_pattern = match_pattern(f"{base}[ab]", ":", "route", ":")
+    client.set(f"{base}[ab]:route:ref", "1")
+    client.set(f"{base}a:route:ref", "1")
+    assert convert_bytes(list(client.scan_iter(match=route_pattern))) == [
+        f"{base}[ab]:route:ref"
+    ]
+
+    client.delete(*(owned | others), f"{base}[ab]:route:ref", f"{base}a:route:ref")
