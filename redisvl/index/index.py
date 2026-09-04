@@ -75,6 +75,7 @@ from redisvl.query import (
 from redisvl.query.aggregate import AggregateHybridQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
+    _REMOVED_INDEX_KWARGS,
     RedisConnectionFactory,
     _reject_removed_kwargs,
     _split_from_existing_kwargs,
@@ -898,7 +899,7 @@ class SearchIndex(BaseSearchIndex):
                 keyword that no longer exists is passed. ``connection_args``
                 and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        _reject_removed_kwargs(kwargs)
+        _reject_removed_kwargs(kwargs, _REMOVED_INDEX_KWARGS)
 
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
@@ -923,6 +924,9 @@ class SearchIndex(BaseSearchIndex):
             redis_client is None if owns_client is None else bool(owns_client)
         )
         self._client_finalizer = None
+        # Whether the caller handed us a client. If they did and gave no URL,
+        # there is nothing to rebuild from once that client is closed.
+        self._client_was_injected = redis_client is not None
         # Close the owned client when this index is garbage collected. When
         # the client is created lazily, registration happens at creation time
         # instead (see the _redis_client property).
@@ -1032,6 +1036,13 @@ class SearchIndex(BaseSearchIndex):
         Lazily creates a Redis client instance if it doesn't exist.
         """
         if self.__redis_client is None:
+            if self._client_was_injected and self._redis_url is None:
+                raise RedisVLError(
+                    "This index was given a Redis client and that client has "
+                    "been closed, so there is nothing left to connect with. "
+                    "Build a new index, or pass redis_url so the index can "
+                    "manage its own connection."
+                )
             with self._lock:
                 if self.__redis_client is None:
                     # Pass lib_name to connection factory
@@ -2210,7 +2221,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 keyword that no longer exists is passed. ``connection_args``
                 and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        _reject_removed_kwargs(kwargs)
+        _reject_removed_kwargs(kwargs, _REMOVED_INDEX_KWARGS)
 
         # final validation on schema object
         if not isinstance(schema, IndexSchema):
@@ -2240,6 +2251,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             redis_client is None if owns_client is None else bool(owns_client)
         )
         self._client_finalizer = None
+        # See the note in SearchIndex.__init__.
+        self._client_was_injected = redis_client is not None
         # Close the owned client when this index is garbage collected. When
         # the client is created lazily, registration happens at creation time
         # instead (see _get_client).
@@ -2338,6 +2351,13 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _get_client(self) -> AsyncRedisClient:
         """Lazily instantiate and return the async Redis client."""
         if self._redis_client is None:
+            if self._client_was_injected and self._redis_url is None:
+                raise RedisVLError(
+                    "This index was given a Redis client and that client has "
+                    "been closed, so there is nothing left to connect with. "
+                    "Build a new index, or pass redis_url so the index can "
+                    "manage its own connection."
+                )
             async with self._lock:
                 # Double-check to protect against concurrent access
                 if self._redis_client is None:
