@@ -612,6 +612,57 @@ def test_paginate_range_query(index, range_query):
     assert all(float(item["vector_distance"]) <= 0.2 for item in all_results)
 
 
+def test_no_content_query_returns_ids(index, sample_data):
+    """NOCONTENT results must survive the missing-field-payload filter.
+
+    Unlike the expiry race this needs no timing: under ``NOCONTENT`` the server
+    returns ids and no field data for *every* healthy match, so the drop
+    heuristic in ``process_results`` sees the same shape it uses to detect a
+    race victim. Before the ``_no_content`` short-circuit this returned an empty
+    list for every NOCONTENT query -- including through ``paginate``.
+    """
+    total = len(sample_data)
+    high_credit = sum(1 for d in sample_data if d["credit_score"] == "high")
+
+    # Plain filter, vector, and normalize-distance shapes. The last one used to
+    # raise KeyError on the absent vector_distance rather than return ids.
+    for query, expected in [
+        (FilterQuery(filter_expression=Tag("credit_score") == "high"), high_credit),
+        (
+            VectorQuery(
+                vector=[0.1, 0.1, 0.5],
+                vector_field_name="user_embedding",
+                num_results=total,
+            ),
+            total,
+        ),
+        (
+            VectorQuery(
+                vector=[0.1, 0.1, 0.5],
+                vector_field_name="user_embedding",
+                num_results=total,
+                normalize_vector_distance=True,
+            ),
+            total,
+        ),
+    ]:
+        results = index.query(query.no_content())
+        assert [doc["id"] for doc in results] and len(results) == expected
+        assert results.dropped_count == 0
+        assert results.complete
+
+    # paginate must reach the end of a NOCONTENT result set, not stop on page 1.
+    paged = [
+        doc
+        for batch in index.paginate(
+            FilterQuery(filter_expression=Tag("credit_score") == "high").no_content(),
+            page_size=2,
+        )
+        for doc in batch
+    ]
+    assert len(paged) == high_credit
+
+
 def test_sort_filter_query(index, sorted_filter_query):
     t = Text("job") % ""
     search(sorted_filter_query, index, t, 7, sort=True)
