@@ -166,11 +166,11 @@ class CohereTextVectorizer(BaseVectorizer):
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check", input_type="search_document")
             return len(embedding)
-        except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the Cohere API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for Cohere model "
+                f"'{self.model}': {e}"
+            ) from e
 
     def _get_cohere_embedding_type(self, dtype: str) -> list[str]:
         """
