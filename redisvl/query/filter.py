@@ -582,8 +582,9 @@ class Text(FilterField):
         value becomes a space first, so the value cannot close that phrase; a
         quote already separates tokens at index time, so this matches the same
         documents that escaping it never could. A value of nothing but quotes
-        therefore selects everything, like an empty value. ``%`` is the pattern
-        operator and interpolates its value untouched.
+        therefore becomes an empty phrase, which ``==`` matches no document
+        against. ``%`` is the pattern operator and interpolates its value
+        untouched.
     """
 
     OPERATORS: dict[FilterOperator, str] = {
@@ -677,11 +678,10 @@ class Text(FilterField):
 
         value = self._value
         if self._operator not in self._RAW_VALUE_OPERATORS:
+            # Substituting a space never empties the value, so the phrase always
+            # holds at least one character and never trips the `INDEXEMPTY`
+            # error that a literal `@field:("")` raises.
             value = _PHRASE_UNSAFE.sub(" ", value)
-            if not value.strip():
-                # Nothing but quotes. An empty phrase matches no document, so
-                # `!=` would match every one -- report "no filter" instead.
-                return "*"
 
         return self.OPERATOR_MAP[self._operator] % (
             self._field,

@@ -314,10 +314,14 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
             'hello") | (@secret:{leaked} @v:"nothing',
             '(-@text_field:"hello ) | (@secret:{leaked} @v: nothing")',
         ),
-        # A value of nothing but quotes leaves an empty phrase, which matches no
-        # document -- so `!=` would match every one. Report "no filter" instead.
-        ("__eq__", '"', "*"),
-        ("__ne__", '""', "*"),
+        # A value that neutralizes down to whitespace still renders as a phrase
+        # rather than collapsing to `*`. An empty phrase matches no document, so
+        # `==` fails closed; collapsing would invert that to matching every one,
+        # and `format_expression` drops a `*` operand, so it would also delete
+        # this clause from a surrounding AND.
+        ("__eq__", '"', '@text_field:(" ")'),
+        ("__ne__", '""', '(-@text_field:"  ")'),
+        ("__eq__", "   ", '@text_field:("   ")'),
         # Everything else survives untouched, the backslash included: escaping is
         # symmetric, so a document written with one indexes the joined term and
         # only an equally escaped query finds it. Replacing any of these would ask
@@ -352,6 +356,7 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
         "ne_quote_neutralized",
         "eq_quotes_only",
         "ne_quotes_only",
+        "eq_whitespace_only",
         "eq_backslash_untouched",
         "eq_punctuation_preserved",
         "like_raw_by_design",
