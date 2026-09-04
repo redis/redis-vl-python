@@ -1,7 +1,9 @@
 import calendar
+import math
 import operator
 import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 
 import numpy as np
 import pytest
@@ -404,6 +406,154 @@ def test_geo_filter(operation, expected):
     geo_radius = GeoRadius(1.0, 2.0, 3, "km")
     geo_f = Geo("geo_field")
     assert str(getattr(geo_f, operation)(geo_radius)) == expected
+
+
+def _geo_radius(**overrides) -> GeoRadius:
+    """A valid GeoRadius with arguments replaced, so a row names only what it changes."""
+    return GeoRadius(**{"longitude": 1.0, "latitude": 2.0, "radius": 3, **overrides})
+
+
+@pytest.mark.parametrize(
+    "overrides, expected",
+    [
+        # The unit that renders is GEO_UNITS' own spelling, not the caller's.
+        ({"unit": "KM"}, "@geo_field:[1.0 2.0 3 km]"),
+        # numpy integers are not `int` subclasses, so a concrete (int, float)
+        # check would reject them: `numbers.Real` is what keeps them working.
+        (
+            {
+                "longitude": np.float64(1.0),
+                "latitude": np.int64(2),
+                "radius": np.int64(3),
+            },
+            "@geo_field:[1.0 2 3 km]",
+        ),
+        # And why `numbers.Real` alone is not enough: every argument is
+        # formatted into the query string, so the type check admits a subclass
+        # that injects when rendered. Coercion is the guard, on both branches.
+        (
+            {"longitude": _StrOverridingFloat(1.0), "radius": _StrOverridingInt(3)},
+            "@geo_field:[1.0 2.0 3 km]",
+        ),
+        # The antimeridian and the poles are real places: the ranges include
+        # their endpoints.
+        ({"longitude": -180, "latitude": 90}, "@geo_field:[-180 90 3 km]"),
+        ({"longitude": 180, "latitude": -90}, "@geo_field:[180 -90 3 km]"),
+    ],
+    ids=[
+        "uppercase_unit",
+        "numpy_scalars_are_real_but_not_int",
+        "str_overriding_subclasses",
+        "range_minimums",
+        "range_maximums",
+    ],
+)
+def test_geo_radius_renders_a_coerced_spec(overrides, expected):
+    """Asserted through `Geo`, because the rendering template is Geo's."""
+    assert str(Geo("geo_field") == _geo_radius(**overrides)) == expected
+
+
+@pytest.mark.parametrize(
+    "overrides, expected_error",
+    [
+        # The bug. A `str` coordinate interpolated raw, so a value carrying `]`
+        # closed the geo clause and had its remainder parsed as syntax -- and an
+        # injected `|` lifts to the root of the parse tree, so a tenant filter
+        # sharing the query stops constraining it.
+        ({"longitude": "-122.4194 37.7749 10 km] | @secret:{leaked}"}, TypeError),
+        ({"latitude": "37.7749] | @secret:{leaked}"}, TypeError),
+        # `%i` refused a `str` radius, so it failed at render time with an
+        # obscure message; the coercion now refuses it at the caller's line.
+        ({"radius": "1 km] | @secret:{leaked}"}, TypeError),
+        ({"longitude": None}, TypeError),
+        # Registered as a `numbers.Number` but not a `numbers.Real`, which is
+        # what makes it the boundary case for the type the coercion accepts.
+        ({"longitude": Decimal("1.5")}, TypeError),
+        ({"longitude": [1.0]}, TypeError),
+        ({"longitude": 180.1}, ValueError),
+        ({"longitude": -180.1}, ValueError),
+        ({"latitude": 90.1}, ValueError),
+        ({"latitude": -90.1}, ValueError),
+        ({"longitude": float("nan")}, ValueError),
+        ({"latitude": float("nan")}, ValueError),
+        ({"radius": float("nan")}, ValueError),
+        # `Num` renders `-inf` and `+inf` by design -- they are literals in its
+        # own templates -- so this is the one rejection geo does not inherit.
+        ({"longitude": float("inf")}, ValueError),
+        ({"latitude": float("-inf")}, ValueError),
+        ({"unit": "parsec"}, ValueError),
+    ],
+    ids=[
+        "longitude_injects",
+        "latitude_injects",
+        "radius_injects",
+        "longitude_none",
+        "longitude_decimal",
+        "longitude_list",
+        "longitude_above_range",
+        "longitude_below_range",
+        "latitude_above_range",
+        "latitude_below_range",
+        "longitude_nan",
+        "latitude_nan",
+        "radius_nan",
+        "longitude_infinite",
+        "latitude_infinite",
+        "unknown_unit",
+    ],
+)
+def test_geo_radius_refuses_an_unrenderable_argument(overrides, expected_error):
+    with pytest.raises(expected_error):
+        _geo_radius(**overrides)
+
+
+def test_geo_radius_subclass_with_an_infinite_range_still_refuses_infinity():
+    """`isfinite` is checked separately from the range, not implied by it.
+
+    Unreachable through GeoSpec's own finite ranges -- `inf` already fails
+    `-180 <= v <= 180` -- so a subclass that widens a bound is the only way to
+    exercise the check, and the reason it is not left to the comparison.
+    """
+
+    class UnboundedGeoRadius(GeoRadius):
+        LONGITUDE_RANGE = (-math.inf, math.inf)
+
+    with pytest.raises(ValueError, match="must be a finite number"):
+        UnboundedGeoRadius(float("inf"), 2.0, 3, "km")
+
+
+def test_geo_radius_reports_the_unit_error_before_a_bad_coordinate():
+    """Unit is validated first, so a caller sees the error they saw before."""
+    with pytest.raises(ValueError, match="Unit must be one of"):
+        _geo_radius(longitude=9999, unit="parsec")
+
+
+def test_geo_radius_renders_its_own_spelling_of_a_unit():
+    """`GEO_UNITS`' literal renders, not the value that matched it.
+
+    `str.lower` returns a builtin `str`, so a `str` subclass overriding
+    `__str__` never reaches the query string. An object that only *compares*
+    equal to a known unit does, since the membership test is that comparison --
+    and returning the matched element closes it without an isinstance check
+    that would reject a legitimate `str` subclass.
+    """
+
+    class Kilometres:
+        def lower(self):
+            return self
+
+        def __eq__(self, other):
+            return other == "km"
+
+        def __hash__(self):
+            return hash("km")
+
+        def __str__(self):
+            return "km] | @secret:{leaked}"
+
+    rendered = str(Geo("geo_field") == _geo_radius(unit=Kilometres()))
+
+    assert rendered == "@geo_field:[1.0 2.0 3 km]"
 
 
 def test_filters_combination():
