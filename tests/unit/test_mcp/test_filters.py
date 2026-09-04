@@ -338,6 +338,13 @@ def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
             "unbalanced bracket in a value",
             {"field": "content", "op": "eq", "value": "a[b"},
         ),
+        # Reported by review: a value ending in a backslash sits immediately
+        # before the template's closing quote, and an escape-honouring phrase
+        # scan reads the pair as one and refuses the filter.
+        (
+            "value ending in a backslash",
+            {"field": "content", "op": "eq", "value": "C:\\Users\\"},
+        ),
         (
             "compound with exclusive bound",
             {
@@ -401,11 +408,12 @@ def test_merge_locked_filter_returns_each_side_unchanged_when_the_other_is_absen
         # end. Unbounded it reads this as a union hidden in the range and
         # refuses, and it costs the whole remaining string on every `[`.
         ("pipe after a range span", "(@rating:[4 5] | @category:{sports})"),
-        # The phrase skip must honour `\\"`. No DSL path emits this today -- eq/ne
-        # replace a quote, and `like`/`Tag` escape one outside any phrase -- so it
-        # comes in as a rendering. An escape-blind scan ends the phrase at the
-        # escaped quote and refuses every quote-bearing value on a locked tool.
-        ("escaped quote inside a phrase", '@content:("say \\"hi\\" now")'),
+        # RediSearch closes a phrase at `\"` rather than reading it as an escape,
+        # so the phrase scan must not honour the escape either. Honouring it
+        # reads these as unterminated and refuses an ordinary value ending in a
+        # backslash. Both templates, since each renders its own quote.
+        ("trailing backslash on eq", '@content:("trailing\\")'),
+        ("trailing backslash on ne", '(-@content:"C:\\Users\\")'),
     ],
 )
 def test_merge_locked_filter_accepts_a_legitimate_rendering(label, rendered):

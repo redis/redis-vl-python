@@ -400,12 +400,12 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
     ``merge_locked_filter`` -- and it runs only when a lock exists, so an
     unlocked tool relies on those two layers alone.
 
-    The quoted-phrase skip below assumes a rendering's unescaped quotes arrive in
+    The quoted-phrase skip below assumes a rendering's quotes arrive in
     delimiting pairs, which holds for every value the DSL can render: ``==`` and
     ``!=`` quote the value and take any quote it carried out first, and ``Tag``
-    and ``like`` values arrive with theirs escaped. If that ever stops holding,
-    the skip finds no closing quote and refuses the filter, so the failure is
-    loud rather than silent.
+    and ``like`` values arrive with theirs escaped, outside any phrase. If that
+    ever stops holding, the skip finds no closing quote and refuses the filter,
+    so the failure is loud rather than silent.
     """
     # Braces scope as much as parens do: a tag clause holds its alternatives in
     # braces, so `@category:{sports|health}` is one scoped clause rather than a
@@ -433,12 +433,17 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
         if character == '"':
             # A quoted phrase is a literal, so nothing inside it is structure and
             # a `|` inside it is a separator rather than a union. Unlike the range
-            # span below, the whole phrase can therefore be skipped. Ending the
-            # skip at the first *unescaped* quote is what keeps this failing
-            # closed: a value that did reach the rendering raw ends the phrase
-            # there, and the injected remainder is counted as before.
-            end = _find_unescaped(rendered, position + 1, '"')
-            if end is None:
+            # span below, the whole phrase can therefore be skipped.
+            #
+            # The scan deliberately does not treat `\` as escaping the closing
+            # quote, because RediSearch does not either: `@f:("x\")` closes the
+            # phrase and yields the term `x\`. Honouring the escape would read
+            # that as unterminated and refuse an ordinary value ending in a
+            # backslash, a Windows path among them. Nothing is given up, since a
+            # value cannot contribute a quote of its own -- `Text` replaces it,
+            # and `Tag` and `like` escape theirs outside any phrase.
+            end = rendered.find('"', position + 1)
+            if end == -1:
                 # Unterminated phrase: the remainder is unparsable.
                 escaped = True
                 break
@@ -454,14 +459,14 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
             # range holds numbers, so a `|` in here means a value reached the
             # query string raw, which is exactly the case this backstop exists
             # to catch; skipping past it would let a union hide behind brackets.
-            end = _find_unescaped(rendered, position + 1, "]")
-            if end is None:
+            span_end = _find_unescaped(rendered, position + 1, "]")
+            if span_end is None:
                 escaped = True
                 break
-            if _find_unescaped(rendered, position + 1, "|", end) is not None:
+            if _find_unescaped(rendered, position + 1, "|", span_end) is not None:
                 escaped = True
                 break
-            position = end + 1
+            position = span_end + 1
             continue
 
         if character in openers:
