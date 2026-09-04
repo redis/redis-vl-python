@@ -255,7 +255,15 @@ def _coerce_to_number(value: Any, owner: str, name: str) -> int | float:
     if isinstance(value, numbers.Integral):
         return int(value)
     if isinstance(value, numbers.Real):
-        coerced = float(value)
+        try:
+            coerced = float(value)
+        except OverflowError:
+            # A `Real` too large to convert, such as `Fraction(10**400, 1)`.
+            # Finite, but unrepresentable, so it leaves by the documented door
+            # rather than as an `OverflowError` from the conversion.
+            raise ValueError(
+                f"{owner} {name} is too large to represent as a float"
+            ) from None
         if math.isnan(coerced):
             # Renders `@field:[nan ...]`, which RediSearch rejects outright.
             raise ValueError(f"{owner} {name} cannot be NaN")
@@ -276,11 +284,14 @@ def _coerce_to_number_within(
     coordinate has a domain and does not.
 
     `isfinite` is checked separately rather than left to the range, so an
-    infinite bound could not admit an infinite value.
+    infinite bound could not admit an infinite value. It is checked *second*
+    because `isfinite` itself raises `OverflowError` on an int too large to
+    convert, while the comparison handles one fine -- so the range rejects
+    `10**400` before finiteness is ever asked.
     """
     minimum, maximum = bounds
     coerced = _coerce_to_number(value, owner, name)
-    if not math.isfinite(coerced) or not minimum <= coerced <= maximum:
+    if not minimum <= coerced <= maximum or not math.isfinite(coerced):
         raise ValueError(
             f"{owner} {name} must be a finite number in "
             f"[{minimum}, {maximum}]; got {coerced!r}"
@@ -292,21 +303,24 @@ class GeoSpec:
     """The operand for a FilterExpression on a Geo field.
 
     Every argument is formatted into the query string, so each is coerced and
-    range-checked here, at the constructor: the caller's own value selects or
-    scopes, and never itself renders. A `str` longitude used to interpolate raw,
-    so a value carrying `]` closed the geo clause and had its remainder parsed
-    as query syntax -- and an injected `|` binds looser than the implicit
-    space-AND, so it lifts to the root of the parse tree and any surrounding
-    filter stops constraining the query.
+    checked at the constructor -- the coordinates and unit here, the radius in
+    `GeoRadius` -- so the caller's own value selects or scopes, and never itself
+    renders. Unchecked, a value carrying `]` would close the geo clause and
+    have its remainder parsed as query syntax, and an injected `|` binds looser
+    than the implicit space-AND, so it would lift to the root of the parse tree
+    and any surrounding filter would stop constraining the query.
     """
 
-    GEO_UNITS = ["m", "km", "mi", "ft"]
+    # Immutable because it is public, shared, and interpolated into the error
+    # message, so a mutable default is state any caller could corrupt for every
+    # other. Annotated loosely so a subclass can still widen it.
+    GEO_UNITS: tuple[str, ...] = ("m", "km", "mi", "ft")
     LONGITUDE_RANGE = (-180.0, 180.0)
     LATITUDE_RANGE = (-90.0, 90.0)
 
     def __init__(self, longitude: float, latitude: float, unit: str = "km"):
-        # Unit first, as before, so a caller passing both a bad unit and a bad
-        # coordinate still sees the error it saw yesterday.
+        # Unit first, so which error a caller sees when more than one argument
+        # is bad is fixed rather than incidental.
         self._unit = self._canonical_unit(unit)
         owner = type(self).__name__
         self._longitude = _coerce_to_number_within(
@@ -326,7 +340,15 @@ class GeoSpec:
         returning the matched element of GEO_UNITS closes that -- without an
         isinstance check, which would reject a legitimate `str` subclass.
         """
-        requested = unit.lower()
+        # Looked up rather than caught, so an `AttributeError` raised from
+        # inside a caller's own `lower()` is not misreported as a bad unit.
+        # Still no isinstance check: anything that spells itself lowercase is
+        # welcome, and one that cannot is a bad value rather than an internal
+        # error, so it leaves by the documented door.
+        lower = getattr(unit, "lower", None)
+        if lower is None:
+            raise ValueError(f"Unit must be one of {cls.GEO_UNITS}")
+        requested = lower()
         for known in cls.GEO_UNITS:
             if known == requested:
                 return known
@@ -340,7 +362,7 @@ class GeoRadius(GeoSpec):
         self,
         longitude: float,
         latitude: float,
-        radius: int = 1,
+        radius: float = 1,
         unit: str = "km",
     ):
         """Create a GeoRadius specification (GeoSpec)
@@ -350,8 +372,9 @@ class GeoRadius(GeoSpec):
                 degrees, from -180 to 180.
             latitude (float): The latitude of the center of the radius, in
                 degrees, from -90 to 90.
-            radius (int, optional): The radius of the circle, in ``unit``.
-                Defaults to 1.
+            radius (float, optional): The radius of the circle, in ``unit``,
+                greater than 0. Fractional radii are sent as given, so 0.5 with
+                a unit of "km" is half a kilometre. Defaults to 1.
             unit (str, optional): The unit of the radius. Defaults to "km".
 
         Raises:
@@ -359,11 +382,34 @@ class GeoRadius(GeoSpec):
                 ``float``, or another ``numbers.Real``. numpy scalars qualify;
                 ``Decimal`` and ``str`` do not.
             ValueError: If a coordinate is NaN, infinite, or outside its range,
-                if the radius is NaN, or if the unit is not one of "m", "km",
-                "mi", or "ft".
+                if the radius is NaN, infinite, or not greater than 0, or if
+                the unit is not a string spelling one of "m", "km", "mi", or
+                "ft".
         """
         super().__init__(longitude, latitude, unit)
-        self._radius = _coerce_to_number(radius, type(self).__name__, "radius")
+        owner = type(self).__name__
+        radius = _coerce_to_number(radius, owner, "radius")
+        # Not `_coerce_to_number_within`: a radius is a positive magnitude
+        # rather than a bounded coordinate, so its lower bound is exclusive.
+        # Measured on 8.4.5, `@loc:[-122.4 37.7 0 km]` and the same with `-5`
+        # both answer `Invalid GeoFilter radius`.
+        # A comparison rather than `math.isfinite`, which raises `OverflowError`
+        # on an int too large to convert to a float. Chaining rejects zero, a
+        # negative, an infinity and a NaN, and admits a huge int, which is
+        # finite and renders exactly.
+        if not 0 < radius < math.inf:
+            raise ValueError(
+                f"{owner} radius must be a finite number greater than 0; "
+                f"got {radius!r}"
+            )
+        if isinstance(radius, float) and radius.is_integer():
+            # `repr` switches to exponent form at 1e16, and `@loc:[... 1e+20 km]`
+            # is a syntax error at DIALECT 1 -- the Redis 8 server default, which
+            # is what a rendered filter meets if it is run outside a RedisVL
+            # query class. Every float that large is integral, so an int renders
+            # the same value without an exponent.
+            radius = int(radius)
+        self._radius = radius
 
     def get_args(self) -> list[float | int | str]:
         return [self._longitude, self._latitude, self._radius, self._unit]
@@ -371,15 +417,26 @@ class GeoRadius(GeoSpec):
 
 class Geo(FilterField):
     """A Geo is a FilterField representing a geographic (lat/lon) field in a
-    Redis index."""
+    Redis index.
+
+    Note:
+        Redis indexes latitudes only within +/-85.05112878 degrees (EPSG:900913).
+        A document or a query center nearer a pole than that is silently
+        excluded: the query returns no error and no results, at any radius.
+    """
 
     OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
     }
     OPERATOR_MAP: dict[FilterOperator, str] = {
-        FilterOperator.EQ: "@%s:[%s %s %i %s]",
-        FilterOperator.NE: "(-@%s:[%s %s %i %s])",
+        # The third `%s` is the radius, and a string conversion is deliberate:
+        # an integer one truncates a fractional radius toward zero, and a
+        # sub-unit radius then renders `0`, which the server rejects. Nothing
+        # here guards the type -- `GeoRadius` coerces every argument to a
+        # builtin, and that coercion is the guard.
+        FilterOperator.EQ: "@%s:[%s %s %s %s]",
+        FilterOperator.NE: "(-@%s:[%s %s %s %s])",
     }
     SUPPORTED_VAL_TYPES = (GeoSpec, type(None))
 

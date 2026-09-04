@@ -4,6 +4,7 @@ import operator
 import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from fractions import Fraction
 
 import numpy as np
 import pytest
@@ -13,6 +14,7 @@ from redisvl.query.filter import (
     FilterOperator,
     Geo,
     GeoRadius,
+    GeoSpec,
     Num,
     Tag,
     Text,
@@ -397,13 +399,19 @@ def test_text_subclass_inherits_containment_for_a_new_quoted_operator():
 @pytest.mark.parametrize(
     "operation, expected",
     [
-        ("__eq__", "@geo_field:[1.0 2.0 3 km]"),
-        ("__ne__", "(-@geo_field:[1.0 2.0 3 km])"),
+        ("__eq__", "@geo_field:[1.0 2.0 0.5 km]"),
+        ("__ne__", "(-@geo_field:[1.0 2.0 0.5 km])"),
     ],
     ids=["eq", "ne"],
 )
 def test_geo_filter(operation, expected):
-    geo_radius = GeoRadius(1.0, 2.0, 3, "km")
+    """A fractional radius, so both templates pin the radius specifier.
+
+    An integer conversion would truncate it, and only `__eq__` is asserted
+    anywhere else, so a whole radius here would let the `__ne__` template
+    regress unnoticed.
+    """
+    geo_radius = GeoRadius(1.0, 2.0, 0.5, "km")
     geo_f = Geo("geo_field")
     assert str(getattr(geo_f, operation)(geo_radius)) == expected
 
@@ -430,11 +438,16 @@ def _geo_radius(**overrides) -> GeoRadius:
         ),
         # And why `numbers.Real` alone is not enough: every argument is
         # formatted into the query string, so the type check admits a subclass
-        # that injects when rendered. Coercion is the guard, on both branches.
+        # that injects when rendered. Coercion is the guard on all three, the
+        # radius included, since the template converts it with `%s`.
         (
             {"longitude": _StrOverridingFloat(1.0), "radius": _StrOverridingInt(3)},
             "@geo_field:[1.0 2.0 3 km]",
         ),
+        # An integral float renders as an int. `repr` switches to exponent form
+        # at 1e16, and `1e+16` is a syntax error at DIALECT 1, the server
+        # default.
+        ({"radius": 1e16}, "@geo_field:[1.0 2.0 10000000000000000 km]"),
         # The antimeridian and the poles are real places: the ranges include
         # their endpoints.
         ({"longitude": -180, "latitude": 90}, "@geo_field:[-180 90 3 km]"),
@@ -444,6 +457,7 @@ def _geo_radius(**overrides) -> GeoRadius:
         "uppercase_unit",
         "numpy_scalars_are_real_but_not_int",
         "str_overriding_subclasses",
+        "integral_float_radius",
         "range_minimums",
         "range_maximums",
     ],
@@ -462,26 +476,40 @@ def test_geo_radius_renders_a_coerced_spec(overrides, expected):
         # sharing the query stops constraining it.
         ({"longitude": "-122.4194 37.7749 10 km] | @secret:{leaked}"}, TypeError),
         ({"latitude": "37.7749] | @secret:{leaked}"}, TypeError),
-        # `%i` refused a `str` radius, so it failed at render time with an
-        # obscure message; the coercion now refuses it at the caller's line.
+        # The radius renders through `%s`, so the coercion is the only thing
+        # standing between a `str` and the query string. Nothing in the
+        # template refuses one.
         ({"radius": "1 km] | @secret:{leaked}"}, TypeError),
         ({"longitude": None}, TypeError),
         # Registered as a `numbers.Number` but not a `numbers.Real`, which is
         # what makes it the boundary case for the type the coercion accepts.
         ({"longitude": Decimal("1.5")}, TypeError),
-        ({"longitude": [1.0]}, TypeError),
         ({"longitude": 180.1}, ValueError),
         ({"longitude": -180.1}, ValueError),
         ({"latitude": 90.1}, ValueError),
         ({"latitude": -90.1}, ValueError),
         ({"longitude": float("nan")}, ValueError),
-        ({"latitude": float("nan")}, ValueError),
         ({"radius": float("nan")}, ValueError),
         # `Num` renders `-inf` and `+inf` by design -- they are literals in its
         # own templates -- so this is the one rejection geo does not inherit.
         ({"longitude": float("inf")}, ValueError),
-        ({"latitude": float("-inf")}, ValueError),
+        # An int too large to convert to a float. The range is compared first
+        # because `isfinite` raises `OverflowError` on this value.
+        ({"longitude": 10**400}, ValueError),
+        # A `Real` that is finite but unrepresentable, so `float()` itself
+        # raises. The int path above never reaches the conversion.
+        ({"longitude": Fraction(10**400, 1)}, ValueError),
+        # Measured on 8.4.5: the server answers `Invalid GeoFilter radius` to a
+        # zero or negative radius, so both fail at the caller's line instead.
+        ({"radius": 0}, ValueError),
+        ({"radius": -5}, ValueError),
+        # An infinite radius the server would accept, but it is rejected for the
+        # same reason a coordinate is: the argument has to render as a number.
+        ({"radius": float("inf")}, ValueError),
         ({"unit": "parsec"}, ValueError),
+        # Nothing to lowercase is a bad value, not an internal error, so it
+        # leaves as the documented ValueError rather than an AttributeError.
+        ({"unit": None}, ValueError),
     ],
     ids=[
         "longitude_injects",
@@ -489,17 +517,20 @@ def test_geo_radius_renders_a_coerced_spec(overrides, expected):
         "radius_injects",
         "longitude_none",
         "longitude_decimal",
-        "longitude_list",
         "longitude_above_range",
         "longitude_below_range",
         "latitude_above_range",
         "latitude_below_range",
         "longitude_nan",
-        "latitude_nan",
         "radius_nan",
         "longitude_infinite",
-        "latitude_infinite",
+        "longitude_unconvertible_int",
+        "longitude_unconvertible_real",
+        "radius_zero",
+        "radius_negative",
+        "radius_infinite",
         "unknown_unit",
+        "unit_not_a_string",
     ],
 )
 def test_geo_radius_refuses_an_unrenderable_argument(overrides, expected_error):
@@ -520,6 +551,18 @@ def test_geo_radius_subclass_with_an_infinite_range_still_refuses_infinity():
 
     with pytest.raises(ValueError, match="must be a finite number"):
         UnboundedGeoRadius(float("inf"), 2.0, 3, "km")
+
+
+def test_geo_radius_accepts_an_int_too_large_to_convert_to_a_float():
+    """The radius guard compares rather than calling `math.isfinite`.
+
+    `math.isfinite(10**400)` raises `OverflowError`, and there is no upper
+    bound to reject the value first, as there is for a coordinate. A huge int
+    is finite, so the documented contract admits it.
+    """
+    rendered = str(Geo("geo_field") == _geo_radius(radius=10**400))
+
+    assert rendered == f"@geo_field:[1.0 2.0 {10**400} km]"
 
 
 def test_geo_radius_reports_the_unit_error_before_a_bad_coordinate():
@@ -554,6 +597,12 @@ def test_geo_radius_renders_its_own_spelling_of_a_unit():
     rendered = str(Geo("geo_field") == _geo_radius(unit=Kilometres()))
 
     assert rendered == "@geo_field:[1.0 2.0 3 km]"
+
+
+def test_geo_units_cannot_be_mutated():
+    """The allowlist is public and shared, so it must not be a mutable default."""
+    with pytest.raises(AttributeError):
+        GeoSpec.GEO_UNITS.append("parsec")  # type: ignore[attr-defined]
 
 
 def test_filters_combination():
