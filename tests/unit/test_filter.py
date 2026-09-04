@@ -3,9 +3,12 @@ import operator
 import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
 
+import numpy as np
 import pytest
 
 from redisvl.query.filter import (
+    FilterExpression,
+    FilterOperator,
     Geo,
     GeoRadius,
     Num,
@@ -116,6 +119,27 @@ def test_tag_wildcard_preserves_asterisk():
     assert str(tf_like) == "@tag_field:{tech*}"
 
 
+def test_tag_equality_escapes_pipe_but_list_still_unions():
+    """A `|` inside one tag value is literal; a list of values is still a union."""
+    # Unescaped, this value would widen its clause into a union across tenants.
+    assert str(Tag("tenant_id") == "acme|victim") == "@tenant_id:{acme\\|victim}"
+    assert str(Tag("tenant_id") != "acme|victim") == "(-@tenant_id:{acme\\|victim})"
+
+    # Values are escaped before being joined, so the list form is unaffected.
+    assert str(Tag("tenant_id") == ["acme", "victim"]) == "@tenant_id:{acme|victim}"
+
+    # The % operator documents `|` as a union between wildcard patterns.
+    assert str(Tag("category") % "elec*|*soft") == "@category:{elec*|*soft}"
+
+
+def test_text_query_pipe_is_still_a_union():
+    """Escaping `|` is scoped to tags; a text query joins its own terms with it."""
+    from redisvl.query import TextQuery
+
+    query = TextQuery(text="engineer|doctor", text_field_name="job")
+    assert "@job:(engineer|doctor)" in str(query)
+
+
 def test_tag_wildcard_combined_with_exact_match():
     """Test combining wildcard and exact match Tag filters in the same query."""
     # Create filters with different operators
@@ -142,112 +166,18 @@ def test_tag_wildcard_combined_with_exact_match():
     assert "@status:{active\\*}" in str(complex_filter)  # asterisk escaped
 
 
-def test_nullable():
-    tag = Tag("tag_field") == None
-    assert str(tag) == "*"
-
-    tag = Tag("tag_field") != None
-    assert str(tag) == "*"
-
-    tag = Tag("tag_field") == []
-    assert str(tag) == "*"
-
-    tag = Tag("tag_field") != []
-    assert str(tag) == "*"
-
-    tag = Tag("tag_field") == ""
-    assert str(tag) == "*"
-
-    tag = Tag("tag_field") != ""
-    assert str(tag) == "*"
-
-    tag = Tag("tag_field") == [None]
-    assert str(tag) == "*"
-
-    tag = Tag("tag_field") == [None, "tag"]
-    assert str(tag) == "@tag_field:{tag}"
-
-
-def test_numeric_filter():
-    nf = Num("numeric_field") == 5
-    assert str(nf) == "@numeric_field:[5 5]"
-
-    nf = Num("numeric_field") != 5
-    assert str(nf) == "(-@numeric_field:[5 5])"
-
-    nf = Num("numeric_field") > 5
-    assert str(nf) == "@numeric_field:[(5 +inf]"
-
-    nf = Num("numeric_field") >= 5
-    assert str(nf) == "@numeric_field:[5 +inf]"
-
-    nf = Num("numeric_field") < 5
-    assert str(nf) == "@numeric_field:[-inf (5]"
-
-    nf = Num("numeric_field") <= 5
-    assert str(nf) == "@numeric_field:[-inf 5]"
-
-    nf = Num("numeric_field") > 5.5
-    assert str(nf) == "@numeric_field:[-inf 5.5]"
-
-    nf = Num("numeric_field") <= None
-    assert str(nf) == "*"
-
-    nf = Num("numeric_field") == None
-    assert str(nf) == "*"
-
-    nf = Num("numeric_field") != None
-    assert str(nf) == "*"
-
-    nf = Num("numeric_field").between(2, 5)
-    assert str(nf) == "@numeric_field:[2 5]"
-
-    nf = Num("numeric_field").between(2, 5, inclusive="neither")
-    assert str(nf) == "@numeric_field:[2 5]"
-
-    nf = Num("numeric_field").between(2, 5, inclusive="left")
-    assert str(nf) == "@numeric_field:[2 (5]"
-
-    nf = Num("numeric_field").between(2, 5, inclusive="right")
-    assert str(nf) == "@numeric_field:[(2 5]"
-
-
-def test_text_filter():
-    txt_f = Text("text_field") == "text"
-    assert str(txt_f) == '@text_field:("text")'
-
-    txt_f = Text("text_field") != "text"
-    assert str(txt_f) == '(-@text_field:"text")'
-
-    txt_f = Text("text_field") % "text"
-    assert str(txt_f) == "@text_field:(text)"
-
-    txt_f = Text("text_field") % "tex*"
-    assert str(txt_f) == "@text_field:(tex*)"
-
-    txt_f = Text("text_field") % "%text%"
-    assert str(txt_f) == "@text_field:(%text%)"
-
-    txt_f = Text("text_field") % ""
-    assert str(txt_f) == "*"
-
-
-def test_geo_filter():
-    geo_f = Geo("geo_field") == GeoRadius(1.0, 2.0, 3, "km")
-    assert str(geo_f) == "@geo_field:[1.0 2.0 3 km]"
-
-    geo_f = Geo("geo_field") != GeoRadius(1.0, 2.0, 3, "km")
-    assert str(geo_f) != "(-@geo_field:[1.0 2.0 3 m])"
-
-
 @pytest.mark.parametrize(
-    "value, expected",
+    "operation, value, expected",
     [
-        (None, "*"),
-        ([], "*"),
-        ("", "*"),
-        ([None], "*"),
-        ([None, "tag"], "@tag_field:{tag}"),
+        ("__eq__", None, "*"),
+        ("__eq__", [], "*"),
+        ("__eq__", "", "*"),
+        ("__eq__", [None], "*"),
+        ("__eq__", [None, "tag"], "@tag_field:{tag}"),
+        # Tag.__str__ short-circuits to "*" before consulting OPERATOR_MAP, so
+        # one falsy row covers every falsy value on the negated operator too.
+        ("__ne__", None, "*"),
+        ("__ne__", [None, "tag"], "(-@tag_field:{tag})"),
     ],
     ids=[
         "none",
@@ -255,11 +185,13 @@ def test_geo_filter():
         "empty_string",
         "list_with_none",
         "list_with_none_and_tag",
+        "ne_none",
+        "ne_list_with_none_and_tag",
     ],
 )
-def test_nullable(value, expected):
+def test_nullable(operation, value, expected):
     tag = Tag("tag_field")
-    assert str(tag == value) == expected
+    assert str(getattr(tag, operation)(value)) == expected
 
 
 @pytest.mark.parametrize(
@@ -283,6 +215,82 @@ def test_numeric_filter(operation, value, expected):
 
 
 @pytest.mark.parametrize(
+    "inclusive, expected",
+    [
+        ("both", "@numeric_field:[2 5]"),
+        ("neither", "@numeric_field:[(2 (5]"),
+        ("left", "@numeric_field:[2 (5]"),
+        ("right", "@numeric_field:[(2 5]"),
+    ],
+)
+def test_numeric_between(inclusive, expected):
+    assert str(Num("numeric_field").between(2, 5, inclusive=inclusive)) == expected
+
+
+class _StrOverridingInt(int):
+    """A numeric type that satisfies isinstance and injects when formatted."""
+
+    def __str__(self) -> str:
+        return "5] | @secret:{leaked} @numeric_field:[-inf +inf"
+
+
+class _StrOverridingFloat(float):
+    """The same, on the float branch of the coercion."""
+
+    def __str__(self) -> str:
+        return "5.5] | @secret:{leaked} @numeric_field:[-inf +inf"
+
+
+@pytest.mark.parametrize(
+    "endpoint, expected",
+    [
+        (np.int64(5), "@numeric_field:[2 5]"),
+        (_StrOverridingInt(5), "@numeric_field:[2 5]"),
+        (_StrOverridingFloat(5.5), "@numeric_field:[2 5.5]"),
+    ],
+    ids=["numpy_scalar_is_real_but_not_int", "subclass_int_str", "subclass_float_str"],
+)
+def test_numeric_between_coerces_a_real_endpoint(endpoint, expected):
+    """The first row proves `numbers.Real` is wide enough, the rest why it is not enough.
+
+    numpy integers are not `int` subclasses, so a concrete `(int, float)` check
+    would reject them. And the type check alone lets a subclass through, since
+    the endpoint is formatted into the query string -- coercion is the guard, on
+    both the Integral and the Real branch.
+    """
+    assert str(Num("numeric_field").between(2, endpoint)) == expected
+
+
+def test_numeric_comparison_coerces_a_formattable_value():
+    """Coercion covers every operator, not only between()."""
+    assert (
+        str(Num("numeric_field") <= _StrOverridingInt(5)) == "@numeric_field:[-inf 5]"
+    )
+
+
+@pytest.mark.parametrize(
+    "call, expected_error",
+    [
+        (
+            lambda: Num("numeric_field").between(
+                4, "5] | @secret:{leaked} @r:[-inf +inf"
+            ),
+            TypeError,
+        ),
+        # `@field:[nan ...]` is a query RediSearch refuses.
+        (lambda: Num("numeric_field") == float("nan"), ValueError),
+        # `tuple` outlived the BETWEEN branch that unpacked it, and nothing ever
+        # validated the elements.
+        (lambda: Num("numeric_field") == ("5] | @secret:{leaked}", 1), TypeError),
+    ],
+    ids=["between_string_endpoint", "nan", "tuple"],
+)
+def test_numeric_refuses_an_unrenderable_value(call, expected_error):
+    with pytest.raises(expected_error):
+        call()
+
+
+@pytest.mark.parametrize(
     "operation, value, expected",
     [
         ("__eq__", "text", '@text_field:("text")'),
@@ -296,6 +304,43 @@ def test_numeric_filter(operation, value, expected):
         ("__mod__", "%text%", "@text_field:(%text%)"),
         ("__mod__", "", "*"),
         ("__mod__", None, "*"),
+        # The quote is the only character that can terminate a quoted value, so
+        # it goes and everything it carried stays inside the phrase.
+        (
+            "__eq__",
+            'hello") | (@secret:{leaked} @v:"nothing',
+            '@text_field:("hello ) | (@secret:{leaked} @v: nothing")',
+        ),
+        (
+            "__ne__",
+            'hello") | (@secret:{leaked} @v:"nothing',
+            '(-@text_field:"hello ) | (@secret:{leaked} @v: nothing")',
+        ),
+        # A value that neutralizes down to whitespace still renders as a phrase
+        # rather than collapsing to `*`. An empty phrase matches no document, so
+        # `==` fails closed; collapsing would invert that to matching every one,
+        # and `format_expression` drops a `*` operand, so it would also delete
+        # this clause from a surrounding AND.
+        ("__eq__", '"', '@text_field:(" ")'),
+        ("__ne__", '""', '(-@text_field:"  ")'),
+        ("__eq__", "   ", '@text_field:("   ")'),
+        # Everything else survives untouched, the backslash included: escaping is
+        # symmetric, so a document written with one indexes the joined term and
+        # only an equally escaped query finds it. Replacing any of these would ask
+        # for a term no document stored -- a silent zero-hit failure. These rows
+        # fail if a single extra character joins the pattern.
+        ("__eq__", "trailing\\", '@text_field:("trailing\\")'),
+        (
+            "__eq__",
+            "e-mail, 50% off (C++) @ user@x.com O'Brien 3.5",
+            '@text_field:("e-mail, 50% off (C++) @ user@x.com O\'Brien 3.5")',
+        ),
+        # `%` is the raw pattern operator by design, so its value is untouched.
+        (
+            "__mod__",
+            'hello") | (@secret:{leaked}',
+            '@text_field:(hello") | (@secret:{leaked})',
+        ),
     ],
     ids=[
         "eq",
@@ -309,11 +354,42 @@ def test_numeric_filter(operation, value, expected):
         "like_full",
         "like_empty",
         "like_none",
+        "eq_quote_neutralized",
+        "ne_quote_neutralized",
+        "eq_quotes_only",
+        "ne_quotes_only",
+        "eq_whitespace_only",
+        "eq_backslash_untouched",
+        "eq_punctuation_preserved",
+        "like_raw_by_design",
     ],
 )
 def test_text_filter(operation, value, expected):
     txt_f = getattr(Text("text_field"), operation)(value)
     assert str(txt_f) == expected
+
+
+def test_text_subclass_inherits_containment_for_a_new_quoted_operator():
+    """Listing only the raw operator means a new one is contained by default.
+
+    A subclass adding a quoted template is the case a set of *quoted* operators
+    would miss, because it would be computed from the base class's own map.
+    """
+
+    class Phrase(Text):
+        OPERATOR_MAP = {
+            **Text.OPERATOR_MAP,
+            FilterOperator.IN: '@%s:("%s")=>{$slop: 2}',
+        }
+        OPERATORS = {**Text.OPERATORS, FilterOperator.IN: "within"}
+
+        def within(self, other):
+            self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.IN)
+            return FilterExpression(str(self))
+
+    rendered = str(Phrase("t").within('a") | (@secret:{leaked}'))
+
+    assert rendered == '@t:("a ) | (@secret:{leaked}")=>{$slop: 2}'
 
 
 @pytest.mark.parametrize(

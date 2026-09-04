@@ -451,6 +451,13 @@ def test_filters(index, query, sample_datetimes):
     t = Text("job") % "%%engine%%"
     search(query, index, t, 2)
 
+    # A quote-bearing value on `!=`, against a live index. This is the one claim
+    # no rendering assertion can make: escaping the quote instead of replacing it
+    # would ask for a term RediSearch never stored, so the negated phrase would
+    # match nothing and the exclusion would return all 7 rather than 6.
+    t = Text("description") != 'high stress,"'
+    search(query, index, t, 6)
+
     # Test empty filters
     t = Text("job") % ""
     search(query, index, t, 7)
