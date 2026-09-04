@@ -23,8 +23,8 @@ _TEXT_ESCAPER = TokenEscaper()
 # Dropping them costs nothing in containment, because containment comes from the
 # delimiters rather than from these. With `(` and `)` escaped, the value cannot
 # close its own `@field:(...)`, so anything it carries -- including a `|`, which
-# no escaper in RedisVL touches -- stays scoped to this one field instead of
-# reaching the surrounding expression.
+# the like path deliberately leaves live so a pattern can express a union --
+# stays scoped to this one field instead of reaching the surrounding expression.
 _LIKE_ESCAPED_CHARS = re.compile(r"[,.<>{}\[\]\\\"\':;!@#$^&()\-+=~\/]")
 _LIKE_ESCAPER = TokenEscaper(escape_chars_re=_LIKE_ESCAPED_CHARS)
 
