@@ -14,6 +14,7 @@ from unittest.mock import Mock
 
 import pytest
 import yaml
+from redis.client import Redis
 
 from redisvl.migration import (
     BatchMigrationExecutor,
@@ -33,6 +34,10 @@ from redisvl.schema.schema import IndexSchema
 class MockRedisClient:
     """Mock Redis client for batch migration tests."""
 
+    # Bind redis-py's real scan_iter so key enumeration under test goes through
+    # the actual library loop rather than a stand-in for it.
+    scan_iter = Redis.scan_iter
+
     def __init__(self, indexes: List[str] = None, keys: Dict[str, List[str]] = None):
         self.indexes = indexes or []
         self.keys = keys or {}
@@ -43,7 +48,7 @@ class MockRedisClient:
             return [idx.encode() for idx in self.indexes]
         raise NotImplementedError(f"Command not mocked: {args}")
 
-    def scan(self, cursor=0, match=None, count=None):
+    def scan(self, cursor=0, match=None, count=None, _type=None):
         matched = []
         all_keys = []
         for prefix_keys in self.keys.values():

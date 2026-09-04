@@ -664,21 +664,20 @@ class MigrationPlanner:
                 # key_separator — a PREFIX of "doc" must match "doc:1",
                 # "doca:1", etc., exactly like FT.CREATE does.
                 match_pattern = f"{prefix}*"
-            cursor = 0
-            while True:
-                cursor, keys = client.scan(
-                    cursor=cursor,
-                    match=match_pattern,
-                    count=max(self.key_sample_limit, 1000),
-                )
-                for key in keys:
-                    decoded_key = key.decode() if isinstance(key, bytes) else str(key)
-                    if decoded_key not in key_sample:
-                        key_sample.append(decoded_key)
-                    if len(key_sample) >= self.key_sample_limit:
-                        return key_sample
-                if cursor == 0:
-                    break
+            # scan_iter, not a hand-rolled SCAN loop: a cluster client replies
+            # with a {node_name: cursor} mapping, which cannot be fed back as a
+            # cursor (redis-py raises DataError). scan_iter drives each primary
+            # on its own cursor. It also lets the sample limit below stop us
+            # mid-page instead of draining the whole page first.
+            for key in client.scan_iter(
+                match=match_pattern,
+                count=max(self.key_sample_limit, 1000),
+            ):
+                decoded_key = key.decode() if isinstance(key, bytes) else str(key)
+                if decoded_key not in key_sample:
+                    key_sample.append(decoded_key)
+                if len(key_sample) >= self.key_sample_limit:
+                    return key_sample
         return key_sample
 
     def _detect_possible_field_renames(
