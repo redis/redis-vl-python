@@ -885,6 +885,15 @@ class SemanticRouter(BaseModel):
         queries = []
 
         for id in ids:
+            if not id:
+                # `Tag(...) == ""` renders as the match-all `*`, so an empty id
+                # would match every reference in the index. Callers take the
+                # first row of each query's results, which turns this into
+                # returning -- and, from delete_route_references, deleting -- an
+                # arbitrary reference the caller never named.
+                raise ValueError(
+                    "reference ids must be non-empty strings; received an empty id"
+                )
             fe = Tag("reference_id") == id
             fq = FilterQuery(
                 return_fields=["reference_id", "route_name", "reference"],
