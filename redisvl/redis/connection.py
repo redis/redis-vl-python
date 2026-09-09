@@ -969,6 +969,6 @@ class RedisConnectionFactory:
             if len(path_parts) > 2:
                 db = path_parts[2]
 
-        username = unquote(parsed_url.username or "")
-        password = unquote(parsed_url.password or "")
+        username = unquote(parsed_url.username) if parsed_url.username else None
+        password = unquote(parsed_url.password) if parsed_url.password else None
         return sentinel_list, service_name, db, username, password
