@@ -12,8 +12,9 @@ from typing import Any, Callable, Coroutine, Sequence, TypeVar
 from warnings import warn
 
 from pydantic import BaseModel
-from redis import Redis
 from ulid import ULID
+
+from redisvl.types import SyncRedisClient
 
 T = TypeVar("T")
 
@@ -283,14 +284,19 @@ def norm_l2_distance(value: float) -> float:
 
 
 def scan_by_pattern(
-    redis_client: Redis,
+    redis_client: SyncRedisClient,
     pattern: str,
 ) -> Sequence[str]:
     """
     Scan the Redis database for keys matching a specific pattern.
 
+    Uses scan_iter, so this is correct for both standalone and cluster clients:
+    on a cluster, SCAN is broadcast to every primary and each one has to be
+    iterated on its own node-local cursor.
+
     Args:
-        redis (Redis): The Redis client instance.
+        redis_client (SyncRedisClient): The Redis client instance. Standalone
+            or cluster.
         pattern (str): The pattern to match keys against.
 
     Returns:
