@@ -177,6 +177,13 @@ uv run pytest --cov=redisvl --cov-report=html
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
 
+Where such an API is a *shared, stateful* service -- one managed instance reached by
+every xdist worker and every concurrent CI run -- tests must namespace everything
+they write and must never issue a whole-service flush, which would delete data
+belonging to other workers and other pull requests' CI runs. See the module
+docstring in `tests/integration/test_langcache_semantic_cache_integration.py` for a
+worked example.
+
 ## Documentation
 
 Documentation is served from the `docs/` directory and built using Sphinx.
