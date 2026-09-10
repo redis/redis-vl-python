@@ -11,7 +11,7 @@ This module tests the enhanced error handling behavior introduced for:
 
 import asyncio
 from collections.abc import Mapping
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import redis.exceptions
@@ -204,11 +204,11 @@ class TestConnectionKwargsValidation:
             "redisvl.extensions.cache.base.RedisConnectionFactory"
         ) as mock_factory:
             mock_client = Mock()
-            mock_factory.get_async_redis_connection.return_value = mock_client
+            mock_factory._get_aredis_connection = AsyncMock(return_value=mock_client)
 
             result = await cache._get_async_redis_client()
             assert result == mock_client
-            mock_factory.get_async_redis_connection.assert_called_once()
+            mock_factory._get_aredis_connection.assert_awaited_once()
 
 
 class TestRouterConfigErrorHandling:

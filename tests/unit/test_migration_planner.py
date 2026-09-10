@@ -41,7 +41,8 @@ class DummyIndex:
         self._client = DummyClient(keys)
 
     @property
-    def client(self):
+    def _redis_client(self):
+        """Mirrors SearchIndex._redis_client, the lazily creating property."""
         return self._client
 
     def info(self):
@@ -1212,7 +1213,7 @@ class TestValidatorClusterSafeExists:
         mock_client.exists.return_value = 1  # Each key exists
 
         mock_index = MagicMock()
-        mock_index.client = mock_client
+        mock_index._redis_client = mock_client
         mock_index.info.return_value = {"num_docs": 3, "hash_indexing_failures": 0}
         mock_index.schema.to_dict.return_value = plan.merged_target_schema
         mock_index.search.return_value = MagicMock(total=3)
@@ -1247,7 +1248,7 @@ class TestValidatorMultiPrefixKeyTranslation:
         mock_client.exists.return_value = 1
 
         mock_index = MagicMock()
-        mock_index.client = mock_client
+        mock_index._redis_client = mock_client
         mock_index.info.return_value = {"num_docs": 3, "hash_indexing_failures": 0}
         mock_index.schema.to_dict.return_value = plan.merged_target_schema
         mock_index.search.return_value = MagicMock(total=3)
@@ -1292,7 +1293,7 @@ class TestValidatorExactSourceCounts:
         }
 
         mock_index = MagicMock()
-        mock_index.client = DummyClient(
+        mock_index._redis_client = DummyClient(
             [b"target:1", b"target:2", b"target:3", b"target:4", b"target:5"]
         )
         mock_index.info.return_value = {"num_docs": 5, "hash_indexing_failures": 0}

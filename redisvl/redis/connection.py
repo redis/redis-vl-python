@@ -35,7 +35,7 @@ def _split_from_existing_kwargs(
     init_kwargs: dict[str, Any] = {}
     connection_kwargs: dict[str, Any] = {}
 
-    for key in ("validate_on_load", "lib_name"):
+    for key in ("validate_on_load", "lib_name", "owns_client"):
         if key in kwargs:
             init_kwargs[key] = kwargs.pop(key)
 
@@ -726,7 +726,7 @@ class RedisConnectionFactory:
                 variable is not set.
         """
         warn(
-            "get_async_redis_connection will become async in the next major release.",
+            "get_async_redis_connection will become async in a future release.",
             DeprecationWarning,
         )
         _deprecated_url = kwargs.pop("url", None)
