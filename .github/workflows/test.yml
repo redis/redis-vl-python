@@ -64,6 +64,7 @@ jobs:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
     needs: service-tests
+    continue-on-error: ${{ matrix.experimental || false }}
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
       REDIS_IMAGE: ${{ matrix.redis-image }}
@@ -76,7 +77,12 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         redis-py-version: ["6.x", "7.x", "8.x"]
+        # `redis:latest` floats, so a failure on it is not reproducible from a
+        # SHA; it is advisory below. Pinned tags carry the blocking coverage.
         redis-image: ["redis:8.2", "redis:8.4", "redis:latest"]
+        include:
+          - redis-image: "redis:latest"
+            experimental: true
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
