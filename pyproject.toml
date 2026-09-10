@@ -65,12 +65,8 @@ langcache = ["langcache>=0.11.0"]
 # importing. New text embeddings should use the `google-genai` extra below.
 vertexai = [
     "google-cloud-aiplatform>=1.26,<2.0.0",
-    # Deliberately uncapped. RedisVL imports no protobuf symbol anywhere, so it
-    # has no API surface to protect; google-cloud-aiplatform declares its own
-    # bound and is the package that actually needs one. Pinning it here only
-    # narrowed resolution for downstream users, and did so more tightly than the
-    # vendor asks. Leave the floor, which predates this note, and let the
-    # dependency that uses protobuf express its own ceiling.
+    # Uncapped on purpose: nothing here imports protobuf, so the bound belongs
+    # to google-cloud-aiplatform, which declares its own.
     "protobuf>=5.28.0",
 ]
 # Modern Google backend (Vertex AI + Gemini Developer API) for GoogleGenAIVectorizer.
