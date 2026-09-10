@@ -216,30 +216,15 @@ def _compile_json_path(path: str) -> Any:
     """
     Parse a JSONPath expression, reusing the result for repeated paths.
 
+    Schema field paths are fixed, and parsing costs ~1ms against microseconds to
+    evaluate, so validating per field re-did the expensive half every time.
+    Sharing one expression is safe: it holds no per-evaluation state.
+
     Args:
         path: JSONPath expression, with or without the leading ``$``
 
     Returns:
         The parsed jsonpath-ng expression
-
-    Notes:
-        Parsing is the expensive half of a JSONPath lookup: jsonpath-ng builds
-        its grammar with PLY, and a single ``parse("$.field")`` costs on the
-        order of a millisecond, against microseconds to evaluate the result.
-
-        Field paths come from the schema and are fixed once the schema is
-        constructed, so on a bulk load every parse after the first is repeated
-        work. Caching here turns the per-document cost from one parse per field
-        into one dictionary lookup per field.
-
-        The cache is keyed on the raw path, so ``field`` and ``$.field``
-        occupy separate entries that compile to equivalent expressions. That is
-        harmless, and keying before normalisation keeps the cache lookup on the
-        cheapest possible path.
-
-        Parsed expressions hold no per-evaluation state -- ``find()`` reads the
-        expression and returns fresh match objects -- so sharing one across
-        calls and threads is safe.
     """
     # If path doesn't start with $, add it as per JSONPath spec
     if not path.startswith("$"):
@@ -263,9 +248,6 @@ def extract_from_json_path(obj: dict[str, Any], path: str) -> Any:
         This function uses the jsonpath-ng library for proper JSONPath parsing
         and supports the full JSONPath specification including filters, wildcards,
         and array indexing.
-
-        Expressions are compiled through :func:`_compile_json_path`, which
-        caches them; see that function for why.
     """
     matches = _compile_json_path(path).find(obj)
 

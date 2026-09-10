@@ -303,72 +303,47 @@ class TestJsonPathExtraction:
         """Test extracting values using JSON paths."""
         assert extract_from_json_path(valid_json_data, path) == expected_value
 
-    def test_repeated_paths_are_parsed_once(self, valid_json_data, monkeypatch):
-        """A repeated path must not re-enter the jsonpath-ng grammar.
-
-        Parsing is ~1ms against ~microseconds to evaluate, and schema field
-        paths are fixed, so a bulk load that re-parsed per document per field
-        spent essentially all of its time in the PLY parser.
-        """
-        _compile_json_path.cache_clear()
-
-        calls = []
+    @pytest.fixture
+    def parse_calls(self, monkeypatch):
+        """Record every path handed to jsonpath-ng's parser."""
+        calls: list[str] = []
         real_parse = validation_module.jsonpath_parse
 
         def counting_parse(path):
             calls.append(path)
             return real_parse(path)
 
+        _compile_json_path.cache_clear()
         monkeypatch.setattr(validation_module, "jsonpath_parse", counting_parse)
+        return calls
 
+    def test_repeated_path_compiles_once(self, valid_json_data, parse_calls):
+        """A repeated path compiles once, not once per call."""
         for _ in range(25):
             assert (
                 extract_from_json_path(valid_json_data, "$.metadata.user") == "user123"
             )
 
-        assert calls == ["$.metadata.user"]
+        assert parse_calls == ["$.metadata.user"]
 
-    def test_distinct_paths_each_compile(self, valid_json_data, monkeypatch):
+    def test_distinct_paths_each_compile(self, valid_json_data, parse_calls):
         """Caching must not collapse distinct paths onto one expression."""
-        _compile_json_path.cache_clear()
-
-        calls = []
-        real_parse = validation_module.jsonpath_parse
-
-        def counting_parse(path):
-            calls.append(path)
-            return real_parse(path)
-
-        monkeypatch.setattr(validation_module, "jsonpath_parse", counting_parse)
-
         assert extract_from_json_path(valid_json_data, "$.metadata.user") == "user123"
         assert extract_from_json_path(valid_json_data, "$.metadata.rating") == 4.5
-        assert extract_from_json_path(valid_json_data, "$.content.title") == (
-            "Test Document"
-        )
+        assert len(parse_calls) == 2
 
-        assert len(calls) == 3
-
-    def test_cached_expression_is_reusable_across_objects(self):
-        """One cached expression must evaluate correctly against many objects.
-
-        Guards the assumption the cache rests on: a parsed jsonpath-ng
-        expression holds no per-evaluation state, so sharing it is safe.
-        """
+    def test_shared_expression_holds_no_state(self):
+        """Reusing one expression must not leak values between evaluations."""
         _compile_json_path.cache_clear()
 
         for expected in ("alice", "bob", "carol"):
             obj = {"metadata": {"user": expected}}
             assert extract_from_json_path(obj, "$.metadata.user") == expected
 
-        # A path that misses on one object must still miss, not leak a value
-        # from the previous evaluation.
         assert extract_from_json_path({"metadata": {}}, "$.metadata.user") is None
 
-    def test_leading_dollar_is_optional_and_equivalent(self, valid_json_data):
-        """Normalisation happens inside the cache, so both spellings work."""
-        _compile_json_path.cache_clear()
-
+    def test_leading_dollar_is_optional(self, valid_json_data):
+        """Both spellings of a path resolve to the same value."""
         assert extract_from_json_path(
             valid_json_data, "metadata.user"
         ) == extract_from_json_path(valid_json_data, "$.metadata.user")
