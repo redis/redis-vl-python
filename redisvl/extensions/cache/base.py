@@ -5,7 +5,7 @@ specific cache types such as LLM caches and embedding caches.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import Any, TypedDict
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
@@ -17,6 +17,18 @@ from redisvl.utils.utils import match_pattern
 # Keys deleted per DEL when clearing. Also the SCAN count hint, so one page of
 # keys maps to one delete round-trip.
 CLEAR_BATCH_SIZE = 500
+
+
+class _CacheConnectionKwargs(TypedDict):
+    """The connection parameters a cache keeps for building its clients.
+
+    Annotated so each value keeps its own type. Without it the dict literal
+    widens to the union of all three, and every read needs a cast.
+    """
+
+    redis_client: SyncRedisClient | None
+    redis_url: str
+    connection_kwargs: dict[str, Any]
 
 
 class BaseCache:
@@ -55,7 +67,7 @@ class BaseCache:
         self._ttl: int | None = None
         self.set_ttl(ttl)
 
-        self.redis_kwargs = {
+        self.redis_kwargs: _CacheConnectionKwargs = {
             "redis_client": redis_client,
             "redis_url": redis_url,
             "connection_kwargs": connection_kwargs,
@@ -125,8 +137,8 @@ class BaseCache:
         """
         if self._redis_client is None:
             # Create new Redis client
-            url = cast(str | None, self.redis_kwargs["redis_url"])
-            kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
+            url = self.redis_kwargs["redis_url"]
+            kwargs = self.redis_kwargs["connection_kwargs"]
             self._redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=url,
                 **kwargs,
@@ -150,10 +162,8 @@ class BaseCache:
                     if provided and isinstance(provided, (Redis, RedisCluster)):
                         client = RedisConnectionFactory.sync_to_async_redis(provided)
                     else:
-                        url = cast(str | None, self.redis_kwargs["redis_url"])
-                        kwargs = cast(
-                            dict[str, Any], self.redis_kwargs["connection_kwargs"]
-                        )
+                        url = self.redis_kwargs["redis_url"]
+                        kwargs = self.redis_kwargs["connection_kwargs"]
                         client = await RedisConnectionFactory._get_aredis_connection(
                             redis_url=url, **kwargs
                         )
