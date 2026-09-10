@@ -286,6 +286,60 @@ On a multi-index server, `search-records` and `upsert-records` take an optional 
 - With multiple indexes configured, omitting `index` returns `invalid_request`; an unknown id also returns `invalid_request`.
 - Clients should call [`list-indexes`](#list-indexes) first to discover the available ids and their filterable fields.
 
+### Custom Tool Profiles
+
+A **profile** publishes `search-records` under your own name and description with some arguments pre-filled and frozen. It is pure config — no Python — and it resolves to a built-in call, so it inherits the same limits, read-only policy, auth scoping, and error contract.
+
+```yaml
+server:
+  redis_url: redis://localhost:6379
+  builtin_tools:
+    search-records: disabled          # the curated tool replaces it
+
+indexes:
+  tickets:
+    redis_name: support-tickets
+    search:
+      type: fulltext
+    runtime:
+      text_field_name: body
+      default_limit: 5
+      max_limit: 20
+
+custom_tools:
+  - name: search-resolved-tickets
+    based_on: search-records
+    index: tickets
+    description: >
+      Search resolved customer support tickets by relevance.
+      Use this to find how a similar problem was fixed before.
+    lock:
+      return_fields: [subject, resolution, created_at]
+      filter: { field: status, op: eq, value: resolved }
+    params:
+      limit: { expose: true, max: 10 }
+      filter: { expose: true }
+```
+
+What the client sees for `search-resolved-tickets`:
+
+- `query` (required), `limit` (≤ 10), `offset`, and `filter` — and nothing else.
+- No `index` argument: the binding is pinned by `index:` in the config.
+- No `return_fields` argument: locking a projection removes it from the contract.
+- `filter` accepts the **object** form only. A raw string filter is refused — by the advertised schema for a compliant client, and by the tool itself otherwise.
+
+Rules worth knowing:
+
+- **Anything not listed under `params` stays exposed.** Locking only a filter keeps the rest of the built-in's contract intact.
+- **Locked and caller filters are AND-combined.** The caller can narrow within the locked scope but never widen past it — an `or` from the caller nests inside the locked AND rather than replacing it.
+- **`params.limit.max` bounds the result count either way.** An omitted `limit` is capped rather than falling through to `default_limit`; an explicit request above the cap returns `invalid_request`. With `expose: false`, the cap becomes the fixed result count. The cap may not exceed the binding's `max_limit`. It bounds page size, not total reachable data — `offset` still pages within `max_result_window`.
+- **`suppress_schema_hints: true`** drops the auto-generated filter/return-field hints from the description. By default they are appended only for arguments the model can still use.
+- **`index` may be omitted only with exactly one index configured.**
+
+`builtin_tools` is independent of profiles: use it to stop advertising any built-in, for example `upsert-records: disabled` on a server that should only read. Disabling `list-indexes` on a multi-index server logs a warning, because `search-records` tells clients to call it to discover index ids.
+
+Misconfiguration fails at startup, not at the first call — a name colliding with a built-in or using a reserved `redisvl-`/`redisvl_` prefix, a duplicate name, a missing or unknown `index`, a cap above `max_limit`, hiding `query`, locking `return_fields` while also exposing them, or a locked filter or projection naming a field the index does not have. Unrecognized keys are rejected too, so a typo in `lock` fails loudly instead of quietly producing a tool that reads as locked but enforces nothing.
+
 ## Tool Contracts
 
 RedisVL MCP exposes a small, implementation-owned contract.

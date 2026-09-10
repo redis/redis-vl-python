@@ -84,6 +84,19 @@ index = SearchIndex.from_existing("my-index", redis_url="redis://localhost:6379"
 
 **Clearing data** with `clear()` removes all documents from the index without deleting the index itself. The schema remains intact, ready for new data.
 
+## Search Visibility After Writes
+
+On Redis 8.8 and later, deployments with a nonzero `search-workers` setting use background workers for search indexing. Under concurrent write and query load, a document can already exist in the Redis keyspace but not yet be visible to a search issued immediately after the write. For example, a query directly after `load()` can temporarily return fewer documents than were loaded:
+
+```python
+index.load(records)
+results = index.query(query)  # may not include every newly loaded document yet
+```
+
+This is a short indexing delay, not data loss. A later query sees the documents after the index catches up. The measurements reported in [Issue #662](https://github.com/redis/redis-vl-python/issues/662) typically converged within 1–3 ms, but that observation is not a latency guarantee and the window can vary with workload and server capacity.
+
+Applications that require strict search read-after-write behavior can start Redis with `--search-workers 0`. This is a Redis server setting, not a RedisVL option: it keeps indexing in the foreground but gives up the throughput benefits of multithreaded background indexing.
+
 ## Bulk Delete and Update
 
 Redis has no server-side "delete/update by query", so mutating many documents traditionally means scanning for keys and issuing writes yourself. RedisVL wraps that pattern behind two filter-driven methods (available on both `SearchIndex` and `AsyncSearchIndex`).

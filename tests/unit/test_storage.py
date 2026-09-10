@@ -1,9 +1,25 @@
+from unittest.mock import MagicMock
+
 import pytest
 from pydantic import ValidationError
 
 from redisvl.exceptions import SchemaValidationError
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.schema import IndexSchema
+
+
+def test_hash_storage_builds_an_encodable_mapping():
+    client = MagicMock()
+    obj = {"text": "value", "count": 1, "vector": b"data"}
+
+    HashStorage._set(client, "key", obj)
+
+    client.hset.assert_called_once_with(name="key", mapping=obj)
+
+
+def test_hash_storage_rejects_unencodable_values():
+    with pytest.raises(TypeError, match="unsupported value type object"):
+        HashStorage._mapping({"field": object()})
 
 
 @pytest.fixture

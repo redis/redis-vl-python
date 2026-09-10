@@ -300,7 +300,11 @@ def test_text_query_with_string_filter():
     # Check that the generated query string includes both text search and filter
     query_string = str(text_query)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string
-    assert f"AND {string_filter}" in query_string
+    assert (
+        f"@{text_field_name}:(search | document | 12345) ({string_filter})"
+        in query_string
+    )
+    assert " AND " not in query_string
 
     # Test with FilterExpression - should also work (existing functionality)
     filter_expression = Tag("category") == "tech"
@@ -319,7 +323,11 @@ def test_text_query_with_string_filter():
         f"@{text_field_name}:(search | document | 12345)"
         in query_string_with_filter_expr
     )
-    assert "AND @category:{tech}" in query_string_with_filter_expr
+    assert (
+        f"@{text_field_name}:(search | document | 12345) (@category:{{tech}})"
+        in query_string_with_filter_expr
+    )
+    assert " AND " not in query_string_with_filter_expr
 
     # Test with no filter - should only have text search
     text_query_no_filter = TextQuery(
@@ -331,7 +339,7 @@ def test_text_query_with_string_filter():
     assert f"@{text_field_name}:(search | document | 12345)" in query_string_no_filter
     assert "AND" not in query_string_no_filter
 
-    # Test with wildcard filter - should only have text search (no AND clause)
+    # Test with wildcard filter - should only have text search (no filter clause)
     text_query_wildcard = TextQuery(
         text=text,
         text_field_name=text_field_name,
@@ -341,6 +349,63 @@ def test_text_query_with_string_filter():
     query_string_wildcard = str(text_query_wildcard)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string_wildcard
     assert "AND" not in query_string_wildcard
+
+
+def test_vector_query_prefilter_shapes():
+    """A KNN pre-filter is parenthesized unless it is the bare wildcard.
+
+    Redis rejects a bare multi-clause pre-filter outright, so a union filter
+    could not run at all, and an empty filter produced "=>[KNN ...]", which is
+    also a syntax error. Match-everything stays the bare "*", which is the
+    documented form and the one shape where "(*)" would be needless churn.
+    Regression coverage for issue #708.
+    """
+    knn = "[KNN 10 @embedding $vector AS vector_distance]"
+
+    def prefilter_for(filter_expression):
+        return VectorQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            filter_expression=filter_expression,
+        )._build_query_string()
+
+    # A real filter is parenthesized, single clause included.
+    assert prefilter_for("@category:{tech}") == f"(@category:{{tech}})=>{knn}"
+    assert prefilter_for(Tag("category") == "tech") == f"(@category:{{tech}})=>{knn}"
+
+    # A top-level union must not bind across the "=>" pre-filter boundary.
+    assert prefilter_for("@a:{x} | @b:{y}") == f"(@a:{{x}} | @b:{{y}})=>{knn}"
+
+    assert prefilter_for(None) == f"*=>{knn}"
+    assert prefilter_for("*") == f"*=>{knn}"
+    assert prefilter_for("") == f"*=>{knn}"
+
+
+def test_vector_range_query_filter_is_parenthesised():
+    """The filter clause carries its own parentheses rather than the whole query.
+
+    Without them a raw-string union binds across the intersection, so the query
+    matches documents outside the vector range. The outer parentheses the old
+    form wrapped around everything were redundant: the string is always a
+    complete FT.SEARCH argument, never an embedded operand. See issue #708.
+    """
+    base = (
+        "@embedding:[VECTOR_RANGE $distance_threshold $vector]"
+        "=>{$YIELD_DISTANCE_AS: vector_distance}"
+    )
+
+    def query_string_for(filter_expression):
+        return VectorRangeQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            distance_threshold=0.2,
+            filter_expression=filter_expression,
+        )._build_query_string()
+
+    assert query_string_for("@category:{tech}") == f"{base} (@category:{{tech}})"
+    assert query_string_for("@a:{x} | @b:{y}") == f"{base} (@a:{{x}} | @b:{{y}})"
+    assert query_string_for(None) == base
+    assert query_string_for("*") == base
 
 
 @pytest.mark.skip("Test is flaking")
@@ -1289,6 +1354,44 @@ def test_filter_query_hash_id_only_not_skipped():
     # Not a vector query and not JSON unpack -> we cannot distinguish this from a
     # legitimate sparse doc, so it is kept as an id-only dict rather than dropped.
     assert results == [{"id": "doc:1"}]
+
+
+def test_no_content_query_not_skipped():
+    """Over-skip guard: a NOCONTENT query legitimately returns ids only.
+
+    The server "returns the document ids and not the content" for every healthy
+    match, so a missing field payload carries no information and must not be read
+    as the expiry race. redis-py's ``no_content()`` leaves ``_return_fields``
+    untouched, so both detection branches would otherwise fire on every document.
+    """
+    nocontent = Result([2, "doc:1", "doc:2"], False)
+
+    vector_query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    ).no_content()
+    results = process_results(nocontent, vector_query, _hash_schema())
+    assert [doc["id"] for doc in results] == ["doc:1", "doc:2"]
+    assert results.dropped_count == 0
+
+    # JSON full-object unpack: no "json" key is expected under NOCONTENT either.
+    json_query = FilterQuery(Tag("brand") == "Nike").no_content()
+    results = process_results(nocontent, json_query, _json_schema())
+    assert [doc["id"] for doc in results] == ["doc:1", "doc:2"]
+    assert results.dropped_count == 0
+
+
+def test_no_content_query_with_normalize_does_not_raise():
+    """NOCONTENT leaves no distance to normalize; the branch must skip it."""
+    nocontent = Result([1, "doc:1"], False)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        normalize_vector_distance=True,
+    ).no_content()
+    # Previously raised KeyError on doc_dict[query.DISTANCE_ID].
+    assert process_results(nocontent, query, _hash_schema()) == [{"id": "doc:1"}]
 
 
 def test_mixed_healthy_and_nil_doc():

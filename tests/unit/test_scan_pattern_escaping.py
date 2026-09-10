@@ -17,23 +17,28 @@ COLLIDING_NAME = "cache[ab]"
 
 
 class RecordingClient:
-    """Records SCAN patterns and returns no keys."""
+    """Records the patterns handed to ``scan_iter`` and yields no keys."""
 
     def __init__(self):
         self.patterns: list[str] = []
 
-    def scan(self, cursor=0, match=None, count=None):
+    def scan_iter(self, match=None, count=None):
         self.patterns.append(match)
-        return 0, []
+        return iter(())
 
-    def delete(self, *keys):  # pragma: no cover - no keys are ever returned
+    def delete(self, *keys):  # pragma: no cover - no keys are ever yielded
         raise AssertionError("delete() reached with no scan hits")
 
 
 class AsyncRecordingClient(RecordingClient):
-    async def scan(self, cursor=0, match=None, count=None):  # type: ignore[override]
+    def scan_iter(self, match=None, count=None):  # type: ignore[override]
         self.patterns.append(match)
-        return 0, []
+
+        async def _empty():
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        return _empty()
 
 
 class StubIndex:

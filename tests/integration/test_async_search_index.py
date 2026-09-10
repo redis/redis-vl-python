@@ -3,6 +3,7 @@ from random import choice
 from unittest import mock
 
 import pytest
+import redis
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
@@ -540,6 +541,72 @@ async def test_batch_search(async_index):
     assert results[0].docs[0]["id"] == "rvl:1"
     assert results[1].total == 1
     assert results[1].docs[0]["id"] == "rvl:2"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        pytest.param({}, id="default"),
+        pytest.param({"protocol": 3}, id="protocol-3"),
+        pytest.param(
+            {"legacy_responses": False},
+            id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+    ],
+)
+async def test_client_from_existing_and_batch_search(
+    redis_url, redis_test_name, client_kwargs
+):
+    """User-provided async redis-py clients support introspection and batch search."""
+    name = redis_test_name("async_client_index")
+    prefix = f"{name}:"
+    client = AsyncRedis.from_url(redis_url, **client_kwargs)
+    index = AsyncSearchIndex.from_dict(
+        {
+            "index": {"name": name, "prefix": prefix},
+            "fields": [
+                {"name": "test", "type": "tag"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"withsuffixtrie": True},
+                },
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_client=client,
+    )
+
+    try:
+        await index.create()
+        await index.load(
+            [{"id": "1", "test": "foo", "title": "suffix trie"}],
+            id_field="id",
+        )
+
+        reopened = await AsyncSearchIndex.from_existing(name, redis_client=client)
+        results = await reopened.batch_search(["@test:{foo}"])
+
+        assert reopened.schema == index.schema
+        assert results[0].total == 1
+        assert results[0].docs[0]["id"] == f"{prefix}1"
+    finally:
+        await index.delete(drop=True)
+        await client.aclose()
 
 
 @pytest.mark.parametrize(

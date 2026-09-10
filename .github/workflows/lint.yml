@@ -10,6 +10,28 @@ env:
   UV_VERSION: "0.12.3"
 
 jobs:
+  lock:
+    name: Check uv.lock is up to date
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v6
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.0.0
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        cache-dependency-glob: |
+          pyproject.toml
+          uv.lock
+
+    # Fails a pyproject.toml change that was never locked, before the drift
+    # lands on main and dirties the next contributor's tree.
+    - name: Check lockfile
+      run: uv lock --check
+
   check:
     name: Style-check ${{ matrix.python-version }}
     runs-on: ubuntu-latest
