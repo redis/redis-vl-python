@@ -159,7 +159,7 @@ class TestBatchedDeleteStops:
     def test_clear_stops_instead_of_looping(self):
         index, client = _cluster_index()
         client.delete.side_effect = _failing_on({KEYS[0]})
-        index.info = MagicMock(return_value={"num_docs": 1})
+        index.query = MagicMock(return_value=1)  # CountQuery: 1 matching doc
         index._query = MagicMock(return_value=[{"id": KEYS[0]}])
 
         assert index.clear() == 0
@@ -168,7 +168,7 @@ class TestBatchedDeleteStops:
     async def test_async_clear_stops_instead_of_looping(self):
         index, client = _async_cluster_index()
         client.delete = AsyncMock(side_effect=_failing_on({KEYS[0]}))
-        index.info = AsyncMock(return_value={"num_docs": 1})
+        index.query = AsyncMock(return_value=1)
         index._query = AsyncMock(return_value=[{"id": KEYS[0]}])
 
         assert await index.clear() == 0
