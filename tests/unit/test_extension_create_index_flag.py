@@ -12,6 +12,7 @@ client rather than on outcomes: the mock records every call, and `ft()` is the
 gate every `FT.*` command passes through.
 """
 
+import re
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -20,9 +21,11 @@ from redis.exceptions import NoPermissionError
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.extensions.cache.llm import SemanticCache
+from redisvl.extensions.constants import EXTERNAL_INDEX_DROP_CONFLICT
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import Route
+from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.vectorize import CustomVectorizer
 
@@ -144,9 +147,14 @@ class TestContradictoryArguments:
 
 
 class TestExternalIndexLifecycle:
+    """The flag guards the index's lifecycle, not its contents.
+
+    `delete()` drops the index, so an attach-only instance must refuse it.
+    `clear()` removes entries and leaves the index standing, so it does not.
+    """
+
     @pytest.mark.parametrize("kind", ALL_KINDS)
-    @pytest.mark.parametrize("method", ["clear", "delete"])
-    def test_index_wide_mutation_is_rejected(self, kind, method, vectorizer):
+    def test_dropping_the_index_is_rejected(self, kind, vectorizer):
         client = _client()
         extension = _build(
             kind,
@@ -156,16 +164,13 @@ class TestExternalIndexLifecycle:
             name="production_alias",
         )
 
-        with pytest.raises(ValueError, match="does not manage.*lifecycle"):
-            getattr(extension, method)()
+        with pytest.raises(ValueError, match=re.escape(EXTERNAL_INDEX_DROP_CONFLICT)):
+            extension.delete()
 
         assert client.mock_calls == []
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("method", ["aclear", "adelete"])
-    async def test_async_cache_index_wide_mutation_is_rejected(
-        self, method, vectorizer
-    ):
+    async def test_async_cache_dropping_the_index_is_rejected(self, vectorizer):
         client = _client()
         cache = SemanticCache(
             name="production_alias",
@@ -174,10 +179,46 @@ class TestExternalIndexLifecycle:
             create_index=False,
         )
 
-        with pytest.raises(ValueError, match="does not manage.*lifecycle"):
-            await getattr(cache, method)()
+        with pytest.raises(ValueError, match=re.escape(EXTERNAL_INDEX_DROP_CONFLICT)):
+            await cache.adelete()
 
         assert client.mock_calls == []
+
+    def test_cache_clear_issues_no_index_command(self, vectorizer):
+        # Asserted as "ft() was never reached" rather than on the SCAN call
+        # shape, which belongs to BaseCache and is being reworked separately.
+        client = _client()
+        client.scan.return_value = (0, ["llmcache:abc"])
+        client.scan_iter.return_value = iter(["llmcache:abc"])
+        cache = SemanticCache(
+            name="llmcache",
+            vectorizer=vectorizer,
+            redis_client=client,
+            create_index=False,
+        )
+
+        cache.clear()
+
+        client.ft.assert_not_called()
+        client.delete.assert_called_once_with("llmcache:abc")
+
+    @pytest.mark.parametrize("kind", ["history", "semantic_history", "router"])
+    def test_index_backed_clear_is_not_refused(self, kind, vectorizer, monkeypatch):
+        # These delegate to SearchIndex.clear(), so the minimal assertion is
+        # that control reaches it at all.
+        cleared = Mock(return_value=0)
+        monkeypatch.setattr(SearchIndex, "clear", cleared)
+        extension = _build(
+            kind,
+            _client(),
+            vectorizer,
+            create_index=False,
+            name="production_alias",
+        )
+
+        extension.clear()
+
+        cleared.assert_called_once()
 
 
 class TestRouterWithoutRoutes:
