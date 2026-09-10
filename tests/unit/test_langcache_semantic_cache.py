@@ -2,7 +2,7 @@
 
 import builtins
 import importlib.util
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
 
@@ -11,16 +11,24 @@ from redisvl.extensions.cache.llm.langcache import LangCacheSemanticCache
 
 @pytest.fixture
 def mock_langcache_client():
-    """Create a mock LangCache client via the wrapper factory method."""
-    with patch.object(LangCacheSemanticCache, "_create_client") as mock_create_client:
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
+    """Create a mock LangCache client via the wrapper factory method.
 
-        # Mock context manager
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=None)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
+    Autospecced against the real SDK class, so a renamed method or a changed
+    signature fails here rather than being silently auto-vivified. That matters
+    more than usual: whole-cache flush has no live-service coverage anywhere
+    (see the module docstring in
+    tests/integration/test_langcache_semantic_cache_integration.py), so these
+    mocks are the only thing standing between an SDK change and a broken
+    delete()/clear().
+    """
+
+    # Local import: at module scope this would break collection in an
+    # environment without the optional langcache dependency.
+    from langcache import LangCache
+
+    with patch.object(LangCacheSemanticCache, "_create_client") as mock_create_client:
+        mock_client = create_autospec(LangCache, instance=True)
+        mock_create_client.return_value = mock_client
 
         yield mock_create_client, mock_client
 
@@ -124,7 +132,7 @@ class TestLangCacheSemanticCache:
         # Mock the async set method - returns a Pydantic model with entry_id
         mock_response = MagicMock()
         mock_response.entry_id = "entry-456"
-        mock_client.set_async = AsyncMock(return_value=mock_response)
+        mock_client.set_async.return_value = mock_response
 
         cache = LangCacheSemanticCache(
             name="test",
@@ -175,10 +183,9 @@ class TestLangCacheSemanticCache:
         """astore() should pass per-entry TTL as ttl_millis to LangCache client."""
         _, mock_client = mock_langcache_client
 
-        # Ensure set_async is an AsyncMock so it can be awaited.
         mock_response = MagicMock()
         mock_response.entry_id = "entry-999"
-        mock_client.set_async = AsyncMock(return_value=mock_response)
+        mock_client.set_async.return_value = mock_response
 
         cache = LangCacheSemanticCache(
             name="test",
@@ -262,7 +269,7 @@ class TestLangCacheSemanticCache:
 
         mock_response = MagicMock()
         mock_response.data = [mock_entry]
-        mock_client.search_async = AsyncMock(return_value=mock_response)
+        mock_client.search_async.return_value = mock_response
 
         cache = LangCacheSemanticCache(
             name="test",
@@ -376,67 +383,67 @@ class TestLangCacheSemanticCache:
             "topic": r"programming,with/encoding\and?",
         }
 
-        def test_store_with_empty_metadata_does_not_send_attributes(
-            self, mock_langcache_client
-        ):
-            """Empty metadata {} should not be forwarded as attributes to the SDK."""
-            _, mock_client = mock_langcache_client
+    def test_store_with_empty_metadata_does_not_send_attributes(
+        self, mock_langcache_client
+    ):
+        """Empty metadata {} should not be forwarded as attributes to the SDK."""
+        _, mock_client = mock_langcache_client
 
-            mock_response = MagicMock()
-            mock_response.entry_id = "entry-empty"
-            mock_client.set.return_value = mock_response
+        mock_response = MagicMock()
+        mock_response.entry_id = "entry-empty"
+        mock_client.set.return_value = mock_response
 
-            cache = LangCacheSemanticCache(
-                name="test",
-                server_url="https://api.example.com",
-                cache_id="test-cache",
-                api_key="test-key",
-            )
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
 
-            entry_id = cache.store(
-                prompt="Q?",
-                response="A",
-                metadata={},  # should be ignored
-            )
+        entry_id = cache.store(
+            prompt="Q?",
+            response="A",
+            metadata={},  # should be ignored
+        )
 
-            assert entry_id == "entry-empty"
-            # Ensure attributes kwarg was NOT sent when metadata is {}
-            _, call_kwargs = mock_client.set.call_args
-            assert "attributes" not in call_kwargs
+        assert entry_id == "entry-empty"
+        # Ensure attributes kwarg was NOT sent when metadata is {}
+        _, call_kwargs = mock_client.set.call_args
+        assert "attributes" not in call_kwargs
 
-        def test_check_with_empty_attributes_does_not_send_attributes(
-            self, mock_langcache_client
-        ):
-            """Empty attributes {} should not be forwarded to the SDK search call."""
-            _, mock_client = mock_langcache_client
+    def test_check_with_empty_attributes_does_not_send_attributes(
+        self, mock_langcache_client
+    ):
+        """Empty attributes {} should not be forwarded to the SDK search call."""
+        _, mock_client = mock_langcache_client
 
-            mock_entry = MagicMock()
-            mock_entry.model_dump.return_value = {
-                "id": "e1",
-                "prompt": "Q?",
-                "response": "A",
-                "similarity": 1.0,
-                "created_at": 0.0,
-                "updated_at": 0.0,
-                "attributes": {},
-            }
-            mock_response = MagicMock()
-            mock_response.data = [mock_entry]
-            mock_client.search.return_value = mock_response
+        mock_entry = MagicMock()
+        mock_entry.model_dump.return_value = {
+            "id": "e1",
+            "prompt": "Q?",
+            "response": "A",
+            "similarity": 1.0,
+            "created_at": 0.0,
+            "updated_at": 0.0,
+            "attributes": {},
+        }
+        mock_response = MagicMock()
+        mock_response.data = [mock_entry]
+        mock_client.search.return_value = mock_response
 
-            cache = LangCacheSemanticCache(
-                name="test",
-                server_url="https://api.example.com",
-                cache_id="test-cache",
-                api_key="test-key",
-            )
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
 
-            results = cache.check(prompt="Q?", attributes={})  # should be ignored
-            assert results and results[0]["entry_id"] == "e1"
+        results = cache.check(prompt="Q?", attributes={})  # should be ignored
+        assert results and results[0]["entry_id"] == "e1"
 
-            # Ensure attributes kwarg was NOT sent when attributes is {}
-            _, call_kwargs = mock_client.search.call_args
-            assert "attributes" not in call_kwargs
+        # Ensure attributes kwarg was NOT sent when attributes is {}
+        _, call_kwargs = mock_client.search.call_args
+        assert "attributes" not in call_kwargs
 
     def test_delete(self, mock_langcache_client):
         """Test deleting the entire cache using flush()."""
@@ -457,8 +464,6 @@ class TestLangCacheSemanticCache:
     async def test_adelete(self, mock_langcache_client):
         """Test async deleting the entire cache using flush()."""
         _, mock_client = mock_langcache_client
-
-        mock_client.flush_async = AsyncMock()
 
         cache = LangCacheSemanticCache(
             name="test",
@@ -490,8 +495,6 @@ class TestLangCacheSemanticCache:
     async def test_aclear(self, mock_langcache_client):
         """Test that async clear() calls adelete() which uses flush()."""
         _, mock_client = mock_langcache_client
-
-        mock_client.flush_async = AsyncMock()
 
         cache = LangCacheSemanticCache(
             name="test",
@@ -565,7 +568,7 @@ class TestLangCacheSemanticCache:
 
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {"deleted_entries_count": 3}
-        mock_client.delete_query_async = AsyncMock(return_value=mock_response)
+        mock_client.delete_query_async.return_value = mock_response
 
         cache = LangCacheSemanticCache(
             name="test",

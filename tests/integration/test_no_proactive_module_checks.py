@@ -188,10 +188,14 @@ class TestNoProactiveModuleChecks:
 
     def test_search_operations_fail_gracefully_without_modules(self):
         """Test that operations fail with clear errors when modules are missing."""
-        # Create a mock client that simulates missing modules
+        # A server without Redis Search rejects every FT.* command, so stub both
+        # the raw command path and the ft() helper that the existence check uses.
         mock_client = Mock(spec=Redis)
         mock_client.execute_command.side_effect = ResponseError(
             "unknown command 'FT.CREATE'"
+        )
+        mock_client.ft.return_value.info.side_effect = ResponseError(
+            "unknown command 'FT.INFO'"
         )
 
         schema = IndexSchema.from_dict(
@@ -207,12 +211,15 @@ class TestNoProactiveModuleChecks:
 
         index = SearchIndex(schema, redis_client=mock_client)
 
-        # Operations should fail with clear errors
-        with pytest.raises(ResponseError) as exc_info:
+        # create() checks for an existing index first, so that check is what
+        # surfaces the failure. Like every other Redis failure in create(), it
+        # arrives as RedisSearchError with the redis-py error on __cause__.
+        with pytest.raises(RedisSearchError) as exc_info:
             index.create()
 
         # Error message should be clear about what's missing
         assert "unknown command" in str(exc_info.value).lower()
+        assert isinstance(exc_info.value.__cause__, ResponseError)
 
     def test_semantic_router_no_proactive_validation(self, redis_url, worker_id):
         """Test that SemanticRouter doesn't validate modules proactively."""

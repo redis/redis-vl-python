@@ -3,15 +3,19 @@ from random import choice
 from unittest import mock
 
 import pytest
+import redis
 from redis import Redis
+from redis.exceptions import NoPermissionError
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 from redisvl.schema.fields import VectorIndexAlgorithm
+from tests.conftest import skip_if_no_redis_search
 
 fields = [
     {"name": "test", "type": "tag"},
@@ -298,14 +302,74 @@ def test_search_index_connect(index, redis_url):
 def test_search_index_create(index):
     index.create(overwrite=True, drop=True)
     assert index.exists()
-    assert index.name in convert_bytes(index.client.execute_command("FT._LIST"))
+    # exists() and listall() reach Redis by different commands, so keeping both
+    # assertions gives each an independent witness.
+    assert index.name in index.listall()
 
 
 def test_search_index_delete(index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
     assert not index.exists()
-    assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
+    assert index.name not in index.listall()
+
+
+def test_exists_under_acl_without_admin_commands(index, client, acl_user):
+    """exists() must work for a credential that grants search but drops @admin.
+
+    Redis tags FT._LIST @admin as well as @search, so this ACL shape used to
+    make exists() -- and therefore create() and every extension constructor --
+    fail outright. Only a live server can confirm FT.INFO is not gated the same
+    way, which is why this is an integration test.
+    """
+    # Probe with the unrestricted client: the module check itself uses FT._LIST.
+    skip_if_no_redis_search(client)
+    index.create(overwrite=True, drop=True)
+
+    try:
+        with acl_user("~*", "&*", "+@all", "-@admin", name="acl_no_admin") as user:
+            restricted = user.connect()
+            # Pin the premise so this test cannot quietly become vacuous: if a
+            # future Redis stops gating FT._LIST behind @admin, the reason for
+            # preferring FT.INFO is gone and we want to hear about it here.
+            with pytest.raises(NoPermissionError):
+                restricted.execute_command("FT._LIST")
+
+            restricted_index = SearchIndex(schema=index.schema, redis_client=restricted)
+            assert restricted_index.exists() is True
+    finally:
+        index.delete(drop=True)
+
+
+def test_exists_false_for_alias_pointing_at_another_index(
+    index, client, redis_test_name
+):
+    """An alias must not report as an existing index.
+
+    FT.INFO accepts an alias and answers for its target, where FT._LIST never
+    listed aliases at all. Left unhandled, that difference would make exists()
+    return True for an alias, and create(overwrite=True, drop=True) acts on
+    that answer by issuing FT.DROPINDEX <name> DD -- destroying the aliased
+    index and its documents.
+    """
+    index.create(overwrite=True, drop=True)
+    alias = redis_test_name("exists_alias")
+    client.execute_command("FT.ALIASADD", alias, index.name)
+    try:
+        alias_index = SearchIndex(
+            schema=IndexSchema.from_dict({"index": {"name": alias}, "fields": fields}),
+            redis_client=client,
+        )
+        assert alias_index.exists() is False
+        # And the guard must not be so strict that the real name breaks.
+        assert index.exists() is True
+    finally:
+        # Only FT.ALIASDEL removes an alias. Never call delete() or
+        # create(overwrite=True, drop=True) on alias_index here: FT.DROPINDEX
+        # resolves the alias and would drop the real index's data, which is the
+        # exact failure this test exists to catch.
+        client.execute_command("FT.ALIASDEL", alias)
+        index.delete(drop=True)
 
 
 @pytest.mark.parametrize("num_docs", [0, 1, 5, 10, 2042])
@@ -555,6 +619,71 @@ def test_batch_search(index):
     assert results[0].docs[0]["id"] == "rvl:1"
     assert results[1].total == 1
     assert results[1].docs[0]["id"] == "rvl:2"
+
+
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        pytest.param({}, id="default"),
+        pytest.param({"protocol": 3}, id="protocol-3"),
+        pytest.param(
+            {"legacy_responses": False},
+            id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+    ],
+)
+def test_client_from_existing_and_batch_search(
+    redis_url, redis_test_name, client_kwargs
+):
+    """User-provided redis-py clients support introspection and batch search."""
+    name = redis_test_name("client_index")
+    prefix = f"{name}:"
+    client = Redis.from_url(redis_url, **client_kwargs)
+    index = SearchIndex.from_dict(
+        {
+            "index": {"name": name, "prefix": prefix},
+            "fields": [
+                {"name": "test", "type": "tag"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"withsuffixtrie": True},
+                },
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_client=client,
+    )
+
+    try:
+        index.create()
+        index.load(
+            [{"id": "1", "test": "foo", "title": "suffix trie"}],
+            id_field="id",
+        )
+
+        reopened = SearchIndex.from_existing(name, redis_client=client)
+        results = reopened.batch_search(["@test:{foo}"])
+
+        assert reopened.schema == index.schema
+        assert results[0].total == 1
+        assert results[0].docs[0]["id"] == f"{prefix}1"
+    finally:
+        index.delete(drop=True)
+        client.close()
 
 
 @pytest.mark.parametrize(

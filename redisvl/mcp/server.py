@@ -8,7 +8,7 @@ from typing import Any, Awaitable
 
 from redis import __version__ as redis_py_version
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisSearchError, _is_missing_index_error
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.auth import build_auth_provider, resolve_auth_config
 from redisvl.mcp.config import MCPConfig, MCPIndexBindingConfig, load_mcp_config
@@ -16,6 +16,10 @@ from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.list_indexes import register_list_indexes_tool
+from redisvl.mcp.tools.profiles import (
+    register_profile_tools,
+    validate_profile_against_schema,
+)
 from redisvl.mcp.tools.search import register_search_tool
 from redisvl.mcp.tools.upsert import register_upsert_tool
 from redisvl.mcp.transport_security import (
@@ -68,6 +72,7 @@ class RedisVLMCPServer(FastMCP):
         self._bindings: dict[str, BindingRuntime] = {}
         self._semaphore: asyncio.Semaphore | None = None
         self._tools_registered = False
+        self._registered_tool_fingerprint = ""
 
         # Lifecycle management
         self._lifecycle_state = _LifecycleState.INITIAL  # Server lifecycle
@@ -270,9 +275,58 @@ class RedisVLMCPServer(FastMCP):
 
         return hasattr(client.ft(index.schema.index.name), "hybrid_search")
 
+    def _validate_custom_tools(self) -> None:
+        """Fail startup on profiles that do not fit their bound index schema.
+
+        Config load already checked naming, parameter policy, and that a pinned
+        index exists. What it could not check is the schema, which is only known
+        once the binding has been inspected -- so a locked projection or filter
+        naming a missing field is caught here rather than silently matching
+        nothing at request time.
+        """
+        config = getattr(self, "config", None)
+        if config is None or not config.custom_tools:
+            return
+
+        for profile in config.custom_tools:
+            binding_id = config.resolved_profile_index(profile)
+            runtime = self._bindings[binding_id]
+            validate_profile_against_schema(profile, runtime.schema)
+
+    @staticmethod
+    def _tool_surface_fingerprint(config: Any) -> str:
+        """Summarize the config that a registered tool set baked in."""
+        if config is None:
+            return ""
+        return repr(
+            (
+                sorted(config.server.builtin_tools.items()),
+                [profile.model_dump(mode="json") for profile in config.custom_tools],
+            )
+        )
+
     def _register_tools(self) -> None:
         """Register MCP tools once every binding is ready."""
         if self._tools_registered or not hasattr(self, "tool"):
+            # Registration is deliberately once-per-process, since re-registering
+            # the same names on the FastMCP object is not valid. Built-in closures
+            # resolve their binding per call, so they survive a restart unchanged --
+            # but *which* built-ins exist is a function of config, and a profile is
+            # worse off still: its locked filter, projection, and signature are
+            # fixed at registration. `startup()` re-reads the config file, so a
+            # stop/start against an edited one keeps the old tool set either way.
+            # The dangerous direction is an operator disabling a tool or tightening
+            # a lock and believing the restart applied it.
+            if self._tools_registered:
+                current = self._tool_surface_fingerprint(getattr(self, "config", None))
+                if current != self._registered_tool_fingerprint:
+                    logger.warning(
+                        "MCP tool configuration (built-in or custom) changed "
+                        "since tools were registered, but tools register once per "
+                        "process. The previously registered tool set is still in "
+                        "effect; "
+                        "restart the process to apply the new configuration."
+                    )
             return
 
         # The search description advertises schema-specific filter hints, which
@@ -282,32 +336,92 @@ class RedisVLMCPServer(FastMCP):
         if len(self._bindings) == 1:
             search_schema = next(iter(self._bindings.values())).schema
 
-        # Discovery is always available so clients can enumerate indexes.
-        register_list_indexes_tool(self)
-        register_search_tool(self, search_schema)
+        # An operator can disable a built-in whose curated profiles supersede it;
+        # adding near-duplicate tools otherwise degrades the model's ability to
+        # pick the right one.
+        config = getattr(self, "config", None)
+        enabled = (
+            config.server.builtin_tool_enabled
+            if config is not None
+            else lambda _name: True
+        )
+
+        registered: list[str] = []
+
+        # Discovery is on by default so clients can enumerate indexes; an
+        # operator serving only curated profiles may still turn it off.
+        discovery_enabled = enabled("list-indexes")
+        if discovery_enabled:
+            register_list_indexes_tool(self)
+            registered.append("list-indexes")
+
+        # `index` is required once several bindings exist, and without discovery
+        # the logical ids cannot be learned any other way -- so every tool that
+        # requires one has to name them inline instead of deferring to a tool that
+        # is not published. Computed once so the two cannot drift apart.
+        unlisted_index_ids = (
+            sorted(self._bindings)
+            if len(self._bindings) > 1 and not discovery_enabled
+            else None
+        )
+
+        if enabled("search-records"):
+            register_search_tool(self, search_schema, index_ids=unlisted_index_ids)
+            registered.append("search-records")
         # Expose upsert only when at least one binding is writable. A binding is
         # read-only under global read-only mode or its own read_only policy, both
         # of which are folded into effective_read_only; the per-call write check
         # in the tool then rejects writes to any individual read-only binding.
-        if any(not rt.effective_read_only for rt in self._bindings.values()):
-            register_upsert_tool(self)
+        if enabled("upsert-records") and any(
+            not rt.effective_read_only for rt in self._bindings.values()
+        ):
+            register_upsert_tool(self, index_ids=unlisted_index_ids)
+            registered.append("upsert-records")
+        registered.extend(register_profile_tools(self))
+
+        self._warn_on_unusable_tool_surface(registered)
+        self._registered_tool_fingerprint = self._tool_surface_fingerprint(config)
         self._tools_registered = True
 
-    @staticmethod
-    def _is_missing_index_error(exc: RedisSearchError) -> bool:
-        """Detect the Redis search errors that mean the configured index is absent.
+    def _warn_on_unusable_tool_surface(self, registered: list[str]) -> None:
+        """Warn about tool-set shapes that are valid config but unusable in practice.
 
-        Different RediSearch versions phrase the error differently
-        (``unknown index name``, ``no such index``, or ``SEARCH_INDEX_NOT_FOUND
-        Index not found``), so check for each known wording.
+        Neither case is fatal -- an operator may be mid-rollout -- but both are
+        silent otherwise, and both present to a client as a server that simply
+        does not work.
         """
-        message = str(exc).lower()
-        return (
-            "unknown index name" in message
-            or "no such index" in message
-            or "search_index_not_found" in message
-            or "index not found" in message
+        if not registered:
+            # Deliberately does not attribute a cause: `upsert-records` can also
+            # be absent because every binding is read-only, not because
+            # `builtin_tools` disabled it.
+            logger.warning(
+                "MCP server registered no tools, so clients will see an empty "
+                "tool list. Check server.builtin_tools, custom_tools, and "
+                "read-only settings."
+            )
+            return
+
+        # Both `search-records` and `upsert-records` require an `index` once
+        # several bindings exist, so either one is affected by losing discovery --
+        # naming them in the descriptions keeps the contract satisfiable, but an
+        # operator who disabled discovery on a multi-index server probably did not
+        # intend to. Checking only search would leave a write-only surface silent.
+        index_requiring = sorted(
+            {"search-records", "upsert-records"}.intersection(registered)
         )
+        if (
+            len(self._bindings) > 1
+            and index_requiring
+            and "list-indexes" not in registered
+        ):
+            logger.warning(
+                "MCP server has %d indexes and exposes %s, but list-indexes is "
+                "disabled: clients cannot discover the logical index ids those "
+                "tools require, so the ids are named inline in each tool "
+                "description instead.",
+                len(self._bindings),
+                ", ".join(index_requiring),
+            )
 
     @asynccontextmanager
     async def _server_lifespan(self, _server: Any):
@@ -455,6 +569,9 @@ class RedisVLMCPServer(FastMCP):
             self._bindings[binding_id] = await self._initialize_binding(
                 binding_id, binding
             )
+        # Validate before registering so a bad profile fails startup rather than
+        # leaving a half-registered tool set behind.
+        self._validate_custom_tools()
         self._register_tools()
 
     async def _initialize_binding(
@@ -514,7 +631,7 @@ class RedisVLMCPServer(FastMCP):
                 timeout=timeout,
             )
         except RedisSearchError as exc:
-            if self._is_missing_index_error(exc):
+            if _is_missing_index_error(exc):
                 raise ValueError(
                     f"Configured Redis index '{binding.redis_name}' does not exist"
                 ) from exc

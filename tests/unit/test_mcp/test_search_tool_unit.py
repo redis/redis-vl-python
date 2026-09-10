@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from conftest import _schema
 
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
@@ -10,37 +11,13 @@ from redisvl.mcp.tools.search import (
     _build_fallback_hybrid_kwargs,
     _build_search_tool_description,
     _embed_query,
+    _validate_request,
     register_search_tool,
     search_records,
 )
+from redisvl.query import VectorQuery
+from redisvl.query.filter import Tag
 from redisvl.schema import IndexSchema
-
-
-def _schema() -> IndexSchema:
-    return IndexSchema.from_dict(
-        {
-            "index": {
-                "name": "docs-index",
-                "prefix": "doc",
-                "storage_type": "hash",
-            },
-            "fields": [
-                {"name": "content", "type": "text"},
-                {"name": "category", "type": "tag"},
-                {"name": "rating", "type": "numeric"},
-                {
-                    "name": "embedding",
-                    "type": "vector",
-                    "attrs": {
-                        "algorithm": "flat",
-                        "dims": 3,
-                        "distance_metric": "cosine",
-                        "datatype": "float32",
-                    },
-                },
-            ],
-        }
-    )
 
 
 def _config_with_search(
@@ -242,6 +219,20 @@ async def test_search_records_rejects_unknown_or_vector_return_fields():
 
     assert unknown_exc.value.code == MCPErrorCode.INVALID_REQUEST
     assert vector_exc.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_an_empty_return_fields_list():
+    server = FakeServer()
+
+    # An empty list is not "no projection" -- it reaches Redis as an absent
+    # RETURN clause, which widens the response to every field including the
+    # vector. Rejecting it keeps `[]` from quietly meaning the opposite of what
+    # it reads like.
+    with pytest.raises(RedisVLMCPError, match="return_fields must not be empty") as exc:
+        await search_records(server, query="science", return_fields=[])
+
+    assert exc.value.code == MCPErrorCode.INVALID_REQUEST
 
 
 @pytest.mark.asyncio
@@ -862,3 +853,201 @@ def test_build_search_tool_description_distinguishes_typed_and_exists_support():
         in description
     )
     assert "Allowed return_fields: content, category, rating, location." in description
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("search_type", ["vector", "fulltext"])
+async def test_default_projection_always_produces_a_return_clause(
+    monkeypatch, search_type
+):
+    """A query with no RETURN clause returns every stored field, vector included.
+
+    The default projection is every *non-vector* field, so on an index with no
+    other fields it is empty -- and an empty `return_fields` is falsy, which makes
+    RedisVL omit RETURN entirely. `VectorQuery` self-adds `vector_distance` so it
+    is safe; `TextQuery` does not, which is why config validation refuses to point
+    `text_field_name` at a vector field. This pins the resulting invariant: no
+    search path may build a query without a RETURN clause.
+    """
+    server = FakeServer(search_type=search_type)
+    built = []
+
+    monkeypatch.setattr(
+        "redisvl.mcp.tools.search.VectorQuery",
+        lambda **kw: built.append(kw) or FakeQuery(**kw),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.tools.search.TextQuery",
+        lambda **kw: built.append(kw) or FakeQuery(**kw),
+    )
+
+    await search_records(server, query="science")
+
+    assert built, "no query was built"
+    # Non-empty is what makes RedisVL emit RETURN; empty would silently widen the
+    # response to every field.
+    assert built[0]["return_fields"], "empty projection would omit RETURN entirely"
+
+
+def test_empty_default_projection_still_yields_a_return_clause():
+    """The one case where a falsy `return_fields` legitimately reaches a query.
+
+    `None` and `[]` are kept distinct at the request boundary -- the branch is
+    `is None`, so an explicit `[]` is rejected rather than read as "omitted". But
+    the *default* projection is every non-vector field, so an index with only a
+    vector field resolves it to `[]`, and RedisVL reads a falsy `return_fields`
+    as "no projection" and omits RETURN.
+
+    That is safe here only because `VectorQuery` adds `vector_distance` to its own
+    return fields, so a RETURN clause is emitted anyway. This pins that
+    dependency: if it ever stops holding, an index like this would start
+    returning every stored field, embedding included. Fulltext and hybrid cannot
+    reach this state at all, because `text_field_name` is required to be a
+    non-vector field and therefore always lands in the projection.
+    """
+    vector_only = IndexSchema.from_dict(
+        {
+            "index": {"name": "vec-only", "prefix": "v", "storage_type": "hash"},
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "flat",
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                }
+            ],
+        }
+    )
+    runtime = SimpleNamespace(default_limit=2, max_limit=5, max_result_window=100)
+
+    _, fields = _validate_request(
+        query="science",
+        limit=None,
+        offset=0,
+        return_fields=None,
+        runtime=runtime,
+        schema=vector_only,
+    )
+
+    # The default projection really is empty here, so this is not passing for
+    # some other reason.
+    assert fields == []
+
+    rendered = str(
+        VectorQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            return_fields=fields,
+            num_results=2,
+        )
+    )
+
+    assert "RETURN" in rendered
+    # And what it returns is the score, not the embedding.
+    assert "embedding" not in rendered.split("RETURN", 1)[1]
+
+
+# --------------------------------------------------------------------------
+# Server-supplied narrowing: `limit_cap` and `locked_filter`
+#
+# Both are passed in-process rather than by the model. They are exercised here
+# at the `search_records` boundary so the contract holds regardless of which
+# caller supplies them.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_an_explicit_limit_above_the_cap():
+    server = FakeServer()
+
+    with pytest.raises(RedisVLMCPError, match="less than or equal to 2") as exc:
+        await search_records(server, query="science", limit=3, limit_cap=2)
+
+    assert exc.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_caps_an_omitted_limit_instead_of_rejecting(monkeypatch):
+    """The binding default must not sail past the cap just because it is implicit."""
+    # default_limit is 2 and the cap is 1, so a cap applied only to explicit
+    # limits would let this request through at 2.
+    server = FakeServer()
+    built_queries = []
+
+    class FakeVectorQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.VectorQuery", FakeVectorQuery)
+
+    await search_records(server, query="science", limit_cap=1)
+
+    # No exception: the caller never named a number, so there is nothing to
+    # reject -- but the window is still bounded by the cap.
+    assert built_queries[0]["num_results"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_records_leaves_the_limit_alone_when_no_cap_is_supplied(
+    monkeypatch,
+):
+    server = FakeServer()
+    built_queries = []
+
+    class FakeVectorQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.VectorQuery", FakeVectorQuery)
+
+    await search_records(server, query="science", limit=3)
+
+    assert built_queries[0]["num_results"] == 3
+
+
+@pytest.mark.asyncio
+async def test_search_records_ands_a_locked_filter_under_the_caller_filter(monkeypatch):
+    server = FakeServer()
+    built_queries = []
+
+    class FakeVectorQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.VectorQuery", FakeVectorQuery)
+
+    await search_records(
+        server,
+        query="science",
+        filter={"field": "rating", "op": "gte", "value": 4},
+        locked_filter=Tag("category") == "resolved",
+    )
+
+    rendered = str(built_queries[0]["filter_expression"])
+    # Both clauses survive, and the caller's is nested rather than replacing the
+    # lock.
+    assert "@category:{resolved}" in rendered
+    assert "@rating:[4 +inf]" in rendered
+
+
+@pytest.mark.asyncio
+async def test_search_records_refuses_a_raw_string_filter_under_a_locked_filter():
+    server = FakeServer()
+
+    with pytest.raises(RedisVLMCPError) as exc:
+        await search_records(
+            server,
+            query="science",
+            filter="@category:{open}",
+            locked_filter=Tag("category") == "resolved",
+        )
+
+    # Strings bypass the DSL's field validation and cannot be safely composed.
+    assert exc.value.code == MCPErrorCode.INVALID_FILTER

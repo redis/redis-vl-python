@@ -68,3 +68,14 @@ GeoRadius
     :members:
     :special-members:
     :exclude-members: __hash__
+
+
+Timestamp
+=========
+
+.. currentmodule:: redisvl.query.filter
+
+.. autoclass:: Timestamp
+    :members:
+    :special-members:
+    :exclude-members: __hash__

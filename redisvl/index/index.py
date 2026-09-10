@@ -47,21 +47,9 @@ if TYPE_CHECKING:
     from redis.commands.search.result import Result
     from redisvl.query.query import BaseQuery
 
-from redis import __version__ as redis_version
 from redis.client import NEVER_DECODE
 from redis.commands.search.aggregation import AggregateRequest, Cursor
-
-from redisvl.utils.redis_protocol import get_protocol_version
-
-# Redis 5.x compatibility (6 fixed the import path)
-if redis_version.startswith("5"):
-    from redis.commands.search.indexDefinition import (
-        IndexDefinition,  # type: ignore[import-untyped]
-    )
-else:
-    from redis.commands.search.index_definition import (
-        IndexDefinition,  # type: ignore[no-redef]
-    )
+from redis.commands.search.index_definition import IndexDefinition
 
 # Need Result outside TYPE_CHECKING for cast
 from redis.commands.search.result import Result
@@ -72,6 +60,7 @@ from redisvl.exceptions import (
     RedisSearchError,
     RedisVLError,
     SchemaValidationError,
+    _is_missing_index_error,
 )
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import (
@@ -100,8 +89,42 @@ from redisvl.schema.fields import (
     VectorIndexAlgorithm,
 )
 from redisvl.utils.log import get_logger
+from redisvl.utils.redis_protocol import get_protocol_version
 
 logger = get_logger(__name__)
+
+
+def _parse_batch_search_result(
+    search: Any, result: Any, query: Any, duration: float
+) -> Result:
+    """Parse a pipelined FT.SEARCH response across supported redis-py versions."""
+    parsed_result = search._parse_results(  # type: ignore
+        "FT.SEARCH", result, query=query, duration=duration
+    )
+    if not isinstance(parsed_result, dict):
+        return parsed_result
+
+    resp3_parser = getattr(search, "_parse_search_resp3", None)
+    if resp3_parser is not None:
+        return resp3_parser(parsed_result, query=query, duration=duration)
+
+    # redis-py 6.x returns the raw RESP3 map from _parse_results. Convert it to
+    # the RESP2 shape expected by its private _parse_search callback.
+    def value(mapping: dict[Any, Any], key: str, default: Any = None) -> Any:
+        return mapping.get(key, mapping.get(key.encode(), default))
+
+    response: list[Any] = [value(parsed_result, "total_results", 0)]
+    for document in value(parsed_result, "results", []):
+        response.append(value(document, "id", ""))
+        if query._with_scores:
+            response.append(value(document, "score", 0))
+        if query._with_payloads:
+            response.append(value(document, "payload"))
+        if not query._no_content:
+            fields = value(document, "extra_attributes", {})
+            response.append([item for pair in fields.items() for item in pair])
+    return search._parse_search(response, query=query, duration=duration)
+
 
 _HYBRID_SEARCH_ERROR_MESSAGE = "Hybrid search is not available in this version of redis-py. Please upgrade to redis-py >= 7.1.0."
 
@@ -250,6 +273,22 @@ def _agg_row_to_key(row: Any) -> str:
     decoded = convert_bytes(row)
     key_field_index = decoded.index("__key")
     return decoded[key_field_index + 1]
+
+
+def _dedupe_keys(keys: Iterable[str], seen: set[str]) -> list[str]:
+    """Filter ``keys`` down to those not already in ``seen``, updating ``seen``.
+
+    Repeats *within* ``keys`` are collapsed too, so one pass over a cursor page
+    yields each key at most once across the whole iteration. Cursor order falls
+    out of the implementation but nothing depends on it. See
+    :meth:`SearchIndex._iter_keys_by_filter` for why a cursor repeats keys.
+    """
+    fresh = []
+    for key in keys:
+        if key not in seen:
+            seen.add(key)
+            fresh.append(key)
+    return fresh
 
 
 def _update_script_and_args(
@@ -1063,12 +1102,19 @@ class SearchIndex(BaseSearchIndex):
         """Delete the search index while optionally dropping all keys associated
         with the index.
 
+        ``FT.DROPINDEX`` resolves index aliases, so if this schema's name happens
+        to be an alias, the index the alias points at is dropped instead -- along
+        with its documents when ``drop`` is True. :meth:`exists` reports an alias
+        as absent to keep :meth:`create` away from this path.
+
         Args:
             drop (bool, optional): Delete the key / documents pairs in the
                 index. Defaults to True.
 
-        raises:
-            redis.exceptions.ResponseError: If the index does not exist.
+        Raises:
+            RedisSearchError: If the index cannot be deleted, for example when it
+                does not exist. The original ``redis-py`` exception is available
+                as ``__cause__``.
         """
         try:
             # For Redis Cluster with drop=True, we need to handle key deletion manually
@@ -1127,27 +1173,69 @@ class SearchIndex(BaseSearchIndex):
         here, we can't easily give control of the keys we're clearing to the
         user so they can separate them based on hash tag.
 
+        Note:
+            The sweep enumerates through the index, so it removes only what the
+            index currently returns, and it can stop early -- against an index
+            still being backfilled, or when a page's keys cannot be deleted. The
+            returned count is the only signal, and ``0`` does not distinguish an
+            empty index from a sweep that deleted nothing. Re-running is safe.
+
         Returns:
             int: Count of records deleted from Redis.
         """
         batch_size = 500
-        max_ratio = 1.01
 
-        info = self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        matched = cast(int, self.query(CountQuery(FilterExpression("*"))))
+        # Runaway backstop sized to the matched count plus slack for concurrent
+        # inserts, as in drop_by_filter. Deliberately not FT.INFO's num_docs:
+        # that command is @search only, so reading it for a loop bound denied
+        # this whole method to a `+@read +@write` credential.
+        max_records = ceil(matched * 1.5) + batch_size
+
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
 
         while True:
-            batch = self._query(query)
-            if batch and total_records_deleted <= max_records_deleted:
-                batch_keys = [record["id"] for record in batch]
-                total_records_deleted += self._delete_batch(batch_keys)
-            else:
+            if total_records_deleted > max_records:
+                logger.warning(
+                    "clear() of index %s hit its runaway backstop (%d) with "
+                    "documents possibly still indexed; %d records were deleted. "
+                    "Re-run to continue.",
+                    self.schema.index.name,
+                    max_records,
+                    total_records_deleted,
+                )
                 break
+
+            query.paging(offset, batch_size)
+            batch = self._query(query)
+            if not batch:
+                break
+
+            batch_keys = [record["id"] for record in batch]
+            records_deleted = self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
+
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted, most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past it: the documents behind may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -1388,11 +1476,14 @@ class SearchIndex(BaseSearchIndex):
         ``JSON.MERGE`` (RFC 7396), so nested objects merge recursively, arrays
         are replaced wholesale, and a ``None`` value deletes that path.
 
-        Because the read phase (an ``FT.AGGREGATE`` cursor) cannot safely run
-        while the index is being written, all matching keys are resolved into
-        memory *before* any write, then updated in batches. Memory use is
-        therefore proportional to the match count; for very large match sets,
-        narrow the filter and run in partitions (see the user guide).
+        The read phase (an ``FT.AGGREGATE`` cursor) is drained in full *before*
+        any write, holding every matching key in memory in between. Interleaving
+        the two does not terminate: RediSearch has no in-place update, so each
+        write appends a new, higher document id ahead of the cursor, which hands
+        that document back to be written again. Memory use is therefore
+        proportional to the match count; for very large match sets, narrow the
+        filter and run in partitions (see "Bulk Delete and Update" in the
+        search-and-indexing concepts guide).
 
         Args:
             filter_expression (Union[str, FilterExpression]): Selects the
@@ -1443,6 +1534,15 @@ class SearchIndex(BaseSearchIndex):
             isn't counted in ``processed``. ``processed`` therefore reflects the
             documents actually written, which can be less than ``matched`` under
             concurrent deletion.
+
+            ``processed`` counts **distinct** documents — a document is written
+            *at most* once, even though the resolving cursor can emit it on more
+            than one page — but there is no *at least* once guarantee. It can
+            exceed ``matched`` if the match set grew after the initial count, and
+            fall short of it either from a concurrent deletion or because the
+            cursor itself returned fewer rows than matched (which Redis
+            documents as possible). A short ``processed`` is therefore not
+            evidence of any particular cause.
         """
         _require_specific_filter(filter_expression, allow_all)
         if not values:
@@ -1475,13 +1575,27 @@ class SearchIndex(BaseSearchIndex):
     def _iter_keys_by_filter(
         self, filter_expression: str | FilterExpression, batch_size: int
     ) -> Iterator[list[str]]:
-        """Yield batches of document keys matching a filter using a cursor.
+        """Yield batches of distinct document keys matching a filter.
 
-        Uses ``FT.AGGREGATE ... LOAD 1 @__key WITHCURSOR`` for resumable,
-        unbounded iteration (unlike ``FT.SEARCH`` + ``LIMIT``, which is capped
+        Uses ``FT.AGGREGATE ... LOAD 1 @__key WITHCURSOR`` to page through a
+        match set of any size (unlike ``FT.SEARCH`` + ``LIMIT``, which is capped
         by ``MAXSEARCHRESULTS`` and non-deterministic without a unique sort).
         The server-side cursor is always released on exit, even if iteration is
         abandoned early or errors.
+
+        Keys are de-duplicated because a cursor is a position in an ascending
+        walk of internal document ids, not a snapshot, so it can return the same
+        key on two pages — RediSearch has no in-place update, so any write
+        appends a new, higher id ahead of the cursor. Dropping the ``seen`` set
+        would make callers write and count a document twice, which churns the
+        index further and provokes more repeats. It does not help the opposite
+        direction: a cursor may also return *fewer* rows than matched, so a full
+        drain is no proof every match was seen.
+
+        Two consequences: a batch can be smaller than ``batch_size`` (an
+        all-repeat page yields nothing), and memory is ``O(match count)`` — this
+        is not a streaming iterator, so callers with very large match sets should
+        partition the filter.
         """
         request = (
             AggregateRequest(str(filter_expression))
@@ -1492,6 +1606,7 @@ class SearchIndex(BaseSearchIndex):
         name = self.schema.index.name
         ft = self._redis_client.ft(name)  # type: ignore[union-attr]
         cid = 0
+        seen: set[str] = set()
         try:
             result = ft.aggregate(request)
             while True:
@@ -1499,7 +1614,7 @@ class SearchIndex(BaseSearchIndex):
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = [_agg_row_to_key(row) for row in result.rows]
+                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
                 if keys:
                     yield keys
                 if not cid:
@@ -1748,10 +1863,8 @@ class SearchIndex(BaseSearchIndex):
 
                 for j, query_results in enumerate(results):
                     _built_query = batch_built_queries[j]
-                    parsed_result = search._parse_search(  # type: ignore
-                        query_results,
-                        query=_built_query,
-                        duration=duration,
+                    parsed_result = _parse_batch_search_result(
+                        search, query_results, _built_query, duration
                     )
                     # Return a parsed Result object for each query
                     all_results.append(parsed_result)
@@ -1965,8 +2078,23 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             bool: True if the index exists, False otherwise.
+
+        Raises:
+            RedisSearchError: If the check fails for any reason other than the
+                index not existing, such as a connection failure or insufficient
+                permissions. The original ``redis-py`` exception is available as
+                ``__cause__``.
         """
-        return self.schema.index.name in self.listall()
+        try:
+            info = self._info(self.schema.index.name, self._redis_client)
+        except RedisSearchError as e:
+            if _is_missing_index_error(e):
+                return False
+            raise
+        # FT.INFO answers for an alias's target, so compare the resolved name:
+        # reporting an alias as existing would let create(overwrite=True) drop
+        # the index it points at.
+        return info.get("index_name") == self.schema.index.name
 
     @staticmethod
     def _info(name: str, redis_client: SyncRedisClient) -> dict[str, Any]:
@@ -2345,12 +2473,19 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def delete(self, drop: bool = True):
         """Delete the search index.
 
+        ``FT.DROPINDEX`` resolves index aliases, so if this schema's name happens
+        to be an alias, the index the alias points at is dropped instead -- along
+        with its documents when ``drop`` is True. :meth:`exists` reports an alias
+        as absent to keep :meth:`create` away from this path.
+
         Args:
             drop (bool, optional): Delete the documents in the index.
                 Defaults to True.
 
         Raises:
-            redis.exceptions.ResponseError: If the index does not exist.
+            RedisSearchError: If the index cannot be deleted, for example when it
+                does not exist. The original ``redis-py`` exception is available
+                as ``__cause__``.
         """
         client = await self._get_client()
         try:
@@ -2412,27 +2547,66 @@ class AsyncSearchIndex(BaseSearchIndex):
         we can't easily give control of the keys we're clearing to the user so they
         can separate them based on hash tag.
 
+        See :meth:`SearchIndex.clear` for the sweep's caveats, which apply
+        identically here.
+
         Returns:
             int: Count of records deleted from Redis.
         """
         batch_size = 500
-        max_ratio = 1.01
 
-        info = await self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        matched = cast(int, await self.query(CountQuery(FilterExpression("*"))))
+        # Runaway backstop sized to the matched count plus slack for concurrent
+        # inserts -- the same shape as drop_by_filter. CountQuery is FT.SEARCH,
+        # which the query loop below already needs and which `+@read +@write`
+        # grants; the FT.INFO this once read for the same purpose is `@search`
+        # only, so a single call for a loop bound denied the whole method.
+        max_records = ceil(matched * 1.5) + batch_size
+
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
 
         while True:
-            batch = await self._query(query)
-            if batch and total_records_deleted <= max_records_deleted:
-                batch_keys = [record["id"] for record in batch]
-                total_records_deleted += await self._delete_batch(batch_keys)
-            else:
+            if total_records_deleted > max_records:
+                logger.warning(
+                    "clear() of index %s hit its runaway backstop (%d) with "
+                    "documents possibly still indexed; %d records were deleted. "
+                    "Re-run to continue.",
+                    self.schema.index.name,
+                    max_records,
+                    total_records_deleted,
+                )
                 break
+
+            query.paging(offset, batch_size)
+            batch = await self._query(query)
+            if not batch:
+                break
+
+            batch_keys = [record["id"] for record in batch]
+            records_deleted = await self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
+
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted, most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past it: the documents behind may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -2655,9 +2829,11 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _iter_keys_by_filter(
         self, filter_expression: str | FilterExpression, batch_size: int
     ) -> AsyncGenerator[list[str], None]:
-        """Yield batches of document keys matching a filter using a cursor (async).
+        """Yield batches of distinct document keys matching a filter (async).
 
-        Always releases the server-side cursor on exit (see sync counterpart).
+        De-duplicates keys across cursor pages and always releases the
+        server-side cursor on exit. See the sync counterpart for why a cursor
+        repeats keys and why that makes memory ``O(match count)``.
         """
         client = await self._get_client()
         request = (
@@ -2669,6 +2845,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         name = self.schema.index.name
         ft = client.ft(name)
         cid = 0
+        seen: set[str] = set()
         try:
             result = await ft.aggregate(request)  # type: ignore[arg-type]
             while True:
@@ -2676,7 +2853,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = [_agg_row_to_key(row) for row in result.rows]
+                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
                 if keys:
                     yield keys
                 if not cid:
@@ -2922,10 +3099,8 @@ class AsyncSearchIndex(BaseSearchIndex):
 
                 for j, query_results in enumerate(results):
                     _built_query = batch_built_queries[j]
-                    parsed_result = search._parse_search(  # type: ignore
-                        query_results,
-                        query=_built_query,
-                        duration=duration,
+                    parsed_result = _parse_batch_search_result(
+                        search, query_results, _built_query, duration
                     )
                     # Return a parsed Result object for each query
                     all_results.append(parsed_result)
@@ -3188,8 +3363,24 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Returns:
             bool: True if the index exists, False otherwise.
+
+        Raises:
+            RedisSearchError: If the check fails for any reason other than the
+                index not existing, such as a connection failure or insufficient
+                permissions. The original ``redis-py`` exception is available as
+                ``__cause__``.
         """
-        return self.schema.index.name in await self.listall()
+        client = await self._get_client()
+        try:
+            info = await self._info(self.schema.index.name, client)
+        except RedisSearchError as e:
+            if _is_missing_index_error(e):
+                return False
+            raise
+        # FT.INFO answers for an alias's target, so compare the resolved name:
+        # reporting an alias as existing would let create(overwrite=True) drop
+        # the index it points at.
+        return info.get("index_name") == self.schema.index.name
 
     async def info(self, name: str | None = None) -> dict[str, Any]:
         """Get information about the index.

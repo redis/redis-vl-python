@@ -1,6 +1,9 @@
 """Integration tests for bulk delete/update by filter (RAAE-1326)."""
 
+from types import SimpleNamespace
+
 import pytest
+from redis.commands.search.aggregation import Cursor
 
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.index.index import BulkResult
@@ -241,6 +244,62 @@ def test_update_by_filter_processed_less_than_matched_on_delete(hash_index, clie
     )
     assert result.matched == 3
     assert result.processed == 2  # one pending match deleted mid-run -> skipped
+
+
+def _replay_aggregate_pages(monkeypatch, index, pages):
+    """Serve canned FT.AGGREGATE pages; everything else hits the live server.
+
+    Real re-emission is timing-dependent, so the pages are canned to make this
+    deterministic — but only ``aggregate`` is faked, so the count query and the
+    write path are the real thing. Returns a counter of pages served; assert it,
+    or a seam that stopped intercepting would leave the test passing vacuously.
+    The de-dup logic itself is unit-tested in tests/unit/test_bulk_cursor_dedup.py.
+    """
+    pages = list(pages)
+    served = []
+    ft = index._redis_client.ft(index.schema.index.name)
+
+    def aggregate(request):
+        assert pages, "unexpected extra FT.AGGREGATE call"
+        rows = pages.pop(0)
+        served.append(rows)
+        # Rows arrive from the wire as bytes; cursor id 0 means the server
+        # released the cursor.
+        return SimpleNamespace(
+            rows=[[b"__key", key.encode()] for key in rows],
+            cursor=Cursor(1 if pages else 0),
+        )
+
+    monkeypatch.setattr(ft, "aggregate", aggregate)
+    monkeypatch.setattr(index._redis_client, "ft", lambda name: ft)
+    return served
+
+
+def test_update_by_filter_writes_each_document_once(hash_index, monkeypatch):
+    # A document re-emitted by the cursor must be written -- and counted -- once.
+    hash_index.load(_data(4), id_field="id")  # 'a' ids: 1, 3
+    a_keys = [hash_index.key("1"), hash_index.key("3")]
+    served = _replay_aggregate_pages(
+        monkeypatch,
+        hash_index,
+        [a_keys, [a_keys[0]], a_keys],  # every key re-emitted at least once
+    )
+    written = []
+    apply_batch = hash_index._apply_update_batch
+
+    def record(keys, values):
+        written.extend(keys)
+        return apply_batch(keys, values)
+
+    monkeypatch.setattr(hash_index, "_apply_update_batch", record)
+
+    result = hash_index.update_by_filter(Tag("cat") == "a", {"status": "x"})
+
+    assert len(served) == 3  # the canned pages were really served
+    assert result.matched == 2
+    assert result.processed == 2
+    assert sorted(written) == sorted(a_keys)  # no key written twice
+    assert hash_index.fetch("1")["status"] == "x"
 
 
 def test_update_by_filter_dry_run_and_empty_values(hash_index):

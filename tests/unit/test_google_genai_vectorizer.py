@@ -7,9 +7,9 @@ import pytest
 from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.googlegenai import GoogleGenAIVectorizer
 
-# Environment variables that would otherwise steer backend auto-detection. CI's
-# `make test` job exports GCP_* and tests run under xdist, so scrub them and let
-# each test set only what it exercises.
+# Environment variables that would otherwise steer backend auto-detection.
+# Scrubbed so each test sets only what it exercises, rather than inheriting
+# GCP_* from a developer's shell or .env.
 _GOOGLE_ENV_VARS = (
     "GCP_PROJECT_ID",
     "GCP_LOCATION",

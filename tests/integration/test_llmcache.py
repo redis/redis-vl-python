@@ -1,5 +1,4 @@
 import asyncio
-import sys
 import warnings
 from collections import namedtuple
 from contextlib import suppress
@@ -7,23 +6,16 @@ from time import sleep, time
 
 import pytest
 from pydantic import ValidationError
-from redis.exceptions import ConnectionError
+from redis.exceptions import ConnectionError, NoPermissionError
 
+from redisvl.exceptions import RedisSearchError
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
-from tests.conftest import (
-    SKIP_HF,
-    skip_if_no_redis_search,
-    skip_if_no_redis_search_async,
-)
+from redisvl.utils.vectorize import HFTextVectorizer
+from tests.conftest import skip_if_no_redis_search, skip_if_no_redis_search_async
 
-if not SKIP_HF:
-    from redisvl.utils.vectorize import HFTextVectorizer
-
-pytestmark = pytest.mark.skipif(
-    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
-)
+pytestmark = pytest.mark.requires_hf
 
 
 @pytest.fixture(scope="session")
@@ -1158,3 +1150,120 @@ def test_cache_disconnect(redis_url, worker_id, hf_vectorizer):
     cache.disconnect()
     # We keep this index object around because it isn't lazily created
     assert cache._index.client is None
+
+
+def test_create_index_false_works_under_a_read_write_acl(
+    cache, vectorizer, redis_url, acl_user, worker_id
+):
+    """An application role must be able to use a cache it did not create.
+
+    A credential assembled from `@read`/`@write` is denied `FT.INFO` and
+    `FT.CREATE` together -- neither is in either category -- so it cannot
+    construct a SemanticCache at all, even against an index it can query
+    perfectly well. `create_index=False` lets the caller assert what RedisVL is
+    unable to ask, and only a live server can show that the resulting cache
+    still stores and retrieves.
+
+    The `cache` fixture supplies the pre-created index, standing in for the DBA
+    who provisions it.
+    """
+    cache.store("What is the capital of France?", "Paris")
+
+    with acl_user(
+        "~*", "&*", "+@read", "+@write", "-@dangerous", name="acl_cache_user"
+    ) as user:
+        credentials = {"username": user.username, "password": user.password}
+
+        # Pin the premise: this role cannot ask whether the index exists.
+        restricted = user.connect()
+        with pytest.raises(NoPermissionError):
+            restricted.execute_command("FT.INFO", cache.index.name)
+
+        restricted_cache = SemanticCache(
+            name=cache.index.name,
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            redis_url=redis_url,
+            connection_kwargs=credentials,
+            create_index=False,
+        )
+
+        try:
+            hits = restricted_cache.check("What is the capital of France?")
+            assert hits and hits[0]["response"] == "Paris"
+
+            # And it can write, so a cache miss populates the shared cache.
+            restricted_cache.store("Who wrote Hamlet?", "Shakespeare")
+            assert restricted_cache.check("Who wrote Hamlet?")
+        finally:
+            # This cache built its own client from the credentials, so the
+            # fixture does not track it -- and the user is about to be deleted.
+            restricted_cache.disconnect()
+
+        # Without the flag, the same credential fails loudly at the existence
+        # check rather than degrading -- deliberately, since a credential that
+        # cannot ask whether the index exists cannot create one either.
+        with pytest.raises(RedisSearchError) as excinfo:
+            SemanticCache(
+                name=cache.index.name,
+                vectorizer=vectorizer,
+                redis_url=redis_url,
+                connection_kwargs=credentials,
+            )
+        assert "ft.info" in str(excinfo.value).lower()
+        assert isinstance(excinfo.value.__cause__, NoPermissionError)
+
+
+@pytest.mark.asyncio
+async def test_create_index_false_can_invalidate_but_not_drop(
+    cache, vectorizer, redis_url, acl_user
+):
+    """A restricted credential can clear its entries but not drop the index.
+
+    Needs a live server for the parts that matter: that a real `+@read +@write`
+    user is admitted, that the index survives, and that the async path carries
+    the same credential. Folded into one test because the ACL user and the
+    pre-created index are the expensive fixtures.
+    """
+    cache.store("What is the capital of France?", "Paris")
+
+    with acl_user(
+        "~*", "&*", "+@read", "+@write", "-@dangerous", name="acl_clear_user"
+    ) as user:
+        credentials = {"username": user.username, "password": user.password}
+        restricted_cache = SemanticCache(
+            name=cache.index.name,
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            redis_url=redis_url,
+            connection_kwargs=credentials,
+            create_index=False,
+        )
+
+        try:
+            restricted_cache.clear()
+            # Read back through the privileged instance, so the assertion does
+            # not depend on the restricted one still working.
+            assert cache.check("What is the capital of France?") == []
+
+            # The async path builds its own client, so it needs its own run.
+            cache.store("Who wrote Hamlet?", "Shakespeare")
+            await restricted_cache.aclear()
+            assert cache.check("Who wrote Hamlet?") == []
+
+            # Dropping the index remains refused on both paths.
+            with pytest.raises(ValueError, match="does not manage.*lifecycle"):
+                restricted_cache.delete()
+            with pytest.raises(ValueError, match="does not manage.*lifecycle"):
+                await restricted_cache.adelete()
+        finally:
+            # Not fixture-tracked, and the ACL user is about to go away.
+            await restricted_cache.adisconnect()
+            restricted_cache.disconnect()
+
+    # exists() proves the definition survived; the round-trip below proves it
+    # is still usable, which exists() alone would not.
+    assert cache.index.exists()
+    cache.store("Who wrote Hamlet?", "Shakespeare")
+    hits = cache.check("Who wrote Hamlet?")
+    assert hits and hits[0]["response"] == "Shakespeare"

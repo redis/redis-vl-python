@@ -81,6 +81,14 @@ uv sync --all-extras
 
 This will create a virtual environment and install all necessary dependencies for development.
 
+### Changing Dependencies
+
+`uv.lock` is checked in, and CI verifies it matches `pyproject.toml`. If you add, remove, or re-bound a dependency, re-lock and commit the result:
+
+```bash
+uv lock
+```
+
 ## Using the Makefile
 
 We provide a comprehensive Makefile to streamline common development tasks. Here are the available commands:
@@ -171,6 +179,13 @@ uv run pytest --cov=redisvl --cov-report=html
 ```
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
+
+Where such an API is a *shared, stateful* service -- one managed instance reached by
+every xdist worker and every concurrent CI run -- tests must namespace everything
+they write and must never issue a whole-service flush, which would delete data
+belonging to other workers and other pull requests' CI runs. See the module
+docstring in `tests/integration/test_langcache_semantic_cache_integration.py` for a
+worked example.
 
 **Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running.
 

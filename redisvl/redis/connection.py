@@ -1,6 +1,6 @@
 import os
 from typing import Any, Sequence, TypeVar, overload
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 from warnings import warn
 
 from redis import Redis, RedisCluster
@@ -21,7 +21,7 @@ from redisvl.redis.constants import (
     SVS_MIN_REDIS_VERSION,
     SVS_MIN_SEARCH_VERSION,
 )
-from redisvl.redis.utils import convert_bytes, is_cluster_url
+from redisvl.redis.utils import convert_bytes, is_cluster_url, make_dict
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, deprecated_function
@@ -212,6 +212,67 @@ def make_lib_name(*args) -> str:
     return f"redis-py({custom_libs})"
 
 
+def _identify_client(client: SyncRedisClient, lib_name: str | None = None) -> None:
+    """Report RedisVL as the connecting library, tolerating a refusal.
+
+    redis-py sends its own ``CLIENT SETINFO`` during the connection handshake,
+    so this call is here to overwrite that with the composed
+    ``redis-py(redisvl_v...;<wrapper>)`` name that adoption metrics read. Keep
+    it: without it the library and any wrapper above it go unattributed.
+
+    A refusal is ignored, because ``CLIENT SETINFO`` only populates the
+    ``lib-name`` field that ``CLIENT LIST`` and ``CLIENT INFO`` display -- its
+    own documentation tells client libraries to ignore failures. Two credentials
+    hit this: one granting neither ``@connection`` nor the command itself, and
+    one on a server predating Redis 7.2, where the command does not exist.
+
+    Only ``ResponseError`` is caught. In the connection-factory path this is the
+    first command issued on a freshly created connection, which makes it the
+    de-facto connectivity check, so swallowing ``ConnectionError`` would defer a
+    genuine failure to some later and more confusing command. Note that on a
+    cluster client redis-py routes the command to the default node only, so the
+    label reaches one node rather than the whole cluster.
+    """
+    try:
+        client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
+    except ResponseError as e:
+        logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
+
+
+async def _aidentify_client(
+    client: AsyncRedisClient, lib_name: str | None = None
+) -> None:
+    """Async version of :func:`_identify_client`."""
+    try:
+        await client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
+    except ResponseError as e:
+        logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
+
+
+def _normalize_index_info_mapping(value: Any) -> dict[str, Any]:
+    """Normalize a mapping-shaped or alternating-list FT.INFO section."""
+    if isinstance(value, dict):
+        normalized = convert_bytes(dict(value))
+    elif isinstance(value, (list, tuple)):
+        normalized = convert_bytes(make_dict(list(value)))
+    else:
+        normalized = {}
+    return normalized if isinstance(normalized, dict) else {}
+
+
+def normalize_index_definition(index_info: dict[str, Any]) -> dict[str, Any]:
+    """Return the FT.INFO index definition in mapping form."""
+    return _normalize_index_info_mapping(index_info.get("index_definition"))
+
+
+def normalize_index_fields(index_info: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return FT.INFO field entries in mapping form."""
+    return [
+        _normalize_index_info_mapping(field)
+        for field in index_info.get("attributes", [])
+    ]
+
+
 def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     """Convert the output of FT.INFO into a schema-ready dictionary.
 
@@ -222,11 +283,12 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         Dict[str, Any]: Schema dictionary suitable for ``IndexSchema.from_dict()``.
     """
     index_name = index_info["index_name"]
-    prefixes = index_info["index_definition"][3]
+    index_definition = normalize_index_definition(index_info)
+    prefixes = index_definition["prefixes"]
+    storage_type = index_definition["key_type"].lower()
     # Normalize single-element prefix lists to string for backward compatibility
     if isinstance(prefixes, list) and len(prefixes) == 1:
         prefixes = prefixes[0]
-    storage_type = index_info["index_definition"][1].lower()
 
     # Parse stopwords if present in FT.INFO output
     # stopwords_list is only present when explicitly set (STOPWORDS 0 or custom list)
@@ -252,35 +314,42 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         # - Redis 7.x+: [... "VECTOR", "ALGORITHM", "FLAT", "TYPE", "FLOAT32", "DIM", "3", ...]
         #   Position 6+: all key-value pairs
 
-        # Check if we have any attributes beyond the type declaration
-        if len(attrs) <= 6:
-            # Redis 6.2.6-v9 or similar: no vector params in FT.INFO
-            # Return None to signal we can't parse this field properly
-            return None
+        if isinstance(attrs, dict):
+            vector_attrs = {
+                str(key).lower(): value
+                for key, value in attrs.items()
+                if key not in {"identifier", "attribute", "type", "flags"}
+            }
+        else:
+            # Check if we have any attributes beyond the type declaration
+            if len(attrs) <= 6:
+                # Redis 6.2.6-v9 or similar: no vector params in FT.INFO
+                # Return None to signal we can't parse this field properly
+                return None
 
-        vector_attrs = {}
-        start_pos = 6
+            vector_attrs = {}
+            start_pos = 6
 
-        # Detect format: if position 6 looks like an algorithm value (not a key),
-        # we're dealing with the older format
-        if len(attrs) > 6:
-            pos6_str = str(attrs[6]).upper()
-            # Check if position 6 is an algorithm value (FLAT, HNSW) vs a key (ALGORITHM, TYPE, DIM)
-            if pos6_str in ("FLAT", "HNSW"):
-                # Old format (Redis 6.2.x): position 6 is algorithm value, position 7 is param count
-                # Store the algorithm
-                vector_attrs["algorithm"] = pos6_str
-                # Skip to position 8 where key-value pairs start
-                start_pos = 8
+            # Detect format: if position 6 looks like an algorithm value (not a key),
+            # we're dealing with the older format
+            if len(attrs) > 6:
+                pos6_str = str(attrs[6]).upper()
+                # Check if position 6 is an algorithm value (FLAT, HNSW) vs a key (ALGORITHM, TYPE, DIM)
+                if pos6_str in ("FLAT", "HNSW"):
+                    # Old format (Redis 6.2.x): position 6 is algorithm value, position 7 is param count
+                    # Store the algorithm
+                    vector_attrs["algorithm"] = pos6_str
+                    # Skip to position 8 where key-value pairs start
+                    start_pos = 8
 
-        try:
-            for i in range(start_pos, len(attrs), 2):
-                if i + 1 < len(attrs):
-                    key = str(attrs[i]).lower()
-                    vector_attrs[key] = attrs[i + 1]
-        except (IndexError, TypeError, ValueError):
-            # Silently continue - we'll validate required fields below
-            pass
+            try:
+                for i in range(start_pos, len(attrs), 2):
+                    if i + 1 < len(attrs):
+                        key = str(attrs[i]).lower()
+                        vector_attrs[key] = attrs[i + 1]
+            except (IndexError, TypeError, ValueError):
+                # Silently continue - we'll validate required fields below
+                pass
 
         # Normalize to expected field names
         normalized = {}
@@ -401,8 +470,6 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     def parse_attrs(attrs, field_type=None):
         # 'SORTABLE', 'NOSTEM' don't have corresponding values.
         # Their presence indicates boolean True
-        # TODO 'WITHSUFFIXTRIE' is another boolean attr, but is not returned by ft.info
-        original = attrs.copy()
         parsed_attrs = {}
 
         # Handle all boolean attributes first, regardless of position
@@ -413,7 +480,31 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             "INDEXMISSING": "index_missing",
             "INDEXEMPTY": "index_empty",
             "NOINDEX": "no_index",
+            "WITHSUFFIXTRIE": "withsuffixtrie",
         }
+
+        if isinstance(attrs, dict):
+            flags = attrs.get("flags", []).copy()
+            for redis_attr, python_attr in boolean_attrs.items():
+                if redis_attr in flags:
+                    parsed_attrs[python_attr] = True
+            if "UNF" in flags and field_type == "TEXT":
+                parsed_attrs["unf"] = True
+            unknown_flags = sorted(
+                set(flags).difference(boolean_attrs).difference({"UNF"})
+            )
+            if unknown_flags:
+                logger.debug("Ignoring unrecognized FT.INFO flags: %s", unknown_flags)
+            parsed_attrs.update(
+                {
+                    str(key).lower(): value
+                    for key, value in attrs.items()
+                    if key not in {"identifier", "attribute", "type", "flags"}
+                }
+            )
+            return parsed_attrs
+
+        original = attrs.copy()
 
         # Special handling for UNF:
         # - For NUMERIC fields, Redis always adds UNF when SORTABLE is present
@@ -440,22 +531,33 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
 
     schema_fields = []
 
-    for field_attrs in index_fields:
+    normalized_fields = normalize_index_fields(index_info)
+    for field_attrs, normalized_field in zip(index_fields, normalized_fields):
         # parse field info
-        name = field_attrs[1] if storage_type == "hash" else field_attrs[3]
-        field = {"name": name, "type": field_attrs[5].lower()}
+        name = (
+            normalized_field["identifier"]
+            if storage_type == "hash"
+            else normalized_field["attribute"]
+        )
+        field_type = normalized_field["type"]
+        field = {"name": name, "type": field_type.lower()}
         if storage_type == "json":
-            field["path"] = field_attrs[1]
+            field["path"] = normalized_field["identifier"]
         # parse field attrs
-        if field_attrs[5] == "VECTOR":
-            attrs = parse_vector_attrs(field_attrs)
+        if field_type == "VECTOR":
+            attrs = parse_vector_attrs(
+                normalized_field if isinstance(field_attrs, dict) else field_attrs
+            )
             if attrs is None:
                 # Vector field attributes cannot be parsed on this Redis version
                 # Skip this field - it cannot be properly reconstructed
                 continue
             field["attrs"] = attrs
         else:
-            field["attrs"] = parse_attrs(field_attrs, field_type=field_attrs[5])
+            field["attrs"] = parse_attrs(
+                normalized_field if isinstance(field_attrs, dict) else field_attrs,
+                field_type=field_type,
+            )
         # append field
         schema_fields.append(field)
 
@@ -533,6 +635,9 @@ class RedisConnectionFactory:
                 variable is not set.
         """
         url = redis_url or get_address_from_env()
+        # redis-py 8 defaults to RESP3, which changes raw Search command reply
+        # shapes. Keep RedisVL's existing RESP2 behavior unless requested.
+        kwargs.setdefault("protocol", 2)
         client: SyncRedisClient
         if url.startswith("redis+sentinel"):
             client = RedisConnectionFactory._redis_sentinel_client(url, Redis, **kwargs)
@@ -540,15 +645,7 @@ class RedisConnectionFactory:
             client = RedisCluster.from_url(url, **kwargs)
         else:
             client = Redis.from_url(url, **kwargs)
-        # Module validation removed - operations will fail naturally if modules are missing
-        # Set client library name only
-        _lib_name = make_lib_name(kwargs.get("lib_name"))
-        try:
-            client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            if hasattr(client, "echo"):
-                client.echo(_lib_name)
+        _identify_client(client, kwargs.get("lib_name"))
         return client
 
     @staticmethod
@@ -580,6 +677,8 @@ class RedisConnectionFactory:
         """
         _deprecated_url = kwargs.pop("url", None)
         url = _deprecated_url or redis_url or get_address_from_env()
+        # Keep sync and async clients on the same backward-compatible default.
+        kwargs.setdefault("protocol", 2)
 
         client: AsyncRedisClient
         if url.startswith("redis+sentinel"):
@@ -599,15 +698,7 @@ class RedisConnectionFactory:
             )
             client = AsyncRedis.from_url(cleaned_url, **cleaned_kwargs)
 
-        # Module validation removed - operations will fail naturally if modules are missing
-        # Set client library name only
-        _lib_name = make_lib_name(kwargs.get("lib_name"))
-        try:
-            await client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            if hasattr(client, "echo"):
-                await client.echo(_lib_name)
+        await _aidentify_client(client, kwargs.get("lib_name"))
         return client
 
     @staticmethod
@@ -640,6 +731,7 @@ class RedisConnectionFactory:
         )
         _deprecated_url = kwargs.pop("url", None)
         url = _deprecated_url or redis_url or get_address_from_env()
+        kwargs.setdefault("protocol", 2)
 
         if url.startswith("redis+sentinel"):
             return RedisConnectionFactory._redis_sentinel_client(
@@ -665,6 +757,7 @@ class RedisConnectionFactory:
     ) -> RedisCluster:
         """Creates and returns a synchronous Redis client for a Redis cluster."""
         url = redis_url or get_address_from_env()
+        kwargs.setdefault("protocol", 2)
         return RedisCluster.from_url(url, **kwargs)
 
     @staticmethod
@@ -674,6 +767,7 @@ class RedisConnectionFactory:
     ) -> AsyncRedisCluster:
         """Creates and returns an asynchronous Redis client for a Redis cluster."""
         url = redis_url or get_address_from_env()
+        kwargs.setdefault("protocol", 2)
         # Strip 'cluster' parameter as AsyncRedisCluster doesn't accept it
         cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(url, **kwargs)
         return AsyncRedisCluster.from_url(cleaned_url, **cleaned_kwargs)
@@ -718,52 +812,50 @@ class RedisConnectionFactory:
         redis_client: SyncRedisClient,
         lib_name: str | None = None,
     ) -> None:
-        """Validates the sync Redis client.
+        """Check the client type and report the library name.
 
-        Note: Module validation has been removed. This method now only validates
-        the client type and sets the library name.
+        Identification is best effort: a server that refuses ``CLIENT SETINFO``
+        is tolerated, so the only failure raised here is a wrong client type.
+        (Module validation was removed; a missing module now surfaces when an
+        operation needs it.)
+
+        Args:
+            redis_client (SyncRedisClient): The client to check.
+            lib_name (Optional[str]): Name of a library wrapping RedisVL, to
+                report alongside it. Defaults to None.
+
+        Raises:
+            TypeError: If the client is not a Redis or RedisCluster instance.
         """
         if not issubclass(type(redis_client), (Redis, RedisCluster)):
             raise TypeError(
                 "Invalid Redis client instance. Must be Redis or RedisCluster."
             )
 
-        # Set client library name
-        _lib_name = make_lib_name(lib_name)
-        try:
-            redis_client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            # For RedisCluster, echo is not available
-            if hasattr(redis_client, "echo"):
-                redis_client.echo(_lib_name)
-
-        # Module validation removed - operations will fail naturally if modules are missing
+        _identify_client(redis_client, lib_name)
 
     @staticmethod
     async def validate_async_redis(
         redis_client: AsyncRedisClient,
         lib_name: str | None = None,
     ) -> None:
-        """Validates the async Redis client.
+        """Async version of :meth:`validate_sync_redis`.
 
-        Note: Module validation has been removed. This method now only validates
-        the client type and sets the library name.
+        Args:
+            redis_client (AsyncRedisClient): The client to check.
+            lib_name (Optional[str]): Name of a library wrapping RedisVL, to
+                report alongside it. Defaults to None.
+
+        Raises:
+            TypeError: If the client is not an async Redis or RedisCluster
+                instance.
         """
         if not issubclass(type(redis_client), (AsyncRedis, AsyncRedisCluster)):
             raise TypeError(
                 "Invalid async Redis client instance. Must be async Redis or async RedisCluster."
             )
-        # Set client library name
-        _lib_name = make_lib_name(lib_name)
-        try:
-            await redis_client.client_setinfo("LIB-NAME", _lib_name)
-        except ResponseError:
-            # Fall back to a simple log echo
-            if hasattr(redis_client, "echo"):
-                await redis_client.echo(_lib_name)
 
-        # Module validation removed - operations will fail naturally if modules are missing
+        await _aidentify_client(redis_client, lib_name)
 
     @staticmethod
     @overload
@@ -877,4 +969,6 @@ class RedisConnectionFactory:
             if len(path_parts) > 2:
                 db = path_parts[2]
 
-        return sentinel_list, service_name, db, parsed_url.username, parsed_url.password
+        username = unquote(parsed_url.username) if parsed_url.username else None
+        password = unquote(parsed_url.password) if parsed_url.password else None
+        return sentinel_list, service_name, db, username, password

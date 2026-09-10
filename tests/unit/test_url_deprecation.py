@@ -11,9 +11,6 @@ class DummyAsyncClient:
     async def client_setinfo(self, *args, **kwargs):
         return None
 
-    async def echo(self, *args, **kwargs):
-        return None
-
 
 @pytest.mark.asyncio
 async def test__get_aredis_connection_deprecates_url_kwarg_only():

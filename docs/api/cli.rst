@@ -300,6 +300,16 @@ Returns a numbered list of all index names:
     2. documents_index
     3. embeddings_index
 
+.. note::
+
+   ``listall`` uses ``FT._LIST``, which Redis tags ``@admin`` as well as ``@search``.
+   An ACL that grants search access and then subtracts ``@admin``, such as
+   ``+@search -@admin``, denies this command with a permission error even though the
+   rest of the CLI works. The migration commands that discover indexes for you are
+   denied by the same ACL: ``rvl migrate helper``, ``rvl migrate wizard`` when no
+   ``-i/--index`` is given, and ``rvl migrate batch-plan --pattern``. See
+   :doc:`/user_guide/installation`.
+
 rvl index delete
 ^^^^^^^^^^^^^^^^
 

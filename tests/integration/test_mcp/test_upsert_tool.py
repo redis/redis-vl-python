@@ -491,7 +491,7 @@ async def test_read_only_mode_excludes_upsert_tool(
     )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_search_tool",
-        lambda server, schema: None,
+        lambda server, schema, index_ids=None: None,
     )
 
     def fake_tool(*args: Any, **kwargs: Any):
@@ -506,7 +506,7 @@ async def test_read_only_mode_excludes_upsert_tool(
 
     called: list[bool] = []
 
-    def fake_register_upsert_tool(server: Any) -> None:
+    def fake_register_upsert_tool(server: Any, index_ids: Any = None) -> None:
         called.append(server.mcp_settings.read_only)
 
     monkeypatch.setattr(
