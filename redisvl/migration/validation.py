@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from redis.commands.search.query import Query
 
