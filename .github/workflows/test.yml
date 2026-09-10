@@ -64,7 +64,6 @@ jobs:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
     needs: service-tests
-    # `redis:latest` legs are advisory. See the `experimental` include below.
     continue-on-error: ${{ matrix.experimental || false }}
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
@@ -78,17 +77,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         redis-py-version: ["6.x", "7.x", "8.x"]
-        # `redis:latest` is a floating tag: its contents change with no commit
-        # to this repository, so a failure on it cannot be reproduced from a
-        # SHA and `git bisect` over CI results is meaningless. It has already
-        # cost us twice -- the Redis 8.8 RediSearch worker default that opened
-        # an FT.SEARCH nil-field race (see tests/docker-compose.yml), and the
-        # Redis 8.10 FT.CURSOR abort in the aggregate-cursor path under bulk-op
-        # load, which no client-side workaround addresses.
-        #
-        # Keep the leg for early warning of server regressions, but mark it
-        # advisory via the include below so it informs without blocking merges.
-        # Blocking coverage comes from the pinned tags only.
+        # `redis:latest` floats, so a failure on it is not reproducible from a
+        # SHA; it is advisory below. Pinned tags carry the blocking coverage.
         redis-image: ["redis:8.2", "redis:8.4", "redis:latest"]
         include:
           - redis-image: "redis:latest"
