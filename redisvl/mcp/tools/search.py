@@ -370,37 +370,42 @@ def _build_fallback_hybrid_kwargs(
     }
 
 
-def _find_range_end(rendered: str, position: int) -> int | None:
-    """Return the index of the `]` closing a numeric range, or None if unclosed."""
-    while position < len(rendered):
+def _find_unescaped(
+    rendered: str, position: int, character: str, end: int | None = None
+) -> int | None:
+    """Return the index of the next unescaped `character` before `end`, or None.
+
+    `end` bounds the scan. Without it a caller inside a span pays for the whole
+    remaining string, which makes the enclosing walk quadratic in the number of
+    spans.
+    """
+    limit = len(rendered) if end is None else min(end, len(rendered))
+    while position < limit:
         if rendered[position] == "\\":
             position += 2
             continue
-        if rendered[position] == "]":
+        if rendered[position] == character:
             return position
         position += 1
     return None
 
 
-def _span_holds_unescaped_pipe(rendered: str, start: int, end: int) -> bool:
-    """Report whether `rendered[start:end]` holds a `|` that is not escaped."""
-    position = start
-    while position < end:
-        if rendered[position] == "\\":
-            position += 2
-            continue
-        if rendered[position] == "|":
-            return True
-        position += 1
-    return False
-
-
 def _reject_escapable_filter(caller: FilterExpression) -> None:
     """Refuse a caller filter whose rendering could break out of a locked AND.
 
-    A well-formed expression built from escaped values cannot escape, so anything
-    this rejects means a value reached the query string unescaped. It is a
-    backstop, not the primary defense -- see ``merge_locked_filter``.
+    Outside a quoted phrase every value reaches the rendering escaped or
+    type-checked -- by the DSL, or at this server's filter boundary for ``like``
+    patterns, which the library leaves raw. So a rejection means one of those
+    failed. It is a backstop, not the primary defense -- see
+    ``merge_locked_filter`` -- and it runs only when a lock exists, so an
+    unlocked tool relies on those two layers alone.
+
+    The quoted-phrase skip below assumes a rendering's quotes arrive in
+    delimiting pairs, which holds for every value the DSL can render: ``==`` and
+    ``!=`` quote the value and take any quote it carried out first, and ``Tag``
+    and ``like`` values arrive with theirs escaped, outside any phrase. If that
+    ever stops holding, the skip finds no closing quote and refuses the filter,
+    so the failure is loud rather than silent.
     """
     # Braces scope as much as parens do: a tag clause holds its alternatives in
     # braces, so `@category:{sports|health}` is one scoped clause rather than a
@@ -425,6 +430,26 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
             position += 2
             continue
 
+        if character == '"':
+            # A quoted phrase is a literal, so nothing inside it is structure and
+            # a `|` inside it is a separator rather than a union. Unlike the range
+            # span below, the whole phrase can therefore be skipped.
+            #
+            # The scan deliberately does not treat `\` as escaping the closing
+            # quote, because RediSearch does not either: `@f:("x\")` closes the
+            # phrase and yields the term `x\`. Honouring the escape would read
+            # that as unterminated and refuse an ordinary value ending in a
+            # backslash, a Windows path among them. Nothing is given up, since a
+            # value cannot contribute a quote of its own -- `Text` replaces it,
+            # and `Tag` and `like` escape theirs outside any phrase.
+            end = rendered.find('"', position + 1)
+            if end == -1:
+                # Unterminated phrase: the remainder is unparsable.
+                escaped = True
+                break
+            position = end + 1
+            continue
+
         if character == "[":
             # A numeric range is bounds, not structure: an exclusive bound
             # renders as `[(5 +inf]`, where `(` is a marker rather than a group.
@@ -434,14 +459,14 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
             # range holds numbers, so a `|` in here means a value reached the
             # query string raw, which is exactly the case this backstop exists
             # to catch; skipping past it would let a union hide behind brackets.
-            end = _find_range_end(rendered, position + 1)
-            if end is None:
+            span_end = _find_unescaped(rendered, position + 1, "]")
+            if span_end is None:
                 escaped = True
                 break
-            if _span_holds_unescaped_pipe(rendered, position + 1, end):
+            if _find_unescaped(rendered, position + 1, "|", span_end) is not None:
                 escaped = True
                 break
-            position = end + 1
+            position = span_end + 1
             continue
 
         if character in openers:
@@ -485,7 +510,9 @@ def merge_locked_filter(
     The locked expression always applies, so a caller can only narrow within it
     and never widen past it. That rests on two things: the caller's expression
     rendering nested inside the AND, and every value staying inside its own
-    clause (which ``_parse_text_expression`` escaping provides).
+    clause. ``Text`` removes the quote that delimits a phrase, ``Tag`` escapes
+    the braces that delimit a tag clause, numeric values are type-checked, and
+    ``like`` patterns are escaped at the filter boundary.
     """
     if locked is None:
         return caller

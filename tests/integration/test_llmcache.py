@@ -1212,3 +1212,58 @@ def test_create_index_false_works_under_a_read_write_acl(
             )
         assert "ft.info" in str(excinfo.value).lower()
         assert isinstance(excinfo.value.__cause__, NoPermissionError)
+
+
+@pytest.mark.asyncio
+async def test_create_index_false_can_invalidate_but_not_drop(
+    cache, vectorizer, redis_url, acl_user
+):
+    """A restricted credential can clear its entries but not drop the index.
+
+    Needs a live server for the parts that matter: that a real `+@read +@write`
+    user is admitted, that the index survives, and that the async path carries
+    the same credential. Folded into one test because the ACL user and the
+    pre-created index are the expensive fixtures.
+    """
+    cache.store("What is the capital of France?", "Paris")
+
+    with acl_user(
+        "~*", "&*", "+@read", "+@write", "-@dangerous", name="acl_clear_user"
+    ) as user:
+        credentials = {"username": user.username, "password": user.password}
+        restricted_cache = SemanticCache(
+            name=cache.index.name,
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            redis_url=redis_url,
+            connection_kwargs=credentials,
+            create_index=False,
+        )
+
+        try:
+            restricted_cache.clear()
+            # Read back through the privileged instance, so the assertion does
+            # not depend on the restricted one still working.
+            assert cache.check("What is the capital of France?") == []
+
+            # The async path builds its own client, so it needs its own run.
+            cache.store("Who wrote Hamlet?", "Shakespeare")
+            await restricted_cache.aclear()
+            assert cache.check("Who wrote Hamlet?") == []
+
+            # Dropping the index remains refused on both paths.
+            with pytest.raises(ValueError, match="does not manage.*lifecycle"):
+                restricted_cache.delete()
+            with pytest.raises(ValueError, match="does not manage.*lifecycle"):
+                await restricted_cache.adelete()
+        finally:
+            # Not fixture-tracked, and the ACL user is about to go away.
+            await restricted_cache.adisconnect()
+            restricted_cache.disconnect()
+
+    # exists() proves the definition survived; the round-trip below proves it
+    # is still usable, which exists() alone would not.
+    assert cache.index.exists()
+    cache.store("Who wrote Hamlet?", "Shakespeare")
+    hits = cache.check("Who wrote Hamlet?")
+    assert hits and hits[0]["response"] == "Shakespeare"
