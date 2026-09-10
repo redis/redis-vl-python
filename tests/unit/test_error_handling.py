@@ -537,9 +537,10 @@ class TestClusterOperationsErrorHandling:
                 result = index.clear()
 
         assert result == 0
-        # It gave up by paging past the backstop rather than by deleting.
+        # It gave up because the same page came back with nothing deletable
+        # twice in a row, not because it hit the runaway backstop.
         assert any(
-            "paged past its runaway backstop" in str(call)
+            "stopped after a batch removed nothing" in str(call)
             for call in mock_logger.warning.call_args_list
         )
 
