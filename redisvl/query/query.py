@@ -3,7 +3,7 @@ from typing import Any
 
 from redis.commands.search.query import Query as RedisQuery
 
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, intersect_with_filter, render_filter
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.log import get_logger
 from redisvl.utils.stopwords import get_stopwords
@@ -580,9 +580,12 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
     def _build_query_string(self) -> str:
         """Build the full query string for vector search with optional filtering."""
-        filter_expression = self._filter_expression
-        if isinstance(filter_expression, FilterExpression):
-            filter_expression = str(filter_expression)
+        # Redis rejects a bare multi-clause pre-filter -- both
+        # "@a:{x} @b:{y}=>[KNN ...]" and "@a:{x} | @b:{y}=>[KNN ...]" are syntax
+        # errors -- so a real filter is parenthesized. Match-everything is the
+        # bare "*", which is why it does not go through the same path.
+        rendered_filter = render_filter(self._filter_expression)
+        prefilter = "*" if rendered_filter is None else f"({rendered_filter})"
 
         # Base KNN query
         knn_query = (
@@ -618,7 +621,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
 
-        return f"{filter_expression}=>[{knn_query}]"
+        return f"{prefilter}=>[{knn_query}]"
 
     def set_hybrid_policy(self, hybrid_policy: str):
         """Set the hybrid policy for the query.
@@ -1162,14 +1165,9 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         # Add query attributes section
         attr_section = f"=>{{{'; '.join(attr_parts)}}}"
 
-        # Add filter expression if present
-        filter_expression = self._filter_expression
-        if isinstance(filter_expression, FilterExpression):
-            filter_expression = str(filter_expression)
-
-        if filter_expression == "*":
-            return f"{base_query}{attr_section}"
-        return f"({base_query}{attr_section} {filter_expression})"
+        return intersect_with_filter(
+            f"{base_query}{attr_section}", self._filter_expression
+        )
 
     @property
     def distance_threshold(self) -> float:
@@ -1544,10 +1542,6 @@ class TextQuery(BaseQuery):
 
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
-        filter_expression = self._filter_expression
-        if isinstance(filter_expression, FilterExpression):
-            filter_expression = str(filter_expression)
-
         escaped_query = self._tokenize_and_escape_query(self._text)
 
         # Build query parts for each field with its weight
@@ -1568,6 +1562,4 @@ class TextQuery(BaseQuery):
         else:
             text = "(" + " | ".join(field_queries) + ")"
 
-        if filter_expression and filter_expression != "*":
-            text += f" ({filter_expression})"
-        return text
+        return intersect_with_filter(text, self._filter_expression)
