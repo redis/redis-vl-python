@@ -11,6 +11,7 @@ from redis.cluster import RedisCluster
 
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.types import AsyncRedisClient, SyncRedisClient
+from redisvl.utils.utils import match_pattern
 
 # Keys deleted per DEL when clearing. Also the SCAN count hint, so one page of
 # keys maps to one delete round-trip.
@@ -223,7 +224,7 @@ class BaseCache:
         # drives each primary on its own cursor via target_nodes.
         batch: list[Any] = []
         for key in client.scan_iter(
-            match=f"{self._get_prefix()}*", count=CLEAR_BATCH_SIZE
+            match=match_pattern(self._get_prefix()), count=CLEAR_BATCH_SIZE
         ):
             batch.append(key)
             if len(batch) >= CLEAR_BATCH_SIZE:
@@ -256,7 +257,7 @@ class BaseCache:
         # See the note in clear() on why this delegates to scan_iter.
         batch: list[Any] = []
         async for key in client.scan_iter(
-            match=f"{self._get_prefix()}*", count=CLEAR_BATCH_SIZE
+            match=match_pattern(self._get_prefix()), count=CLEAR_BATCH_SIZE
         ):
             batch.append(key)
             if len(batch) >= CLEAR_BATCH_SIZE:

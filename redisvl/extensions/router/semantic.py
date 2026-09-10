@@ -26,7 +26,12 @@ from redisvl.redis.connection import RedisConnectionFactory, _split_from_existin
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_argument, model_to_dict, scan_by_pattern
+from redisvl.utils.utils import (
+    deprecated_argument,
+    match_pattern,
+    model_to_dict,
+    scan_by_pattern,
+)
 from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
@@ -336,9 +341,9 @@ class SemanticRouter(BaseModel):
         # Normalize prefix to avoid double separators
         prefix = index.prefix.rstrip(sep) if sep and index.prefix else index.prefix
         if prefix:
-            return f"{prefix}{sep}{route_name}{sep}*"
+            return match_pattern(prefix, sep, route_name, sep)
         else:
-            return f"{route_name}{sep}*"
+            return match_pattern(route_name, sep)
 
     def _add_routes(self, routes: list[Route]):
         """Add routes to the router and index.
