@@ -156,11 +156,11 @@ class OpenAITextVectorizer(BaseVectorizer):
             # Use the parent embed() method which handles caching
             embedding = self._embed("dimension check")
             return len(embedding)
-        except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for OpenAI model "
+                f"'{self.model}': {e}"
+            ) from e
 
     @deprecated_argument("text", "content")
     @retry(
