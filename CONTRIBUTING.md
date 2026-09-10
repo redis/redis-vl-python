@@ -171,6 +171,9 @@ make test-all
 # Run tests on a specific file
 uv run pytest tests/unit/test_fields.py -v
 
+# Run the Redis Cluster tests, which are skipped by default
+uv run pytest --run-cluster-tests -m requires_cluster
+
 # Run tests with coverage
 uv run pytest --cov=redisvl --cov-report=html
 ```
@@ -183,6 +186,8 @@ they write and must never issue a whole-service flush, which would delete data
 belonging to other workers and other pull requests' CI runs. See the module
 docstring in `tests/integration/test_langcache_semantic_cache_integration.py` for a
 worked example.
+
+**Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running.
 
 ## Documentation
 
