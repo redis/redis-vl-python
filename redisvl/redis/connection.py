@@ -1,7 +1,7 @@
 import os
 from collections.abc import Mapping
 from typing import Any, TypeVar, overload
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 from warnings import warn
 
 from redis import Redis, RedisCluster
@@ -1012,4 +1012,6 @@ class RedisConnectionFactory:
             if len(path_parts) > 2:
                 db = path_parts[2]
 
-        return sentinel_list, service_name, db, parsed_url.username, parsed_url.password
+        username = unquote(parsed_url.username) if parsed_url.username else None
+        password = unquote(parsed_url.password) if parsed_url.password else None
+        return sentinel_list, service_name, db, username, password

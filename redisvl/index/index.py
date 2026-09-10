@@ -372,7 +372,16 @@ def _has_missing_field_payload(
       match.
 
     Every other query passes through untouched.
+
+    A ``NOCONTENT`` query breaks both guarantees: the server then returns "the
+    document ids and not the content" for *every* healthy match (``RETURN 0`` acts
+    the same way), so no field payload is expected and its absence says nothing.
+    redis-py's ``Query.no_content()`` sets only ``_no_content`` and leaves
+    ``_return_fields`` untouched, so neither predicate above notices -- without
+    this short-circuit every healthy document would be reported as missing.
     """
+    if getattr(query, "_no_content", False):
+        return False
     if unpack_json:
         return "json" not in doc_dict
     if isinstance(query, BaseVectorQuery) and query.DISTANCE_ID in getattr(
@@ -468,7 +477,10 @@ def process_results(
                 return {"id": doc_dict.get("id"), **json_data}
             raise ValueError(f"Unable to parse json data from Redis {json_data}")
 
-        if norm_fn:
+        # The skip guard above guarantees the distance is present for a normal
+        # vector query, but not for a NOCONTENT one, where the server returns ids
+        # only and there is no distance to normalize.
+        if norm_fn and query.DISTANCE_ID in doc_dict:  # type: ignore
             # convert float back to string to be consistent
             doc_dict[query.DISTANCE_ID] = str(  # type: ignore
                 norm_fn(float(doc_dict[query.DISTANCE_ID]))  # type: ignore
@@ -555,6 +567,49 @@ def _convert_and_drop_empty_rows(rows: Any, source: str) -> list[dict[str, Any]]
             source,
         )
     return SearchResults(kept, dropped_count=dropped)
+
+
+def _page_had_matches(results: Any) -> bool:
+    """Whether the server reported any match for one page of paginated results.
+
+    ``paginate`` must not treat "empty page" as "result set exhausted". A page
+    comes back empty for two very different reasons:
+
+    1. the server reported no more matches — iteration is genuinely done;
+    2. the server reported matches whose field payload could not be
+       materialized, so ``process_results`` dropped them -- a key that expires or
+       is updated mid-query is returned as a matched id with a ``nil`` field
+       array, and is still counted in the server's total (see
+       ``_has_missing_field_payload``).
+
+    Stopping on case 2 silently truncates iteration and discards every remaining
+    page. ``SearchResults.dropped_count`` tells the two apart: a page had matches
+    when it either yielded documents or dropped some.
+
+    Truthiness (not ``len()``) is deliberate, and ``getattr`` is defensive: every
+    query path returns ``SearchResults`` today, but a subclass or test double may
+    substitute a plain ``list``, and ``process_results`` returns a bare ``int``
+    for a ``CountQuery``. Neither should raise here.
+    """
+    return bool(results) or bool(getattr(results, "dropped_count", 0))
+
+
+def _fold_carried_drops(results: Any, carried: int) -> None:
+    """Add drops carried over from skipped pages to this page's ``dropped_count``.
+
+    ``paginate`` never yields an empty batch, so a page whose matches were *all*
+    dropped would otherwise carry its ``dropped_count`` out of the stream and
+    leave the remaining batches reporting ``complete is True`` — the same silent
+    incompleteness the drop accounting exists to surface. Folding the count into
+    the next yielded batch keeps the signal reachable from the batches a caller
+    actually sees, without breaking the non-empty-batch guarantee.
+
+    Note the residual gap: if the *trailing* pages of a result set are entirely
+    dropped there is no subsequent batch to fold into, and those drops are
+    reported only by the ``process_results`` warning.
+    """
+    if carried and isinstance(results, SearchResults):
+        results.dropped_count += carried
 
 
 class BaseSearchIndex:
@@ -1224,27 +1279,69 @@ class SearchIndex(BaseSearchIndex):
         here, we can't easily give control of the keys we're clearing to the
         user so they can separate them based on hash tag.
 
+        Note:
+            The sweep enumerates through the index, so it removes only what the
+            index currently returns, and it can stop early -- against an index
+            still being backfilled, or when a page's keys cannot be deleted. The
+            returned count is the only signal, and ``0`` does not distinguish an
+            empty index from a sweep that deleted nothing. Re-running is safe.
+
         Returns:
             int: Count of records deleted from Redis.
         """
         batch_size = 500
-        max_ratio = 1.01
 
-        info = self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        matched = cast(int, self.query(CountQuery(FilterExpression("*"))))
+        # Runaway backstop sized to the matched count plus slack for concurrent
+        # inserts, as in drop_by_filter. Deliberately not FT.INFO's num_docs:
+        # that command is @search only, so reading it for a loop bound denied
+        # this whole method to a `+@read +@write` credential.
+        max_records = ceil(matched * 1.5) + batch_size
+
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
 
         while True:
-            batch = self._query(query)
-            if batch and total_records_deleted <= max_records_deleted:
-                batch_keys = [record["id"] for record in batch]
-                total_records_deleted += self._delete_batch(batch_keys)
-            else:
+            if total_records_deleted > max_records:
+                logger.warning(
+                    "clear() of index %s hit its runaway backstop (%d) with "
+                    "documents possibly still indexed; %d records were deleted. "
+                    "Re-run to continue.",
+                    self.schema.index.name,
+                    max_records,
+                    total_records_deleted,
+                )
                 break
+
+            query.paging(offset, batch_size)
+            batch = self._query(query)
+            if not batch:
+                break
+
+            batch_keys = [record["id"] for record in batch]
+            records_deleted = self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
+
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted, most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past it: the documents behind may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -2036,7 +2133,7 @@ class SearchIndex(BaseSearchIndex):
                 batch. Defaults to 30.
 
         Yields:
-            A generator yielding batches of search results.
+            A generator yielding non-empty ``SearchResults`` batches.
 
         Raises:
             TypeError: If the page_size argument is not of type int.
@@ -2055,8 +2152,21 @@ class SearchIndex(BaseSearchIndex):
             considerations and the expected volume of search results.
 
         Note:
-            For stable pagination, the query must have a `sort_by` clause.
+            For stable pagination, the query must have a `sort_by` clause on a
+            **unique** field. Redis documents that ``LIMIT`` without sorting is
+            non-deterministic, so pages may otherwise repeat or miss documents.
+            Very deep pagination is also bounded server-side by
+            ``search-max-search-results`` (1,000,000 by default, but 10,000 on
+            some managed tiers), past which the search errors rather than ending.
 
+        Note:
+            A yielded batch may contain fewer than ``page_size`` documents, and an
+            empty batch is never yielded. On Redis 8+ a matched document whose
+            data expires while the search is running is skipped; each batch
+            reports how many were skipped via ``dropped_count`` (and
+            ``complete``), including skips inherited from a page that was dropped
+            in its entirety. Pagination still runs to the end of the result set in
+            that case.
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be an integer")
@@ -2064,14 +2174,29 @@ class SearchIndex(BaseSearchIndex):
         if page_size <= 0:
             raise ValueError("page_size must be greater than 0")
 
+        if isinstance(query, CountQuery):
+            raise TypeError(
+                "CountQuery cannot be paginated: it returns a match count rather "
+                "than documents. Use index.query(query) instead."
+            )
+
         offset = 0
+        carried_drops = 0
         while True:
             query.paging(offset, page_size)
             results = self._query(query)
-            if not results:
+            if not _page_had_matches(results):
                 break
-            yield results
-            # Increment the offset for the next batch of pagination
+            if results:
+                _fold_carried_drops(results, carried_drops)
+                carried_drops = 0
+                yield results
+            else:
+                # Whole page dropped: keep its count so it reaches the caller on
+                # the next yielded batch instead of vanishing with the page.
+                carried_drops += getattr(results, "dropped_count", 0)
+            # Advance unconditionally, so a page we cannot materialize can never
+            # wedge the loop.
             offset += page_size
 
     def listall(self) -> list[str]:
@@ -2563,27 +2688,66 @@ class AsyncSearchIndex(BaseSearchIndex):
         we can't easily give control of the keys we're clearing to the user so they
         can separate them based on hash tag.
 
+        See :meth:`SearchIndex.clear` for the sweep's caveats, which apply
+        identically here.
+
         Returns:
             int: Count of records deleted from Redis.
         """
         batch_size = 500
-        max_ratio = 1.01
 
-        info = await self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        matched = cast(int, await self.query(CountQuery(FilterExpression("*"))))
+        # Runaway backstop sized to the matched count plus slack for concurrent
+        # inserts -- the same shape as drop_by_filter. CountQuery is FT.SEARCH,
+        # which the query loop below already needs and which `+@read +@write`
+        # grants; the FT.INFO this once read for the same purpose is `@search`
+        # only, so a single call for a loop bound denied the whole method.
+        max_records = ceil(matched * 1.5) + batch_size
+
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
 
         while True:
-            batch = await self._query(query)
-            if batch and total_records_deleted <= max_records_deleted:
-                batch_keys = [record["id"] for record in batch]
-                total_records_deleted += await self._delete_batch(batch_keys)
-            else:
+            if total_records_deleted > max_records:
+                logger.warning(
+                    "clear() of index %s hit its runaway backstop (%d) with "
+                    "documents possibly still indexed; %d records were deleted. "
+                    "Re-run to continue.",
+                    self.schema.index.name,
+                    max_records,
+                    total_records_deleted,
+                )
                 break
+
+            query.paging(offset, batch_size)
+            batch = await self._query(query)
+            if not batch:
+                break
+
+            batch_keys = [record["id"] for record in batch]
+            records_deleted = await self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
+
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted, most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past it: the documents behind may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -3285,7 +3449,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 batch. Defaults to 30.
 
         Yields:
-            An async generator yielding batches of search results.
+            An async generator yielding non-empty ``SearchResults`` batches.
 
         Raises:
             TypeError: If the page_size argument is not of type int.
@@ -3304,8 +3468,21 @@ class AsyncSearchIndex(BaseSearchIndex):
             considerations and the expected volume of search results.
 
         Note:
-            For stable pagination, the query must have a `sort_by` clause.
+            For stable pagination, the query must have a `sort_by` clause on a
+            **unique** field. Redis documents that ``LIMIT`` without sorting is
+            non-deterministic, so pages may otherwise repeat or miss documents.
+            Very deep pagination is also bounded server-side by
+            ``search-max-search-results`` (1,000,000 by default, but 10,000 on
+            some managed tiers), past which the search errors rather than ending.
 
+        Note:
+            A yielded batch may contain fewer than ``page_size`` documents, and an
+            empty batch is never yielded. On Redis 8+ a matched document whose
+            data expires while the search is running is skipped; each batch
+            reports how many were skipped via ``dropped_count`` (and
+            ``complete``), including skips inherited from a page that was dropped
+            in its entirety. Pagination still runs to the end of the result set in
+            that case.
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be of type int")
@@ -3313,13 +3490,29 @@ class AsyncSearchIndex(BaseSearchIndex):
         if page_size <= 0:
             raise ValueError("page_size must be greater than 0")
 
+        if isinstance(query, CountQuery):
+            raise TypeError(
+                "CountQuery cannot be paginated: it returns a match count rather "
+                "than documents. Use index.query(query) instead."
+            )
+
         first = 0
+        carried_drops = 0
         while True:
             query.paging(first, page_size)
             results = await self._query(query)
-            if not results:
+            if not _page_had_matches(results):
                 break
-            yield results
+            if results:
+                _fold_carried_drops(results, carried_drops)
+                carried_drops = 0
+                yield results
+            else:
+                # Whole page dropped: keep its count so it reaches the caller on
+                # the next yielded batch instead of vanishing with the page.
+                carried_drops += getattr(results, "dropped_count", 0)
+            # Advance unconditionally, so a page we cannot materialize can never
+            # wedge the loop.
             first += page_size
 
     async def listall(self) -> list[str]:

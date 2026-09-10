@@ -15,6 +15,7 @@ the sync SentinelConnectionPool, causing runtime failures.
 """
 
 from unittest.mock import MagicMock, patch
+from urllib.parse import quote
 
 import pytest
 from redis.exceptions import ConnectionError
@@ -256,3 +257,24 @@ class TestSentinelUrlParsingEdgeCases:
             master_for_kwargs = mock_async_sentinel.return_value.master_for.call_args[1]
             assert master_for_kwargs["decode_responses"] is True
             assert master_for_kwargs["socket_timeout"] == 5.0
+
+    def test_sentinel_url_parse_quoted_username_password(self):
+        """Verify unquoted username and password are correctly passed to Sentinel."""
+        unquoted_password = "test!$34"
+        unquoted_username = "testUser#4"
+        sentinel_url = (
+            f"redis+sentinel://{quote(unquoted_username, safe='')}:"
+            f"{quote(unquoted_password, safe='')}@host1:26379/mymaster"
+        )
+
+        with patch("redisvl.redis.connection.Sentinel") as mock_sentinel:
+            mock_sentinel.return_value.master_for.return_value = MagicMock()
+            RedisConnectionFactory.get_redis_connection(sentinel_url)
+
+            call_kwargs = mock_sentinel.call_args[1]
+            assert call_kwargs["sentinel_kwargs"] == {
+                "username": unquoted_username,
+                "password": unquoted_password,
+            }
+            assert call_kwargs["password"] == unquoted_password
+            assert call_kwargs["username"] == unquoted_username
