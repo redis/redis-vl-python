@@ -164,13 +164,26 @@ def ensure_tool_scope(server: Any, required_scope: str | None) -> None:
     No-ops when auth is disabled or no scope is configured. Otherwise reads the
     current access token and checks the configured authorization claim, raising
     a ``forbidden`` MCP error when the scope is absent.
+
+    Prefer :func:`ensure_read_scope` / :func:`ensure_write_scope` at a call
+    site; they resolve the scope name from the same server this reads.
     """
+    if not getattr(server, "_auth_enabled", False):
+        return
+
     auth_config = getattr(server, "auth_config", None)
-    if (
-        not getattr(server, "_auth_enabled", False)
-        or auth_config is None
-        or required_scope is None
-    ):
+    if auth_config is None:
+        # Auth is wired, so its config has to be reachable. Returning here would
+        # silently stop gating every tool the moment the attribute is renamed --
+        # a fail-open that no test would catch -- so fail closed instead.
+        raise RedisVLMCPError(
+            "MCP auth is enabled but the server's auth configuration is "
+            "unreachable; refusing to run an ungated tool",
+            code=MCPErrorCode.INTERNAL_ERROR,
+            retryable=False,
+        )
+
+    if required_scope is None:
         return
 
     from fastmcp.server.dependencies import get_access_token
@@ -190,3 +203,26 @@ def ensure_tool_scope(server: Any, required_scope: str | None) -> None:
             code=MCPErrorCode.FORBIDDEN,
             retryable=False,
         )
+
+
+def _configured_scope(server: Any, attribute: str) -> str | None:
+    """Read one configured scope name off the server's auth config.
+
+    Deliberately unguarded on the attribute itself: a renamed field on
+    ``MCPAuthConfig`` raises here rather than resolving to ``None`` and quietly
+    turning the scope gate into a no-op.
+    """
+    auth_config = getattr(server, "auth_config", None)
+    if auth_config is None:
+        return None
+    return getattr(auth_config, attribute)
+
+
+def ensure_read_scope(server: Any) -> None:
+    """Enforce the configured read scope for the current request."""
+    ensure_tool_scope(server, _configured_scope(server, "read_scope"))
+
+
+def ensure_write_scope(server: Any) -> None:
+    """Enforce the configured write scope for the current request."""
+    ensure_tool_scope(server, _configured_scope(server, "write_scope"))

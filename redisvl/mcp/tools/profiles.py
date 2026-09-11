@@ -16,7 +16,7 @@ from typing import Annotated, Any, Optional
 
 from pydantic import Field
 
-from redisvl.mcp.auth import ensure_tool_scope
+from redisvl.mcp.auth import ensure_read_scope
 from redisvl.mcp.config import MCPCustomToolConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.filters import parse_filter
@@ -240,9 +240,7 @@ def register_profile_tool(
     signature, annotations = _build_signature(profile)
 
     async def profile_tool(**kwargs: Any) -> dict[str, Any]:
-        auth_config = getattr(server, "auth_config", None)
-        read_scope = auth_config.read_scope if auth_config is not None else None
-        ensure_tool_scope(server, read_scope)
+        ensure_read_scope(server)
 
         # A hidden argument is already absent from the advertised schema, so a
         # compliant client cannot send one. Ignoring it here too means the lock
