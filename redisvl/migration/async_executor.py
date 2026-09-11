@@ -819,9 +819,8 @@ class AsyncMigrationExecutor:
         source_failures = int(
             plan.source.stats_snapshot.get("hash_indexing_failures", 0) or 0
         )
-        source_percent_indexed = float(
-            plan.source.stats_snapshot.get("percent_indexed", 1.0) or 1.0
-        )
+        progress = plan.source.stats_snapshot.get("percent_indexed")
+        source_percent_indexed = float(progress) if progress is not None else 1.0
         needs_exact_count = source_failures > 0 or source_percent_indexed < 1.0
         needs_enumeration = (
             needs_quantization

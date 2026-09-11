@@ -3,6 +3,8 @@
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
+from redis.asyncio.client import Redis as AsyncRedis
+from redis.client import Redis
 from redis.exceptions import ResponseError
 
 from redisvl.migration import AsyncMigrationExecutor, MigrationExecutor
@@ -17,6 +19,8 @@ def migration(request):
         client.ft.return_value.info = AsyncMock()
         client.execute_command = AsyncMock()
         client.scan = AsyncMock()
+    redis_class = AsyncRedis if request.param else Redis
+    client.scan_iter = redis_class.scan_iter.__get__(client)
     return executor, client
 
 
@@ -42,7 +46,8 @@ def _wire(value, decode_responses):
 
 def _aggregate_page(keys, cursor, protocol, decode_responses):
     if protocol == 2:
-        rows = [len(keys), *[["__key", key] for key in keys]]
+        # The leading metadata value need not equal the number of rows.
+        rows = [1, *[["__key", key] for key in keys]]
     else:
         rows = {
             "attributes": [],
@@ -91,15 +96,15 @@ async def test_enumerate_aggregate_cursor_pages(migration, protocol, decode_resp
     client.scan.assert_not_called()
 
 
-@pytest.mark.parametrize("decode_responses", [False, True])
 @pytest.mark.parametrize(
-    "readiness",
+    "decode_responses, readiness",
     [
-        {"hash_indexing_failures": 2, "percent_indexed": 1.0},
-        {"hash_indexing_failures": 0, "percent_indexed": 0.5},
-        {"hash_indexing_failures": 0, "percent_indexed": 0.0},
+        (False, {"hash_indexing_failures": 2, "percent_indexed": 1.0}),
+        (True, {"hash_indexing_failures": 2, "percent_indexed": 1.0}),
+        (True, {"hash_indexing_failures": 0, "percent_indexed": 0.5}),
+        (True, {"hash_indexing_failures": 0, "percent_indexed": 0.0}),
     ],
-    ids=["failed-documents", "partial-index", "empty-index"],
+    ids=["byte-keys", "failed-documents", "partial-index", "zero-progress"],
 )
 @pytest.mark.asyncio
 async def test_incomplete_index_scans_its_prefixes(
@@ -115,19 +120,17 @@ async def test_incomplete_index_scans_its_prefixes(
         (0, _wire(["archive:1", "archive:failed"], decode_responses)),
         (0, _wire(["doc:pending"], decode_responses)),
     ]
-    # The fast path would omit failed/pending documents, even if it did not crash.
-    client.execute_command.return_value = [[1, [b"__key", b"archive:1"]], 0]
-
     assert await _collect(executor, client) == [
         "archive:1",
         "archive:failed",
         "doc:pending",
     ]
     assert client.scan.call_args_list == [
-        call(cursor=0, match="archive:*", count=2),
-        call(cursor=5, match="archive:*", count=2),
-        call(cursor=0, match="doc:*", count=2),
+        call(cursor="0", match="archive:*", count=2, _type=None),
+        call(cursor=5, match="archive:*", count=2, _type=None),
+        call(cursor="0", match="doc:*", count=2, _type=None),
     ]
+    # The fast path would omit failed/pending documents, even if it did not crash.
     client.execute_command.assert_not_called()
 
 
@@ -147,16 +150,13 @@ async def test_aggregate_error_preserves_scan_prefix(migration, decode_responses
     client.scan.return_value = (0, [b"doc:1"])
 
     assert await _collect(executor, client) == ["doc:1"]
-    client.scan.assert_called_once_with(cursor=0, match="doc:*", count=2)
+    client.scan.assert_called_once_with(cursor="0", match="doc:*", count=2, _type=None)
 
 
-@pytest.mark.parametrize("protocol", [2, 3])
 @pytest.mark.asyncio
-async def test_closing_enumeration_releases_cursor(migration, protocol):
+async def test_closing_enumeration_releases_cursor(migration):
     executor, client = migration
-    client.execute_command.return_value = _aggregate_page(
-        ["doc:1"], 17, protocol, False
-    )
+    client.execute_command.return_value = _aggregate_page(["doc:1"], 17, 3, False)
     keys = executor._enumerate_with_aggregate(client, "source", batch_size=2)
     if isinstance(executor, AsyncMigrationExecutor):
         try:

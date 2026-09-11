@@ -224,7 +224,7 @@ def _extract_aggregate_keys(results_data: Any) -> Generator[str, None, None]:
     if isinstance(results_data, dict):
         keys = (row["extra_attributes"]["__key"] for row in results_data["results"])
     else:
-        # RESP2 starts with the row count, followed by field/value pairs.
+        # Skip the leading RESP2 metadata; the remaining rows are field/value pairs.
         keys = (
             row[1]
             for row in results_data[1:]
@@ -1107,9 +1107,8 @@ class MigrationExecutor:
         source_failures = int(
             plan.source.stats_snapshot.get("hash_indexing_failures", 0) or 0
         )
-        source_percent_indexed = float(
-            plan.source.stats_snapshot.get("percent_indexed", 1.0) or 1.0
-        )
+        progress = plan.source.stats_snapshot.get("percent_indexed")
+        source_percent_indexed = float(progress) if progress is not None else 1.0
         needs_exact_count = source_failures > 0 or source_percent_indexed < 1.0
         needs_enumeration = (
             needs_quantization
