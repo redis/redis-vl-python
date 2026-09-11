@@ -22,6 +22,7 @@ from redisvl.migration.executor import (
     _checkpoint_identity_matches,
     _delete_backup_prefix,
     _delete_multi_worker_backup_prefix,
+    _extract_aggregate_keys,
     _extract_prefixes_from_info,
     _key_prefix_map,
     _map_key_prefix,
@@ -45,6 +46,7 @@ from redisvl.migration.utils import (
     normalize_keys,
     timestamp_utc,
 )
+from redisvl.redis.utils import convert_bytes
 from redisvl.types import AsyncRedisClient
 from redisvl.utils.log import get_logger
 
@@ -103,9 +105,10 @@ class AsyncMigrationExecutor:
         # condition means FT.AGGREGATE would miss documents, so fall
         # back to SCAN for complete enumeration.
         try:
-            info = await client.ft(index_name).info()
+            info = convert_bytes(await client.ft(index_name).info())
             failures = int(info.get("hash_indexing_failures", 0) or 0)
-            percent_indexed = float(info.get("percent_indexed", 1.0) or 1.0)
+            progress = info.get("percent_indexed")
+            percent_indexed = float(progress) if progress is not None else 1.0
             if failures > 0:
                 logger.warning(
                     f"Index '{index_name}' has {failures} indexing failures. "
@@ -183,11 +186,8 @@ class AsyncMigrationExecutor:
             while True:
                 results_data, cursor_id = result
 
-                # Extract keys from results
-                for item in results_data[1:]:
-                    if isinstance(item, (list, tuple)) and len(item) >= 2:
-                        key = item[1]
-                        yield key.decode() if isinstance(key, bytes) else str(key)
+                for key in _extract_aggregate_keys(results_data):
+                    yield key
 
                 if cursor_id == 0:
                     break
@@ -819,9 +819,8 @@ class AsyncMigrationExecutor:
         source_failures = int(
             plan.source.stats_snapshot.get("hash_indexing_failures", 0) or 0
         )
-        source_percent_indexed = float(
-            plan.source.stats_snapshot.get("percent_indexed", 1.0) or 1.0
-        )
+        progress = plan.source.stats_snapshot.get("percent_indexed")
+        source_percent_indexed = float(progress) if progress is not None else 1.0
         needs_exact_count = source_failures > 0 or source_percent_indexed < 1.0
         needs_enumeration = (
             needs_quantization
