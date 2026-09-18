@@ -67,7 +67,7 @@ class SemanticRouter(BaseModel):
         redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         create_index: bool = True,
         **kwargs,
     ):
@@ -929,8 +929,8 @@ class SemanticRouter(BaseModel):
     def get_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Get references for an existing route route.
 
@@ -965,8 +965,8 @@ class SemanticRouter(BaseModel):
     def delete_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> int:
         """Get references for an existing semantic router route.
 
