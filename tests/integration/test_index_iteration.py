@@ -2,7 +2,7 @@ import pytest
 
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Tag
-from redisvl.utils.utils import contextlib
+from contextlib import aclosing
 
 DOCS = [
     {"id": "1", "category": "A"},

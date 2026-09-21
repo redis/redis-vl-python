@@ -4,6 +4,7 @@ import threading
 import time
 import warnings
 import weakref
+from contextlib import aclosing
 from dataclasses import dataclass
 from math import ceil
 from typing import (
@@ -3362,8 +3363,9 @@ class AsyncSearchIndex(BaseSearchIndex):
                 "*" if _is_match_all_filter(filter_expression) else filter_expression
             )
             async for batch in self._iter_keys_by_filter(filter_expr, batch_size):
-                for key in batch:
-                    yield key
+                async with aclosing(batch):
+                    for key in batch:
+                        yield key
 
     async def listall(self) -> list[str]:
         """List all search indices in Redis database.
