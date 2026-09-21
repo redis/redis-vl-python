@@ -2003,32 +2003,64 @@ class SearchIndex(BaseSearchIndex):
             # Increment the offset for the next batch of pagination
             offset += page_size
 
-    def iter(
-        self,
-        filter_expression: str | FilterExpression | None = None,
-        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
-    ) -> Generator[str, None, None]:
-        """Iterate lazily over document keys matching a filter expression.
+    def iter_keys(
+            self,
+            filter_expression: str | FilterExpression | None = None,
+            batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+        ) -> Generator[str, None, None]:
+            """Iterate lazily over document keys matching a filter expression.
 
-        Delegates to :meth:`_iter_keys_by_filter`, which pages with
-        ``FT.AGGREGATE ... WITHCURSOR`` rather than ``FT.SEARCH`` + ``LIMIT``, so
-        this is not subject to the ``MAXSEARCHRESULTS`` limit. See that method's
-        docstring for why keys are de-duplicated and why memory is
-        ``O(match count)`` rather than truly streaming.
+            Delegates to :meth:`_iter_keys_by_filter`, which pages with
+            ``FT.AGGREGATE ... WITHCURSOR`` rather than ``FT.SEARCH`` + ``LIMIT``, so
+            this is not subject to the ``MAXSEARCHRESULTS`` limit (1,000,000 on
+            Redis 8.2.7 by default). See that method's docstring for why keys are
+            de-duplicated and why memory is ``O(match count)`` rather than truly
+            streaming.
 
-        Args:
-            filter_expression (Union[str, FilterExpression, None]): Selects the
-                documents to iterate over. Defaults to None (all documents).
-            batch_size (int): Number of keys fetched per cursor page. Defaults to 500.
+            A batch can come back smaller than ``batch_size`` (an all-repeat cursor
+            page yields nothing), and a full drain is no proof every match was seen,
+            since the cursor is a position in an ascending walk of internal
+            document ids, not a snapshot. Callers that need completeness should
+            reconcile against a ``CountQuery`` rather than trusting a drained cursor.
 
-        Yields:
-            str: Document key matching the filter.
-        """
-        filter_expr = (
-            FilterExpression("*") if filter_expression is None else filter_expression
-        )
-        for batch in self._iter_keys_by_filter(filter_expr, batch_size):
-            yield from batch
+            The server-side cursor's idle timeout only resets when a page is read,
+            so a caller doing per-key work (embedding, network) can have its cursor
+            reaped after keys have already been yielded, which fails mid-stream
+            rather than up front. The cursor is released on normal exit, early
+            break, and error; the abandon-and-never-close case cannot be fixed from
+            in here, so callers who break out early should wrap the iterator in
+            ``contextlib.aclosing()``.
+
+            Args:
+                filter_expression (Union[str, FilterExpression, None]): Selects the
+                    documents to iterate over. Defaults to None (all documents).
+                    ``None``, ``""``, whitespace, and a default ``FilterExpression``
+                    are all treated as match-all, consistent with ``drop_by_filter``
+                    and ``update_by_filter``.
+                batch_size (int): Number of keys fetched per cursor page.
+                    Defaults to 500.
+
+            Raises:
+                TypeError: If ``batch_size`` is not an int.
+                ValueError: If ``batch_size`` is less than 1.
+
+            Yields:
+                str: Document key matching the filter.
+
+            Note:
+                Do not concatenate untrusted input into ``filter_expression`` —
+                it is rendered into the ``FT.AGGREGATE`` request verbatim, the same
+                constraint ``drop_by_filter`` and ``update_by_filter`` carry.
+            """
+            if not isinstance(batch_size, int):
+                raise TypeError("batch_size must be an integer")
+            if batch_size < 1:
+                raise ValueError("batch_size must be greater than 0")
+            filter_expr = (
+                "*" if _is_match_all_filter(filter_expression) else filter_expression
+            )
+            for batch in self._iter_keys_by_filter(filter_expr, batch_size):
+                yield from batch
 
     def listall(self) -> list[str]:
         """List all search indices in Redis database.
@@ -3273,33 +3305,65 @@ class AsyncSearchIndex(BaseSearchIndex):
             yield results
             first += page_size
 
-    async def aiter(
-        self,
-        filter_expression: str | FilterExpression | None = None,
-        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
-    ) -> AsyncGenerator[str, None]:
-        """Iterate lazily over document keys matching a filter expression asynchronously.
+    async def aiter_keys(
+            self,
+            filter_expression: str | FilterExpression | None = None,
+            batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+        ) -> AsyncGenerator[str, None]:
+            """Iterate lazily over document keys matching a filter expression asynchronously.
 
-        Delegates to :meth:`_iter_keys_by_filter`, which pages with
-        ``FT.AGGREGATE ... WITHCURSOR`` rather than ``FT.SEARCH`` + ``LIMIT``, so
-        this is not subject to the ``MAXSEARCHRESULTS`` limit. See that method's
-        docstring for why keys are de-duplicated and why memory is
-        ``O(match count)`` rather than truly streaming.
+            Delegates to :meth:`_iter_keys_by_filter`, which pages with
+            ``FT.AGGREGATE ... WITHCURSOR`` rather than ``FT.SEARCH`` + ``LIMIT``, so
+            this is not subject to the ``MAXSEARCHRESULTS`` limit (1,000,000 on
+            Redis 8.2.7 by default). See that method's docstring for why keys are
+            de-duplicated and why memory is ``O(match count)`` rather than truly
+            streaming.
 
-        Args:
-            filter_expression (Union[str, FilterExpression, None]): Selects the
-                documents to iterate over. Defaults to None (all documents).
-            batch_size (int): Number of keys fetched per cursor page. Defaults to 500.
+            A batch can come back smaller than ``batch_size`` (an all-repeat cursor
+            page yields nothing), and a full drain is no proof every match was seen,
+            since the cursor is a position in an ascending walk of internal
+            document ids, not a snapshot. Callers that need completeness should
+            reconcile against a ``CountQuery`` rather than trusting a drained cursor.
 
-        Yields:
-            str: Document key matching the filter.
-        """
-        filter_expr = (
-            FilterExpression("*") if filter_expression is None else filter_expression
-        )
-        async for batch in self._iter_keys_by_filter(filter_expr, batch_size):
-            for key in batch:
-                yield key
+            The server-side cursor's idle timeout only resets when a page is read,
+            so a caller doing per-key work (embedding, network) can have its cursor
+            reaped after keys have already been yielded, which fails mid-stream
+            rather than up front. The cursor is released on normal exit, early
+            break, and error; the abandon-and-never-close case cannot be fixed from
+            in here, so callers who break out early should wrap the iterator in
+            ``contextlib.aclosing()``.
+
+            Args:
+                filter_expression (Union[str, FilterExpression, None]): Selects the
+                    documents to iterate over. Defaults to None (all documents).
+                    ``None``, ``""``, whitespace, and a default ``FilterExpression``
+                    are all treated as match-all, consistent with ``drop_by_filter``
+                    and ``update_by_filter``.
+                batch_size (int): Number of keys fetched per cursor page.
+                    Defaults to 500.
+
+            Raises:
+                TypeError: If ``batch_size`` is not an int.
+                ValueError: If ``batch_size`` is less than 1.
+
+            Yields:
+                str: Document key matching the filter.
+
+            Note:
+                Do not concatenate untrusted input into ``filter_expression`` —
+                it is rendered into the ``FT.AGGREGATE`` request verbatim, the same
+                constraint ``drop_by_filter`` and ``update_by_filter`` carry.
+            """
+            if not isinstance(batch_size, int):
+                raise TypeError("batch_size must be an integer")
+            if batch_size < 1:
+                raise ValueError("batch_size must be greater than 0")
+            filter_expr = (
+                "*" if _is_match_all_filter(filter_expression) else filter_expression
+            )
+            async for batch in self._iter_keys_by_filter(filter_expr, batch_size):
+                for key in batch:
+                    yield key
 
     async def listall(self) -> list[str]:
         """List all search indices in Redis database.
