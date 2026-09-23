@@ -63,7 +63,15 @@ jobs:
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
+    # `needs` is here to order this job after the HF model cache is primed, not
+    # to gate it on the service suite passing (it was `needs: prime-cache` when
+    # it was introduced in #306). Without a status check function, `needs` also
+    # implies `success()`, which meant a third-party API outage skipped all 45
+    # matrix legs and left PRs with zero Redis coverage behind a single red
+    # check. `!cancelled()` keeps the ordering and drops the cascade: a cold
+    # cache just costs these legs a model download.
     needs: service-tests
+    if: ${{ !cancelled() }}
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
       REDIS_IMAGE: ${{ matrix.redis-image }}
@@ -129,10 +137,11 @@ jobs:
   notebooks:
     name: Notebook Validation
     runs-on: ubuntu-latest
+    # Ordered after the HF cache is primed, not gated on it; see the `test` job.
     needs: service-tests
     # Needs API-key secrets, unavailable to fork PRs. Keep in sync with
     # service-tests.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
