@@ -145,6 +145,41 @@ def test_search_index_from_existing_honours_explicit_owns_client():
     created_client.close.assert_not_called()
 
 
+def test_search_index_from_existing_owns_client_when_ownership_unanswered():
+    """An explicit ``owns_client=None`` must not leak the factory's client.
+
+    ``None`` is the documented "work it out for me" value, and ``__init__``
+    works it out from ``redis_client`` -- which ``from_existing`` has already
+    populated, so the inference reads as not-owned and nothing ever closes
+    the client this call built. A caller forwarding an optional setting
+    (``owns_client=cfg.get("owns_client")``) lands here.
+    """
+    created_client = MagicMock()
+
+    with (
+        patch(
+            "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+            return_value=created_client,
+        ),
+        patch.object(SearchIndex, "_info", return_value={}),
+        patch(
+            "redisvl.index.index.convert_index_info_to_schema",
+            return_value=_schema_dict("search-index"),
+        ),
+    ):
+        index = SearchIndex.from_existing(
+            "search-index",
+            redis_url="redis://localhost:6380",
+            owns_client=None,
+        )
+
+    assert index._owns_redis_client is True
+
+    index.disconnect()
+
+    created_client.close.assert_called_once_with()
+
+
 @pytest.mark.asyncio
 async def test_async_search_index_from_existing_prefers_provided_client():
     """Use the provided async Redis client instead of constructing a new one."""
@@ -390,6 +425,46 @@ async def test_base_cache_async_client_creation_is_serialised():
 
     assert len(created) == 1
     assert first is second
+
+
+def test_base_cache_async_client_reconnects_on_a_second_event_loop():
+    """Reconnecting after ``adisconnect`` must work on a fresh event loop.
+
+    An ``asyncio.Lock`` records the loop that first contends it and rejects
+    every other, so a lock held for the cache's lifetime turned the
+    documented reconnect into a ``RuntimeError`` whenever it landed on a new
+    loop -- a second ``asyncio.run``, a fresh pytest-asyncio loop, a notebook
+    cell. Driven from a sync test because it needs two real loops.
+    """
+    cache = EmbeddingsCache(redis_url="redis://localhost:6379")
+    created = []
+
+    async def factory(*args, **kwargs):
+        await asyncio.sleep(0)  # the suspension the real factory introduces
+        client = AsyncMock(name=f"client{len(created)}")
+        created.append(client)
+        return client
+
+    async def race():
+        # Two racing callers force the lock's slow path, which is the only
+        # path that looks at the loop; an uncontended acquire never does, so
+        # a single-caller version of this test would pass either way.
+        await asyncio.gather(
+            cache._get_async_redis_client(), cache._get_async_redis_client()
+        )
+
+    async def connect_then_disconnect():
+        await race()
+        await cache.adisconnect()
+
+    with patch(
+        "redisvl.extensions.cache.base.RedisConnectionFactory._get_aredis_connection",
+        new=factory,
+    ):
+        asyncio.run(connect_then_disconnect())
+        asyncio.run(race())
+
+    assert len(created) == 2, "each loop should get exactly one client"
 
 
 def test_sql_query_uses_connection_factory_for_redis_url():

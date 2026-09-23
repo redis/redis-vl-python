@@ -1064,7 +1064,12 @@ class SearchIndex(BaseSearchIndex):
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
         if created_redis_client:
-            init_kwargs.setdefault("owns_client", True)
+            # An explicit owns_client=None means "infer", and __init__ infers
+            # from redis_client -- non-None here, so it would read as
+            # not-owned and leak the client this method just built. Treat an
+            # unanswered value as the documented default.
+            if init_kwargs.get("owns_client") is None:
+                init_kwargs["owns_client"] = True
             return cls(
                 schema,
                 redis_client=redis_client,
@@ -2445,7 +2450,12 @@ class AsyncSearchIndex(BaseSearchIndex):
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
         if created_redis_client:
-            init_kwargs.setdefault("owns_client", True)
+            # An explicit owns_client=None means "infer", and __init__ infers
+            # from redis_client -- non-None here, so it would read as
+            # not-owned and leak the client this method just built. Treat an
+            # unanswered value as the documented default.
+            if init_kwargs.get("owns_client") is None:
+                init_kwargs["owns_client"] = True
             return cls(
                 schema,
                 redis_client=redis_client,

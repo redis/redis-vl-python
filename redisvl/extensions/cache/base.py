@@ -77,8 +77,10 @@ class BaseCache:
         self._async_redis_client = async_redis_client
         self._redis_client = redis_client
         # Guards lazy async client creation, which suspends on an await and so
-        # cannot rely on a bare check-then-set. Mirrors AsyncSearchIndex._lock.
-        self._async_client_lock = asyncio.Lock()
+        # cannot rely on a bare check-then-set. Rebuilt whenever the running
+        # loop changes -- see _get_async_client_lock.
+        self._async_client_lock: asyncio.Lock | None = None
+        self._async_client_lock_loop: asyncio.AbstractEventLoop | None = None
 
         # Caches never close a caller-supplied client and register no GC
         # finalizer, so the index's owns_client handover has no cache
@@ -145,6 +147,24 @@ class BaseCache:
             )
         return self._redis_client
 
+    def _get_async_client_lock(self) -> asyncio.Lock:
+        """Return the client-creation lock, bound to the running loop.
+
+        An ``asyncio.Lock`` records the loop that first contends it and raises
+        ``RuntimeError`` if awaited from any other, so one long-lived lock
+        would break a reconnect that lands on a second loop -- a later
+        ``asyncio.run``, a fresh pytest-asyncio loop, a notebook cell. The
+        lock only has to serialise tasks within a single loop, so discarding
+        it when the loop changes is both sufficient and cheap.
+        """
+        loop = asyncio.get_running_loop()
+        lock = self._async_client_lock
+        if lock is None or self._async_client_lock_loop is not loop:
+            lock = asyncio.Lock()
+            self._async_client_lock = lock
+            self._async_client_lock_loop = loop
+        return lock
+
     async def _get_async_redis_client(self) -> AsyncRedisClient:
         """Get or create an async Redis client.
 
@@ -153,7 +173,7 @@ class BaseCache:
         """
         client = getattr(self, "_async_redis_client", None)
         if client is None:
-            async with self._async_client_lock:
+            async with self._get_async_client_lock():
                 # Double-check: another task may have created the client while
                 # this one waited on the lock or on the factory's round trip.
                 client = getattr(self, "_async_redis_client", None)

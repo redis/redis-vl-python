@@ -12,6 +12,7 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
 )
 from redisvl.redis.connection import is_version_gte
+from redisvl.redis.utils import convert_bytes
 from tests.conftest import skip_if_no_redis_search, skip_if_redis_version_below
 
 pytestmark = pytest.mark.requires_hf
@@ -726,6 +727,26 @@ def test_get_route_references(semantic_router):
 
     with pytest.raises(ValueError):
         semantic_router.get_route_references()
+
+
+def test_empty_reference_id_deletes_nothing(semantic_router):
+    # An empty id used to render the match-all `*`, and because the caller reads
+    # the first row of each query's results it removed an arbitrary reference
+    # rather than the one asked for.
+    prefix = semantic_router._index.schema.index.prefix
+    keys_before = set(
+        convert_bytes(semantic_router._index._redis_client.keys(f"{prefix}*"))
+    )
+
+    with pytest.raises(ValueError):
+        semantic_router.delete_route_references(reference_ids=[""])
+    with pytest.raises(ValueError):
+        semantic_router.get_route_references(reference_ids=[""])
+
+    keys_after = set(
+        convert_bytes(semantic_router._index._redis_client.keys(f"{prefix}*"))
+    )
+    assert keys_after == keys_before
 
 
 def test_delete_route_references(semantic_router):
