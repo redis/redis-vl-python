@@ -229,9 +229,9 @@ class TestOwnsClientHandover:
     """``owns_client`` overrides who closes the client.
 
     By default an index closes only a client it created itself. These tests
-    cover the two explicit overrides at construction, which is where
-    ownership should be stated: the deprecated ``set_client()`` inherits
-    whatever ownership the index already had, so it can hand the index a
+    cover the two explicit overrides at construction, which is now the only
+    place ownership can be stated: the removed ``set_client()`` inherited
+    whatever ownership the index already had, and so could be handed a
     caller's client and then close it.
     """
 
