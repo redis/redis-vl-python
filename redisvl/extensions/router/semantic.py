@@ -195,9 +195,9 @@ class SemanticRouter(BaseModel):
             )
             index_kwargs["_client_validated"] = True
             # index_kwargs wins the merge below, so only claim ownership when
-            # the caller has not already answered. Matches the setdefault in
-            # SearchIndex.from_existing, where an explicit value also wins.
-            if "owns_client" not in init_kwargs:
+            # the caller has not already answered -- and an explicit None is
+            # not an answer. Matches SearchIndex.from_existing.
+            if init_kwargs.get("owns_client") is None:
                 index_kwargs["owns_client"] = True
             if lib_name is not None:
                 index_kwargs["lib_name"] = lib_name
@@ -909,6 +909,15 @@ class SemanticRouter(BaseModel):
         queries = []
 
         for id in ids:
+            if not id:
+                # `Tag(...) == ""` renders as the match-all `*`, so an empty id
+                # would match every reference in the index. Callers take the
+                # first row of each query's results, which turns this into
+                # returning -- and, from delete_route_references, deleting -- an
+                # arbitrary reference the caller never named.
+                raise ValueError(
+                    "reference ids must be non-empty strings; received an empty id"
+                )
             fe = Tag("reference_id") == id
             fq = FilterQuery(
                 return_fields=["reference_id", "route_name", "reference"],
