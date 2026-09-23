@@ -113,16 +113,47 @@ class HFTextVectorizer(BaseVectorizer):
                 "Please install with `pip install sentence-transformers`"
             )
 
-        self._client = SentenceTransformer(model, **kwargs)
+        try:
+            self._client = SentenceTransformer(model, **kwargs)
+        except OSError as e:
+            # This is where a bad model name or path actually surfaces --
+            # _set_model_dims() never sees it, since loading happens here,
+            # before that method's try block runs.
+            raise ValueError(
+                f"Could not load the local embedding model '{model}'. Check the "
+                f"model name or path and that the model has been downloaded: {str(e)}"
+            ) from e
+        except RuntimeError as e:
+            raise ValueError(
+                f"The local embedding model '{model}' failed to load. On CUDA this is "
+                f"commonly an out-of-memory or device mismatch -- retry with "
+                f"device='cpu': {str(e)}"
+            ) from e
 
     def _set_model_dims(self):
         try:
             embedding = self._embed("dimension check")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Empty response from the embedding model: {str(ke)}")
+        except OSError as e:
+            # Unlike _initialize_client()'s OSError handler, this one fires
+            # after SentenceTransformer already loaded successfully -- the
+            # failure is in the dimension probe/encode call, not the load.
+            raise ValueError(
+                f"The local embedding model '{self.model}' failed while determining its "
+                f"dimensions: {str(e)}"
+            ) from e
+        except RuntimeError as e:
+            raise ValueError(
+                f"The local embedding model '{self.model}' failed while determining its "
+                f"dimensions. On CUDA this is commonly an out-of-memory or device "
+                f"mismatch -- retry with device='cpu': {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for local model "
+                f"'{self.model}': {str(e)}"
+            ) from e
         return len(embedding)
 
     @deprecated_argument("text", "content")
