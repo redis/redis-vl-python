@@ -171,9 +171,8 @@ class MigrationPlanner:
         # falls back to SCAN automatically, but surface the condition here
         # so users running `rvl migrate plan` can wait for indexing to
         # complete before applying.
-        source_percent_indexed = float(
-            snapshot.stats_snapshot.get("percent_indexed", 1.0) or 1.0
-        )
+        progress = snapshot.stats_snapshot.get("percent_indexed")
+        source_percent_indexed = float(progress) if progress is not None else 1.0
         if source_percent_indexed < 1.0:
             warnings.append(
                 f"Source index is still building "
