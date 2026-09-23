@@ -20,6 +20,7 @@ from redisvl.query.filter import (
     Text,
     Timestamp,
     intersect_with_filter,
+    is_match_all_filter,
     render_filter,
 )
 
@@ -1125,3 +1126,23 @@ def test_render_filter_with_filter_expression_inputs():
 )
 def test_intersect_with_filter(filter_expression, expected):
     assert intersect_with_filter("@text:(fox)", filter_expression) == expected
+
+
+@pytest.mark.parametrize(
+    "filter_expression, expected",
+    [
+        pytest.param(None, True, id="none"),
+        pytest.param("*", True, id="wildcard-string"),
+        pytest.param("  *  ", True, id="padded-wildcard"),
+        pytest.param("", True, id="empty-string"),
+        pytest.param(FilterExpression("*"), True, id="wildcard-expression"),
+        # The reason this helper exists rather than a bare `str(expr) != "*"` at
+        # each call site: an un-initialized FilterExpression raises on render.
+        pytest.param(FilterExpression(), True, id="uninitialized-raises"),
+        pytest.param(Tag("t") == "", True, id="empty-tag-renders-wildcard"),
+        pytest.param(Tag("t") == "acme", False, id="tag-equality"),
+        pytest.param("@t:{acme}", False, id="rendered-string"),
+    ],
+)
+def test_is_match_all_filter(filter_expression, expected):
+    assert is_match_all_filter(filter_expression) is expected
