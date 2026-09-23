@@ -1,8 +1,4 @@
-import os
-
 import pytest
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError, NoPermissionError
 
 from redisvl.redis.connection import (
@@ -18,9 +14,6 @@ from tests.conftest import (
 )
 
 EXPECTED_LIB_NAME = f"redis-py(redisvl_v{__version__})"
-
-# Remove after we remove connect() method from RedisConnectionFactory
-pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def test_unpack_redis_modules():
@@ -102,37 +95,27 @@ def test_convert_index_info_to_schema():
     assert schema.index.name == index_info["index_name"]
 
 
-class TestConnect:
-    def test_sync_redis_connect(self, redis_url):
-        client = RedisConnectionFactory.connect(redis_url)
-        assert client is not None
-        assert isinstance(client, Redis)
-        # Perform a simple operation
-        assert client.ping()
+class TestGetRedisConnection:
+    """URL-resolution error paths for the sync factory.
 
-    @pytest.mark.asyncio
-    async def test_async_redis_connect(self, redis_url):
-        client = RedisConnectionFactory.connect(redis_url, use_async=True)
-        assert client is not None
-        assert isinstance(client, AsyncRedis)
-        # Perform a simple operation
-        assert await client.ping()
+    Nothing else in the suite covers them; every other test and fixture
+    passes a working redis_url.
+    """
 
-    def test_missing_env_var(self):
-        redis_url = os.getenv("REDIS_URL")
-        if redis_url:
-            del os.environ["REDIS_URL"]
-            with pytest.raises(ValueError):
-                RedisConnectionFactory.connect()
-            os.environ["REDIS_URL"] = redis_url
+    def test_missing_env_var(self, monkeypatch):
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        with pytest.raises(ValueError):
+            RedisConnectionFactory.get_redis_connection()
 
     def test_invalid_url_format(self):
         with pytest.raises(ValueError):
-            RedisConnectionFactory.connect(redis_url="invalid_url_format")
+            RedisConnectionFactory.get_redis_connection(redis_url="invalid_url_format")
 
     def test_unknown_redis(self):
         with pytest.raises(ConnectionError):
-            bad_client = RedisConnectionFactory.connect(redis_url="redis://fake:1234")
+            bad_client = RedisConnectionFactory.get_redis_connection(
+                redis_url="redis://fake:1234"
+            )
             bad_client.ping()
 
 
