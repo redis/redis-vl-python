@@ -198,9 +198,9 @@ class SemanticRouter(BaseModel):
             )
             index_kwargs["_client_validated"] = True
             # index_kwargs wins the merge below, so only claim ownership when
-            # the caller has not already answered. Matches the setdefault in
-            # SearchIndex.from_existing, where an explicit value also wins.
-            if "owns_client" not in init_kwargs:
+            # the caller has not already answered -- and an explicit None is
+            # not an answer. Matches SearchIndex.from_existing.
+            if init_kwargs.get("owns_client") is None:
                 index_kwargs["owns_client"] = True
             if lib_name is not None:
                 index_kwargs["lib_name"] = lib_name
