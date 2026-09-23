@@ -643,11 +643,9 @@ class RedisVLMCPServer(FastMCP):
     @staticmethod
     def _make_index(schema: IndexSchema, client: Any) -> AsyncSearchIndex:
         """Bind an inspected schema and Redis client into an async index."""
-        index = AsyncSearchIndex(schema=schema, redis_client=client)
         # The server acquired this client explicitly during startup, so hand
         # ownership to the index for a single shutdown path.
-        index._owns_redis_client = True
-        return index
+        return AsyncSearchIndex(schema=schema, redis_client=client, owns_client=True)
 
     async def _initialize_vectorizer(
         self, binding: MCPIndexBindingConfig, schema: IndexSchema, timeout: int

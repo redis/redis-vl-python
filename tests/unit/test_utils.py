@@ -216,7 +216,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed in the next major release. Use new_arg instead."
+            "Argument old_arg is deprecated and will be removed in a future release. Use new_arg instead."
         )
 
         # Test that passing the deprecated argument as a positional argument also triggers the warning.
@@ -225,7 +225,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed in the next major release. Use new_arg instead."
+            "Argument old_arg is deprecated and will be removed in a future release. Use new_arg instead."
         )
 
         with assert_no_warnings():
@@ -243,8 +243,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed"
-            " in the next major release."
+            "Argument old_arg is deprecated and will be removed in a future release."
         )
 
         # As a positional arg
@@ -253,8 +252,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed"
-            " in the next major release."
+            "Argument old_arg is deprecated and will be removed in a future release."
         )
 
         with assert_no_warnings():
@@ -548,7 +546,7 @@ class TestDeprecatedClass:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Class OldClass is deprecated and will be removed in the next major release. "
+            "Class OldClass is deprecated and will be removed in a future release. "
             "Use NewClass instead."
         )
         assert obj.value == 42
@@ -564,7 +562,7 @@ class TestDeprecatedClass:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Class OldClass is deprecated and will be removed in the next major release. "
+            "Class OldClass is deprecated and will be removed in a future release. "
         )
         assert obj.value == 42
 
@@ -578,7 +576,7 @@ class TestDeprecatedClass:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Class CustomOldClass is deprecated and will be removed in the next major release. "
+            "Class CustomOldClass is deprecated and will be removed in a future release. "
             "Use NewClass instead."
         )
 

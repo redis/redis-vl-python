@@ -26,7 +26,7 @@ async def test__get_aredis_connection_deprecates_url_kwarg_only():
     assert any(
         str(w.message)
         == (
-            "Argument url is deprecated and will be removed in the next major release. "
+            "Argument url is deprecated and will be removed in a future release. "
             "Use redis_url instead."
         )
         for w in record
