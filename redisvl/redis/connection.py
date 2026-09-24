@@ -265,6 +265,10 @@ def normalize_index_definition(index_info: dict[str, Any]) -> dict[str, Any]:
     return _normalize_index_info_mapping(index_info.get("index_definition"))
 
 
+# FT.INFO field modifiers that appear in "flags" without a value.
+_VECTOR_VALUELESS_FLAGS = {"INDEXMISSING", "INDEXEMPTY", "SORTABLE", "NOINDEX", "UNF"}
+
+
 def normalize_index_fields(index_info: dict[str, Any]) -> list[dict[str, Any]]:
     """Return FT.INFO field entries in mapping form."""
     return [
@@ -320,6 +324,18 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                 for key, value in attrs.items()
                 if key not in {"identifier", "attribute", "type", "flags"}
             }
+            # redis-py 8 on RESP2 with legacy_responses=False puts the vector
+            # params in "flags" as key/value pairs, possibly followed by
+            # valueless modifiers: ["algorithm", "FLAT", "dim", 4, "INDEXMISSING"]
+            flags = attrs.get("flags") or []
+            i = 0
+            while i < len(flags):
+                key = str(flags[i])
+                if key.upper() in _VECTOR_VALUELESS_FLAGS or i + 1 >= len(flags):
+                    i += 1
+                    continue
+                vector_attrs.setdefault(key.lower(), flags[i + 1])
+                i += 2
         else:
             # Check if we have any attributes beyond the type declaration
             if len(attrs) <= 6:
@@ -551,6 +567,12 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             if attrs is None:
                 # Vector field attributes cannot be parsed on this Redis version
                 # Skip this field - it cannot be properly reconstructed
+                logger.warning(
+                    "Skipping vector field %r of index %r: could not parse its "
+                    "attributes from FT.INFO",
+                    name,
+                    index_name,
+                )
                 continue
             field["attrs"] = attrs
         else:
