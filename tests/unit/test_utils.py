@@ -19,6 +19,7 @@ from redisvl.utils.utils import (
     deprecated_class,
     deprecated_function,
     lazy_import,
+    match_pattern,
     norm_cosine_distance,
 )
 
@@ -927,3 +928,23 @@ def test_keys_share_hash_tag_multiple_braces():
     keys = ["prefix:{tag1}:middle:{tag2}:key1", "prefix:{tag1}:middle:{tag2}:key2"]
     # Should use the first hash tag found
     assert _keys_share_hash_tag(keys) is True
+
+
+@pytest.mark.parametrize(
+    "segments, expected",
+    [
+        (("plain",), "plain*"),
+        (("with:separators:only",), "with:separators:only*"),
+        (("cache[ab]",), "cache\\[ab]*"),
+        (("star*",), "star\\**"),
+        (("question?",), "question\\?*"),
+        (("back\\slash",), "back\\\\slash*"),
+        (("all*?[]\\",), "all\\*\\?\\[]\\\\*"),
+        # Separators are literals too.
+        (("router", ":", "route[ab]", ":"), "router:route\\[ab]:*"),
+        ((), "*"),
+        (("",), "*"),
+    ],
+)
+def test_match_pattern(segments, expected):
+    assert match_pattern(*segments) == expected

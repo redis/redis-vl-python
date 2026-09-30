@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 from typing_extensions import Self
 
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, intersect_with_filter
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
@@ -380,16 +380,10 @@ class MultiVectorQuery(AggregationQuery):
                 f"@{field}:[VECTOR_RANGE {max_dist} $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
             )
 
+        # Whitespace is intersection in Redis Search; there is no AND keyword.
         range_query = " ".join(range_queries)
 
-        filter_expression = self._filter_expression
-        if isinstance(self._filter_expression, FilterExpression):
-            filter_expression = str(self._filter_expression)
-
-        if filter_expression:
-            return f"({range_query}) ({filter_expression})"
-        else:
-            return f"{range_query}"
+        return intersect_with_filter(range_query, self._filter_expression)
 
     def __str__(self) -> str:
         """Return the string representation of the query."""

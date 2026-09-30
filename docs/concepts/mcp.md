@@ -189,7 +189,7 @@ Two things about filters are easy to conflate:
 
 For that reason a profile accepts only the **object** form of a filter from the model. A raw filter string is rejected both by the advertised schema and by the tool itself, because strings bypass the DSL's field validation and have no safe composition with a locked expression.
 
-Structure is only half of it: the nesting guarantee holds only while every filter *value* stays inside its own clause. Text values are escaped at the filter boundary for that reason — unescaped, a value containing a quote or a parenthesis could close its clause and inject query syntax after it, including a `|` that escapes the surrounding AND. Tag values are escaped and numeric values are type-checked. A caller filter that still renders as something able to break out is refused rather than combined.
+Structure is only half of it: the nesting guarantee holds only while every filter *value* stays inside its own clause. Text `eq`/`ne` values are handled by the `Text` filter itself, which renders them as a quoted phrase with any `"` or `\` replaced by a space, so a parenthesis or a `|` the value carries is literal text rather than syntax. Text `like` values are patterns, so the library leaves them raw and this boundary escapes them instead — the delimiters that would close the clause are escaped, the pattern metacharacters are not. Tag values have their delimiters escaped and numeric values are type-checked. A caller filter that still renders as something able to break out is refused rather than combined.
 
 Profiles resolve to a built-in call and nothing more, so they inherit the concurrency cap, request timeout, read-only policy, auth scoping, and error mapping already applied to `search-records`.
 

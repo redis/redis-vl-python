@@ -196,7 +196,8 @@ The command-to-category mapping below was measured against live servers rather t
 |---|---|---|---|
 | `index.query()`, `index.search()`, `index.aggregate()` | `FT.SEARCH`, `FT.AGGREGATE` | Yes | Yes |
 | `index.load()` | `HSET` or `JSON.SET` (needs key access) | Yes | Yes |
-| `index.exists()`, `index.info()`, `index.clear()`, `SearchIndex.from_existing()`, `rvl index info`, `rvl stats` | `FT.INFO` | Yes | **No** |
+| `index.clear()` | `FT.SEARCH`, then `DEL` per batch | Yes | Yes |
+| `index.exists()`, `index.info()`, `SearchIndex.from_existing()`, `rvl index info`, `rvl stats` | `FT.INFO` | Yes | **No** |
 | `index.create()` | `FT.CREATE` | Yes | **No** |
 | `index.delete()`, `rvl index delete`, `rvl index destroy` | `FT.DROPINDEX` | Yes | Yes |
 | Enumerating indexes (see below) | `FT._LIST` | **No** | **No** |
@@ -226,6 +227,18 @@ RedisSearchError: Error while fetching llmcache index info:
 User <name> has no permissions to run the 'FT.INFO' command
 ```
 
+Reading a cache is not read-only either. When a cache has a TTL configured — at construction or later via `set_ttl()` — every read that hits refreshes the matched entries' TTL, so it issues `EXPIRE`. That includes `SemanticCache.check()`, every `EmbeddingsCache` getter, their async equivalents, and the reads a vectorizer performs for you when constructed with `cache=`. `EXPIRE` is in `@write`, not `@read` (measured with `ACL CAT write`), so a lookup-only credential fails on a cache *hit* rather than on the write that populated it.
+
+Granting the command is only half of it, because the key patterns must permit writes too. Measured on 8.4.5 with `ACL DRYRUN <user> EXPIRE llmcache:abc 60`:
+
+| Rules | Result |
+|---|---|
+| `+@read ~llmcache:*` | `no permissions to run the 'expire' command` |
+| `+@read +expire ~llmcache:*` | Permitted |
+| `+@read +expire %R~llmcache:*` | `no permissions to access the 'llmcache:abc' key` |
+
+So `%R~llmcache:*` — the read-only shape the [Key permissions](#key-permissions) table below presents as sufficient for querying — is denied on the key, not the command. `+@read +@write` is unaffected, as is a cache with no TTL. See [Cache LLM Responses](03_llmcache.ipynb) for the refresh behaviour itself, including that `set_ttl()` starts adding TTLs to entries stored without one.
+
 ### "no permissions to run the 'FT.INFO' command"
 
 RedisVL does not guess its way around this. A credential that cannot ask whether the index exists also cannot create one, so there is nothing useful to infer — instead, tell RedisVL that the index is already there:
@@ -240,7 +253,7 @@ cache = SemanticCache(
 
 `create_index=False` is available on `SemanticCache`, `MessageHistory`, `SemanticMessageHistory` and `SemanticRouter`. It skips the existence check, the comparison of your schema against the live index, and index creation — the constructor issues no index command at all. Pass it when the index is managed externally, or when the credential cannot run `FT.INFO`. It cannot be combined with `overwrite=True`, which asks for the opposite.
 
-A `SearchIndex` used directly needs nothing special: build it with `from_dict()` or `from_yaml()`, then load and query. Two of its methods stay unavailable, because both read index metadata: `from_existing()`, which reconstructs a schema out of Redis, and `clear()`, which starts by calling `info()`.
+A `SearchIndex` used directly needs nothing special: build it with `from_dict()` or `from_yaml()`, then load and query. The methods that stay unavailable are the ones that read index metadata — `exists()`, `info()`, and `from_existing()`, which reconstructs a schema out of Redis. `clear()` is not among them: it enumerates with `FT.SEARCH` and deletes in batches, so it needs no more than querying does.
 
 The flag also skips the SVS-VAMANA capability probe described above, since that runs inside `create()`.
 
@@ -264,7 +277,27 @@ With `create_index=False` nothing verifies that the live index matches the schem
 
 For the silent cases the tell is `FT.INFO`'s `key_type`, `prefixes` and `attributes` — not `hash_indexing_failures`, which stays `0` because those keys were never indexing candidates. Diagnosing it therefore needs a credential that can run `FT.INFO`.
 
-An extension constructed with `create_index=False` refuses index-wide `delete()` and `clear()` operations (and their async cache equivalents). This protects an externally managed index — including an index reached through an alias — from being destroyed through an attach-only instance. Targeted operations such as dropping a specific cache entry or message remain available. Perform lifecycle-wide destructive operations through the privileged provisioning path that owns the index.
+### What an attach-only instance may still do
+
+Removing *entries* is available on every path, and is how a caller invalidates an externally managed cache without holding the provisioning credential: `clear()` (plus `SemanticCache.aclear()`), and targeted removal of a specific cache entry, message or route. None of it removes the index, and all of it runs under `+@read +@write`.
+
+What `create_index=False` refuses is `delete()` (and `SemanticCache.adelete()`), because that drops the index. Refusing it protects an externally managed index — including one reached through an alias — from being destroyed through an attach-only instance. Drop the index through the privileged provisioning path that owns it.
+
+The two kinds of `clear()` decide *which keys go* differently, and neither choice is verified against the live index under this flag:
+
+| Method | Deletes | Chooses keys by |
+|---|---|---|
+| `SemanticCache.clear()`, `aclear()` | every key under `{name}:` | `SCAN`/`DEL` on the prefix this instance declares — no index command at all |
+| `MessageHistory.clear()`, `SemanticMessageHistory.clear()`, `SemanticRouter.clear()` | every document the live index covers | `FT.SEARCH` paging via `SearchIndex.clear()` |
+
+`FT.SEARCH` is in `@read` as well as `@search`, so a `+@read +@write` credential is granted it — unlike `FT.INFO`, which is in neither and is what made these three unavailable before. Note that `FT.SEARCH` additionally requires the credential's key patterns to be a superset of the index prefixes, the same rule described under [Key permissions](#key-permissions).
+
+Because the two enumerate differently, they fail differently, and the section above is what decides which failure you get. Both are silent:
+
+- **Prefix-based clearing deletes too much, or nothing.** `SCAN`/`DEL` is blind to the index and to the key type, so it removes every key under `{name}:` — another writer's entries, and unrelated application data sharing that namespace root. And if the live index covers a *different* prefix, or is an alias onto one, `clear()` deletes only what this instance itself wrote and leaves every served entry in place: it reports success and the cache still returns the stale hits you called it to invalidate.
+- **Index-based clearing deletes documents you never wrote.** `SearchIndex.clear()` deletes what the live index covers, so against an index on a different prefix — or a multi-`PREFIX` index, or an alias — it removes another application's documents while leaving this instance's own unindexed entries behind.
+
+Diagnosing either needs `FT.INFO`, which is the command an attach-only credential does not have. If the index is provisioned for you, get its `prefixes` and `key_type` from whoever provisions it and make your extension's name match, rather than inferring it from a successful query.
 
 ### Key permissions
 
@@ -280,6 +313,8 @@ Measured on 8.4.5 against an index prefixed `doc:`, with the command categories 
 | `~other:*` (no overlap) | The same denial |
 
 Partial overlap is worth emphasising: it fails exactly like no overlap at all, rather than returning the subset you can read. `FT.CREATE` is not checked this way, so a credential can create an index it is then unable to query.
+
+Key patterns are glob-style, matched by the same engine as `SCAN MATCH`, so metacharacters in a prefix do not mean what they look like. Measured on 8.4.5, `~cache[ab]:*` grants `cachea:1` and `cacheb:1` while *denying* the literal key `cache[ab]:1`; escaped as `~cache\[ab]:*` it does the reverse. Escape `*`, `?`, `[` and `\` in a prefix, and confirm the rule with `ACL DRYRUN`.
 
 `create_index=False` does not help here — the very commands it lets you avoid are joined by the ones it cannot, so widen the key patterns instead.
 

@@ -527,6 +527,21 @@ def test_multivector_query_with_filter(index):
     results = index.query(multi_query)
     assert len(results) == 0
 
+    # A wildcard filter must contribute no clause. This class had no such
+    # guard, so it emitted "(...) (*)" and Redis rejected the query with a
+    # syntax error: "(*)" is valid as a KNN pre-filter but never as an operand
+    # of an intersection. Regression coverage for issue #708.
+    unfiltered = MultiVectorQuery(vectors=vectors, return_fields=["description"])
+    wildcard = MultiVectorQuery(
+        vectors=vectors,
+        filter_expression="*",
+        return_fields=["description"],
+    )
+
+    unfiltered_results = index.query(unfiltered)
+    assert len(unfiltered_results) > 0
+    assert index.query(wildcard) == unfiltered_results
+
 
 def test_multivector_query_with_geo_filter(index):
     skip_if_redis_version_below(index.client, "7.2.0")

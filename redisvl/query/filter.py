@@ -1,4 +1,6 @@
 import datetime
+import math
+import numbers
 import re
 from enum import Enum
 from functools import wraps
@@ -130,6 +132,15 @@ class Tag(FilterField):
     }
     SUPPORTED_VAL_TYPES = (list, set, tuple, str, type(None))
 
+    # A tag clause holds its alternatives in braces, so an unescaped `|` inside
+    # one value reads as a union rather than as part of the value. Values are
+    # escaped individually before being joined, so the list form that renders a
+    # union deliberately still works. Only the non-wildcard path uses this: the
+    # `%` operator keeps `|` live as a union between patterns.
+    escaper: TokenEscaper = TokenEscaper(
+        escape_chars_re=re.compile(TokenEscaper.TAG_ESCAPED_CHARS)
+    )
+
     def _set_tag_value(
         self, other: list[str] | set[str] | str, operator: FilterOperator
     ):
@@ -226,16 +237,122 @@ class Tag(FilterField):
         )
 
 
-class GeoSpec:
-    GEO_UNITS = ["m", "km", "mi", "ft"]
+def _coerce_to_number(value: Any, owner: str, name: str) -> int | float:
+    """Return a numeric filter value as a plain int or float.
 
-    # class for the operand for FilterExpressions with Geo
+    Coercion rather than the type check is the guard: every numeric value is
+    formatted into the query string, so a subclass overriding __str__ would
+    satisfy isinstance and inject syntax. int() and float() return builtins
+    regardless, which strips the override.
+
+    A non-`numbers.Real` is rejected rather than converted, which is why
+    `Decimal` does not pass despite `float(Decimal("1.5"))` working: its exact
+    decimal arithmetic is different semantics, not a different spelling.
+
+    ``owner`` and ``name`` only label the error -- pass the class that took the
+    value and the parameter it arrived as.
+    """
+    if isinstance(value, numbers.Integral):
+        return int(value)
+    if isinstance(value, numbers.Real):
+        try:
+            coerced = float(value)
+        except OverflowError:
+            # A `Real` too large to convert, such as `Fraction(10**400, 1)`.
+            # Finite, but unrepresentable, so it leaves by the documented door
+            # rather than as an `OverflowError` from the conversion.
+            raise ValueError(
+                f"{owner} {name} is too large to represent as a float"
+            ) from None
+        if math.isnan(coerced):
+            # Renders `@field:[nan ...]`, which RediSearch rejects outright.
+            raise ValueError(f"{owner} {name} cannot be NaN")
+        return coerced
+    raise TypeError(
+        f"{owner} {name} must be an int, a float, or another "
+        f"numbers.Real; got {type(value).__name__}"
+    )
+
+
+def _coerce_to_number_within(
+    value: Any, owner: str, name: str, bounds: tuple[float, float]
+) -> int | float:
+    """Coerce, then require a finite value inside ``bounds``, both ends included.
+
+    Separate from _coerce_to_number because `Num` renders `-inf` and `+inf` by
+    design -- they are literal text in its own operator templates -- while a
+    coordinate has a domain and does not.
+
+    `isfinite` is checked separately rather than left to the range, so an
+    infinite bound could not admit an infinite value. It is checked *second*
+    because `isfinite` itself raises `OverflowError` on an int too large to
+    convert, while the comparison handles one fine -- so the range rejects
+    `10**400` before finiteness is ever asked.
+    """
+    minimum, maximum = bounds
+    coerced = _coerce_to_number(value, owner, name)
+    if not minimum <= coerced <= maximum or not math.isfinite(coerced):
+        raise ValueError(
+            f"{owner} {name} must be a finite number in "
+            f"[{minimum}, {maximum}]; got {coerced!r}"
+        )
+    return coerced
+
+
+class GeoSpec:
+    """The operand for a FilterExpression on a Geo field.
+
+    Every argument is formatted into the query string, so each is coerced and
+    checked at the constructor -- the coordinates and unit here, the radius in
+    `GeoRadius` -- so the caller's own value selects or scopes, and never itself
+    renders. Unchecked, a value carrying `]` would close the geo clause and
+    have its remainder parsed as query syntax, and an injected `|` binds looser
+    than the implicit space-AND, so it would lift to the root of the parse tree
+    and any surrounding filter would stop constraining the query.
+    """
+
+    # Immutable because it is public, shared, and interpolated into the error
+    # message, so a mutable default is state any caller could corrupt for every
+    # other. Annotated loosely so a subclass can still widen it.
+    GEO_UNITS: tuple[str, ...] = ("m", "km", "mi", "ft")
+    LONGITUDE_RANGE = (-180.0, 180.0)
+    LATITUDE_RANGE = (-90.0, 90.0)
+
     def __init__(self, longitude: float, latitude: float, unit: str = "km"):
-        if unit.lower() not in self.GEO_UNITS:
-            raise ValueError(f"Unit must be one of {self.GEO_UNITS}")
-        self._longitude = longitude
-        self._latitude = latitude
-        self._unit = unit.lower()
+        # Unit first, so which error a caller sees when more than one argument
+        # is bad is fixed rather than incidental.
+        self._unit = self._canonical_unit(unit)
+        owner = type(self).__name__
+        self._longitude = _coerce_to_number_within(
+            longitude, owner, "longitude", self.LONGITUDE_RANGE
+        )
+        self._latitude = _coerce_to_number_within(
+            latitude, owner, "latitude", self.LATITUDE_RANGE
+        )
+
+    @classmethod
+    def _canonical_unit(cls, unit: str) -> str:
+        """Return the library's own spelling of ``unit``.
+
+        `str.lower` already returns a builtin `str`, so a `str` subclass
+        overriding `__str__` cannot reach the query string. An object whose
+        `lower()` and `__eq__` merely *match* a known unit still could, and
+        returning the matched element of GEO_UNITS closes that -- without an
+        isinstance check, which would reject a legitimate `str` subclass.
+        """
+        # Looked up rather than caught, so an `AttributeError` raised from
+        # inside a caller's own `lower()` is not misreported as a bad unit.
+        # Still no isinstance check: anything that spells itself lowercase is
+        # welcome, and one that cannot is a bad value rather than an internal
+        # error, so it leaves by the documented door.
+        lower = getattr(unit, "lower", None)
+        if lower is None:
+            raise ValueError(f"Unit must be one of {cls.GEO_UNITS}")
+        requested = lower()
+        for known in cls.GEO_UNITS:
+            if known == requested:
+                return known
+        raise ValueError(f"Unit must be one of {cls.GEO_UNITS}")
 
 
 class GeoRadius(GeoSpec):
@@ -245,21 +362,55 @@ class GeoRadius(GeoSpec):
         self,
         longitude: float,
         latitude: float,
-        radius: int = 1,
+        radius: float = 1,
         unit: str = "km",
     ):
         """Create a GeoRadius specification (GeoSpec)
 
         Args:
-            longitude (float): The longitude of the center of the radius.
-            latitude (float): The latitude of the center of the radius.
-            radius (int, optional): The radius of the circle. Defaults to 1.
+            longitude (float): The longitude of the center of the radius, in
+                degrees, from -180 to 180.
+            latitude (float): The latitude of the center of the radius, in
+                degrees, from -90 to 90.
+            radius (float, optional): The radius of the circle, in ``unit``,
+                greater than 0. Fractional radii are sent as given, so 0.5 with
+                a unit of "km" is half a kilometre. Defaults to 1.
             unit (str, optional): The unit of the radius. Defaults to "km".
 
         Raises:
-            ValueError: If the unit is not one of "m", "km", "mi", or "ft".
+            TypeError: If a coordinate or the radius is not an ``int``, a
+                ``float``, or another ``numbers.Real``. numpy scalars qualify;
+                ``Decimal`` and ``str`` do not.
+            ValueError: If a coordinate is NaN, infinite, or outside its range,
+                if the radius is NaN, infinite, or not greater than 0, or if
+                the unit is not a string spelling one of "m", "km", "mi", or
+                "ft".
         """
         super().__init__(longitude, latitude, unit)
+        owner = type(self).__name__
+        radius = _coerce_to_number(radius, owner, "radius")
+        # Not `_coerce_to_number_within`: a radius is a positive magnitude
+        # rather than a bounded coordinate, so its lower bound is exclusive.
+        # Measured on 8.4.5, `@loc:[-122.4 37.7 0 km]` and the same with `-5`
+        # both answer `Invalid GeoFilter radius`.
+        # A comparison rather than `math.isfinite`, which raises `OverflowError`
+        # on an int too large to convert to a float. Chaining rejects zero, a
+        # negative, an infinity and a NaN, and admits a huge int, which is
+        # finite and renders exactly.
+        if not 0 < radius < math.inf:
+            raise ValueError(
+                f"{owner} radius must be a finite number greater than 0; "
+                f"got {radius!r}"
+            )
+        if isinstance(radius, float) and radius.is_integer():
+            # `repr` switches to exponent form at 1e16, and `@loc:[... 1e+20 km]`
+            # is a syntax error at DIALECT 1 -- the Redis 8 server default, which
+            # is what a rendered filter meets if it is run outside a RedisVL
+            # query class. Every float that large is integral, so an int renders
+            # the same value without an exponent. Only a positive exponent is a
+            # problem; `1e-05` parses at both dialects, so a small radius needs
+            # no treatment.
+            radius = int(radius)
         self._radius = radius
 
     def get_args(self) -> list[float | int | str]:
@@ -268,15 +419,26 @@ class GeoRadius(GeoSpec):
 
 class Geo(FilterField):
     """A Geo is a FilterField representing a geographic (lat/lon) field in a
-    Redis index."""
+    Redis index.
+
+    Note:
+        Redis indexes latitudes only within +/-85.05112878 degrees (EPSG:900913).
+        A document or a query center nearer a pole than that is silently
+        excluded: the query returns no error and no results, at any radius.
+    """
 
     OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
     }
     OPERATOR_MAP: dict[FilterOperator, str] = {
-        FilterOperator.EQ: "@%s:[%s %s %i %s]",
-        FilterOperator.NE: "(-@%s:[%s %s %i %s])",
+        # The third `%s` is the radius, and a string conversion is deliberate:
+        # an integer one truncates a fractional radius toward zero, and a
+        # sub-unit radius then renders `0`, which the server rejects. Nothing
+        # here guards the type -- `GeoRadius` coerces every argument to a
+        # builtin, and that coercion is the guard.
+        FilterOperator.EQ: "@%s:[%s %s %s %s]",
+        FilterOperator.NE: "(-@%s:[%s %s %s %s])",
     }
     SUPPORTED_VAL_TYPES = (GeoSpec, type(None))
 
@@ -344,10 +506,9 @@ class Num(FilterField):
         FilterOperator.LT: "@%s:[-inf (%s]",
         FilterOperator.GE: "@%s:[%s +inf]",
         FilterOperator.LE: "@%s:[-inf %s]",
-        FilterOperator.BETWEEN: "@%s:[%s %s]",
     }
 
-    SUPPORTED_VAL_TYPES = (int, float, tuple, type(None))
+    SUPPORTED_VAL_TYPES = (int, float, type(None))
 
     def __eq__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric equality filter expression.
@@ -453,8 +614,29 @@ class Num(FilterField):
                 f"Invalid inclusive value must be: {[i.value for i in Inclusive]}"
             )
 
+    @classmethod
+    def _coerce_numeric(cls, value: Any, name: str = "value") -> int | float:
+        """Bind this class's name to the shared numeric coercion.
+
+        The seam a subclass would widen, and what lets ``Timestamp`` report its
+        own name through ``cls``. See ``_coerce_to_number`` for why coercion,
+        rather than the type check, is the guard.
+        """
+        return _coerce_to_number(value, cls.__name__, name)
+
+    def _set_value(
+        self,
+        val: Any,
+        val_type: type | tuple[type, ...],
+        operator: FilterOperator,
+    ):
+        """Type-check as usual, then coerce, so no operator formats a subclass."""
+        super()._set_value(val, val_type, operator)
+        if self._value is not None:
+            self._value = self._coerce_numeric(self._value)
+
     def _format_inclusive_between(
-        self, inclusive: Inclusive, start: int, end: int
+        self, inclusive: Inclusive, start: int | float, end: int | float
     ) -> str:
         if inclusive.value == Inclusive.BOTH.value:
             return f"@{self._field}:[{start} {end}]"
@@ -471,24 +653,44 @@ class Num(FilterField):
         raise ValueError(f"Inclusive value not found")
 
     def between(
-        self, start: int, end: int, inclusive: str = "both"
+        self, start: int | float, end: int | float, inclusive: str = "both"
     ) -> "FilterExpression":
-        """Operator for searching values between two numeric values."""
-        inclusive = self._validate_inclusive_string(inclusive)
-        expression = self._format_inclusive_between(inclusive, start, end)
+        """Operator for searching values between two numeric values.
 
-        return FilterExpression(expression)
+        Args:
+            start (Union[int, float]): The lower bound of the range.
+            end (Union[int, float]): The upper bound of the range.
+            inclusive (str, optional): Which bounds to include: "both",
+                "neither", "left" or "right". Defaults to "both".
+
+        Raises:
+            TypeError: If either bound is not an ``int``, a ``float``, or
+                another ``numbers.Real``. numpy scalars qualify; ``Decimal``
+                and ``str`` do not.
+            ValueError: If either bound is NaN, or if ``inclusive`` is not one
+                of the four accepted values.
+
+        .. code-block:: python
+
+            from redisvl.query.filter import Num
+
+            f = Num("age").between(18, 65)
+            f = Num("age").between(18, 65, inclusive="neither")
+
+        """
+        # between() is the one operator that never reaches _set_value.
+        checked_start = self._coerce_numeric(start, "start")
+        checked_end = self._coerce_numeric(end, "end")
+        inclusive_value = self._validate_inclusive_string(inclusive)
+
+        return FilterExpression(
+            self._format_inclusive_between(inclusive_value, checked_start, checked_end)
+        )
 
     def __str__(self) -> str:
         """Return the Redis Query string for the Numeric filter"""
         if self._value is None:
             return "*"
-        if self._operator == FilterOperator.BETWEEN:
-            return self.OPERATOR_MAP[self._operator] % (
-                self._field,
-                self._value[0],
-                self._value[1],
-            )
         if self._operator == FilterOperator.EQ or self._operator == FilterOperator.NE:
             return self.OPERATOR_MAP[self._operator] % (
                 self._field,
@@ -499,8 +701,30 @@ class Num(FilterField):
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
 
+# A double quote is the only character that can terminate a quoted phrase, so it
+# is the only one that needs replacing. (A trailing backslash does not terminate
+# one either -- `@f:("x\")` parses as the term `x\`.)
+#
+# Replaced rather than escaped, because escaping is symmetric: a backslash joins
+# the separator into the term, so `@f:("say \"hi\" now")` asks for a term with a
+# quote in it, and RedisVL writes documents unescaped. On `==` that matches
+# nothing, and on `!=` the unmatchable phrase makes the negation match
+# everything. A space is what the tokenizer left at that position anyway.
+_PHRASE_UNSAFE = re.compile(r'"')
+
+
 class Text(FilterField):
-    """A Text is a FilterField representing a text field in a Redis index."""
+    """A Text is a FilterField representing a text field in a Redis index.
+
+    Note:
+        ``==`` and ``!=`` match the value as a quoted phrase. Any ``"`` in the
+        value becomes a space first, so the value cannot close that phrase; a
+        quote already separates tokens at index time, so this matches the same
+        documents that escaping it never could. A value of nothing but quotes
+        therefore becomes an empty phrase, which ``==`` matches no document
+        against. ``%`` is the pattern operator and interpolates its value
+        untouched.
+    """
 
     OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
@@ -513,6 +737,12 @@ class Text(FilterField):
         FilterOperator.LIKE: "@%s:(%s)",
     }
     SUPPORTED_VAL_TYPES = (str, type(None))
+
+    # `%` is the pattern operator: its value is raw by design, which is what
+    # makes `*`, `%%` and `|` work. Listing the exception rather than the rule
+    # means a new operator -- or a subclass adding one -- is contained unless it
+    # opts out here.
+    _RAW_VALUE_OPERATORS = frozenset({FilterOperator.LIKE})
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
@@ -569,6 +799,13 @@ class Text(FilterField):
             f = Text("job") % "engineer|doctor" # contains either term in field
             f = Text("job") % "engineer doctor" # contains both terms in field
 
+        Note:
+            The value is interpolated raw, which is what makes ``*``, ``%%`` and
+            ``|`` work. A value carrying a ``)`` therefore closes this clause and
+            has its remainder parsed as query syntax, past any surrounding
+            filter. Pass only patterns your own code composes; for a value you
+            did not construct, use ``==``, which matches it as a literal phrase.
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
         return FilterExpression(str(self))
@@ -578,9 +815,16 @@ class Text(FilterField):
         if not self._value:
             return "*"
 
+        value = self._value
+        if self._operator not in self._RAW_VALUE_OPERATORS:
+            # Substituting a space never empties the value, so the phrase always
+            # holds at least one character and never trips the `INDEXEMPTY`
+            # error that a literal `@field:("")` raises.
+            value = _PHRASE_UNSAFE.sub(" ", value)
+
         return self.OPERATOR_MAP[self._operator] % (
             self._field,
-            self._value,
+            value,
         )
 
 
@@ -674,6 +918,60 @@ class FilterExpression:
         if not self._filter:
             raise ValueError("Improperly initialized FilterExpression")
         return self._filter
+
+
+def render_filter(filter_expression: str | FilterExpression | None) -> str | None:
+    """Render a filter expression, or None when it selects every document.
+
+    A ``None``, empty, or wildcard (``*``) filter contributes no clause to a
+    query: ``*`` is only valid as an entire query, never as one operand of an
+    intersection.
+
+    A string filter is returned verbatim and is never escaped, so an untrusted
+    value must be built through ``Tag``/``Text``/``Num`` rather than
+    interpolated into a filter string by the caller.
+
+    Internal helper; not part of the public API.
+    """
+    if filter_expression is None:
+        return None
+
+    # Coerce before comparing: `FilterField.__eq__` is overloaded to build a
+    # filter, so comparing an un-narrowed value against "*" would return a
+    # truthy FilterExpression and silently drop the filter.
+    if not isinstance(filter_expression, str):
+        filter_expression = str(filter_expression)
+
+    filter_expression = filter_expression.strip()
+    if not filter_expression or filter_expression == "*":
+        return None
+
+    return filter_expression
+
+
+def intersect_with_filter(
+    query: str, filter_expression: str | FilterExpression | None
+) -> str:
+    """Intersect a query clause with a filter expression.
+
+    Redis Search has no ``AND`` keyword -- intersection is expressed by
+    whitespace between clauses, and a literal ``AND`` would be parsed as an
+    ordinary search term. The filter is parenthesized so that a ``|`` union
+    inside it cannot bind across the intersection.
+
+    ``query`` is inserted unparenthesized, so it must not itself contain a
+    top-level ``|``; callers that build a union clause parenthesize it
+    themselves. The result is likewise ungrouped -- parenthesize it before
+    embedding it as an operand, as a KNN pre-filter does. A wildcard or absent
+    filter adds no clause and leaves ``query`` unchanged.
+
+    Internal helper; not part of the public API.
+    """
+    rendered = render_filter(filter_expression)
+    if rendered is None:
+        return query
+
+    return f"{query} ({rendered})"
 
 
 class Timestamp(Num):

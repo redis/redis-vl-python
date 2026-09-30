@@ -42,9 +42,11 @@ CREATE_INDEX_OVERWRITE_CONFLICT: str = (
 )
 
 # Raised when an extension attached to an externally managed index is asked to
-# perform an index-wide destructive operation.
-EXTERNAL_INDEX_LIFECYCLE_CONFLICT: str = (
-    "Cannot delete or clear an index when create_index=False because RedisVL "
-    "does not manage that index's lifecycle. Use the externally managed "
-    "provisioning path to perform index-wide destructive operations."
+# drop that index. Removing entries is deliberately not covered: `clear()`
+# leaves the index in place, so it is not a lifecycle operation.
+EXTERNAL_INDEX_DROP_CONFLICT: str = (
+    "Cannot delete the index when create_index=False because RedisVL does not "
+    "manage that index's lifecycle. Use the externally managed provisioning "
+    "path to drop it. To remove every entry while leaving the index in place, "
+    "use clear()."
 )

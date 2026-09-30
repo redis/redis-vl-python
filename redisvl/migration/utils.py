@@ -21,6 +21,7 @@ from redisvl.migration.models import (
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
+from redisvl.utils.utils import match_pattern
 
 logger = get_logger(__name__)
 
@@ -104,7 +105,7 @@ def build_scan_match_patterns(prefixes: List[str], key_separator: str) -> List[s
         # (pure string-prefix match).  Do NOT insert the key_separator — a
         # PREFIX of "doc" must match "doc:1", "doca:1", etc., exactly like
         # FT.CREATE does.
-        patterns.add(f"{prefix}*")
+        patterns.add(match_pattern(prefix))
     return sorted(patterns)
 
 

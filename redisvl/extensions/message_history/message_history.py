@@ -4,7 +4,7 @@ from redis import Redis
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
-    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
+    EXTERNAL_INDEX_DROP_CONFLICT,
     ID_FIELD_NAME,
     METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
@@ -95,15 +95,28 @@ class MessageHistory(BaseMessageHistory):
         return f"MessageHistory(name={self._name!r}, session_tag={self._session_tag!r})"
 
     def clear(self) -> None:
-        """Clears the conversation message history."""
-        if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        """Delete every message, leaving the index in place.
+
+        Clears by index membership, so it removes the documents the live index
+        covers. Available under ``create_index=False``; dropping the index is
+        :meth:`delete`.
+
+        Warning:
+            Under ``create_index=False`` the live index is unverified, so if its
+            prefix differs from this instance's it removes documents this
+            instance never wrote. See :doc:`/user_guide/installation`.
+        """
         self._index.clear()
 
     def delete(self) -> None:
-        """Clear all conversation keys and remove the search index."""
+        """Remove every message and drop the search index.
+
+        Raises:
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
+                remove the messages and leave the index standing.
+        """
         if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         self._index.delete(drop=True)
 
     def drop(self, id: str | None = None) -> None:

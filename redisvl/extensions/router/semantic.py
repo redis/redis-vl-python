@@ -9,7 +9,7 @@ from redis.exceptions import ResponseError
 
 from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
-    EXTERNAL_INDEX_LIFECYCLE_CONFLICT,
+    EXTERNAL_INDEX_DROP_CONFLICT,
     ROUTE_VECTOR_FIELD_NAME,
 )
 from redisvl.extensions.router.schema import (
@@ -26,7 +26,12 @@ from redisvl.redis.connection import RedisConnectionFactory, _split_from_existin
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_argument, model_to_dict, scan_by_pattern
+from redisvl.utils.utils import (
+    deprecated_argument,
+    match_pattern,
+    model_to_dict,
+    scan_by_pattern,
+)
 from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
@@ -62,7 +67,7 @@ class SemanticRouter(BaseModel):
         redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         create_index: bool = True,
         **kwargs,
     ):
@@ -336,9 +341,9 @@ class SemanticRouter(BaseModel):
         # Normalize prefix to avoid double separators
         prefix = index.prefix.rstrip(sep) if sep and index.prefix else index.prefix
         if prefix:
-            return f"{prefix}{sep}{route_name}{sep}*"
+            return match_pattern(prefix, sep, route_name, sep)
         else:
-            return f"{route_name}{sep}*"
+            return match_pattern(route_name, sep)
 
     def _add_routes(self, routes: list[Route]):
         """Add routes to the router and index.
@@ -654,6 +659,11 @@ class SemanticRouter(BaseModel):
     def remove_route(self, route_name: str) -> None:
         """Remove a route and all references from the semantic router.
 
+        Like :meth:`add_route`, this replaces the router's stored config with
+        this instance's route list, so removing one route from a router holding
+        only a subset drops the rest from the config :meth:`from_existing`
+        reads.
+
         Args:
             route_name (str): Name of the route to remove.
         """
@@ -671,18 +681,31 @@ class SemanticRouter(BaseModel):
             self._update_router_state()
 
     def delete(self) -> None:
-        """Delete the semantic router index and its persisted route config."""
+        """Delete the semantic router index and its persisted route config.
+
+        Raises:
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
+                remove the route references and leave the index standing.
+        """
         if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         self._index.delete(drop=True)
         # The route config is stored as a standalone JSON key that is not
         # tracked by the search index, so it must be removed explicitly.
         self._index._redis_client.delete(f"{self.name}:route_config")
 
     def clear(self) -> None:
-        """Flush all routes from the semantic router index."""
-        if not self._create_index:
-            raise ValueError(EXTERNAL_INDEX_LIFECYCLE_CONFLICT)
+        """Delete every route reference, leaving the index in place.
+
+        Clears by index membership. Available under ``create_index=False``;
+        dropping the index is :meth:`delete`.
+
+        Warning:
+            The stored ``route_config`` is left as it was, here and on the
+            default path. A separate process calling :meth:`from_existing`
+            afterwards will report routes whose reference vectors are gone.
+            :meth:`remove_route` keeps the two in step.
+        """
         self._index.clear()
         self.routes = []
 
@@ -885,6 +908,15 @@ class SemanticRouter(BaseModel):
         queries = []
 
         for id in ids:
+            if not id:
+                # `Tag(...) == ""` renders as the match-all `*`, so an empty id
+                # would match every reference in the index. Callers take the
+                # first row of each query's results, which turns this into
+                # returning -- and, from delete_route_references, deleting -- an
+                # arbitrary reference the caller never named.
+                raise ValueError(
+                    "reference ids must be non-empty strings; received an empty id"
+                )
             fe = Tag("reference_id") == id
             fq = FilterQuery(
                 return_fields=["reference_id", "route_name", "reference"],
@@ -897,8 +929,8 @@ class SemanticRouter(BaseModel):
     def get_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Get references for an existing route route.
 
@@ -933,8 +965,8 @@ class SemanticRouter(BaseModel):
     def delete_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> int:
         """Get references for an existing semantic router route.
 

@@ -229,21 +229,15 @@ class AsyncMigrationExecutor:
         for match_pattern in build_scan_match_patterns(
             normalized_prefixes, key_separator
         ):
-            cursor: int = 0
-            while True:
-                cursor, keys = await client.scan(
-                    cursor=cursor,
-                    match=match_pattern,
-                    count=batch_size,
-                )
-                for key in keys:
-                    key_str = key.decode() if isinstance(key, bytes) else str(key)
-                    if key_str not in seen_keys:
-                        seen_keys.add(key_str)
-                        yield key_str
-
-                if cursor == 0:
-                    break
+            # scan_iter, not a hand-rolled SCAN loop: a cluster client replies
+            # with a {node_name: cursor} mapping, which cannot be fed back as a
+            # cursor (redis-py raises DataError). scan_iter drives each primary
+            # on its own cursor.
+            async for key in client.scan_iter(match=match_pattern, count=batch_size):
+                key_str = key.decode() if isinstance(key, bytes) else str(key)
+                if key_str not in seen_keys:
+                    seen_keys.add(key_str)
+                    yield key_str
 
     async def _rename_keys(
         self,
