@@ -107,7 +107,13 @@ def test_a_tokenless_request_is_refused_rather_than_passed_through(monkeypatch):
         pytest.param({"org_id": {"id": "acme"}}, id="dict"),
         pytest.param({"org_id": True}, id="bool"),
         pytest.param({"org_id": 42}, id="int"),
-        pytest.param({"org_id": "acme|victim"}, id="pipe"),
+        # Each of these matched a different tenant on Redis 8.4: the query
+        # parser splits a tag term on control characters and the backtick.
+        pytest.param({"org_id": "\x01acme"}, id="leading-control"),
+        pytest.param({"org_id": "acme\x7f"}, id="trailing-delete"),
+        pytest.param({"org_id": "acme\tcorp"}, id="interior-tab"),
+        pytest.param({"org_id": "acme\x00"}, id="nul"),
+        pytest.param({"org_id": "acme`"}, id="backtick"),
     ],
 )
 def test_an_unusable_claim_is_refused(monkeypatch, claims):
@@ -135,7 +141,7 @@ def test_the_refusal_names_the_claim_and_the_tool(monkeypatch):
 def test_one_entry_scopes_the_query_to_the_claim(monkeypatch):
     _token(monkeypatch, {"org_id": "acme"})
     expression = build_injected_filter(
-        [_Spec("org_id", "org_id")], _schema(), tool_name="search_kb"
+        [_Spec("org_id", "org_id")], tool_name="search_kb"
     )
     assert str(expression) == "@org_id:{acme}"
 
@@ -144,7 +150,6 @@ def test_two_entries_and_together(monkeypatch):
     _token(monkeypatch, {"org_id": "acme", "region": "eu"})
     expression = build_injected_filter(
         [_Spec("org_id", "org_id"), _Spec("region", "region")],
-        _schema(),
         tool_name="search_kb",
     )
     rendered = str(expression)
@@ -160,7 +165,6 @@ def test_one_unusable_claim_refuses_the_whole_request(monkeypatch):
     with pytest.raises(RedisVLMCPError) as exc:
         build_injected_filter(
             [_Spec("org_id", "org_id"), _Spec("region", "region")],
-            _schema(),
             tool_name="search_kb",
         )
     assert exc.value.code == MCPErrorCode.FORBIDDEN
@@ -169,20 +173,8 @@ def test_one_unusable_claim_refuses_the_whole_request(monkeypatch):
 def test_no_entries_refuses_rather_than_matching_everything(monkeypatch):
     _token(monkeypatch, {"org_id": "acme"})
     with pytest.raises(RedisVLMCPError) as exc:
-        build_injected_filter([], _schema(), tool_name="search_kb")
+        build_injected_filter([], tool_name="search_kb")
     assert exc.value.code == MCPErrorCode.INTERNAL_ERROR
-
-
-def test_a_field_that_stopped_being_an_indexed_tag_is_refused(monkeypatch):
-    # Startup validation rejects these, so reaching here means the bound schema
-    # changed under a tool that was already registered.
-    _token(monkeypatch, {"org_id": "acme"})
-    for field in ("rating", "shadow", "absent"):
-        with pytest.raises(RedisVLMCPError) as exc:
-            build_injected_filter(
-                [_Spec(field, "org_id")], _schema(), tool_name="search_kb"
-            )
-        assert exc.value.code == MCPErrorCode.FORBIDDEN
 
 
 def test_an_injected_clause_cannot_be_elided_by_the_intersection(monkeypatch):
@@ -198,9 +190,7 @@ def test_an_injected_clause_cannot_be_elided_by_the_intersection(monkeypatch):
 
     _token(monkeypatch, {"org_id": ""})
     with pytest.raises(RedisVLMCPError):
-        build_injected_filter(
-            [_Spec("org_id", "org_id")], _schema(), tool_name="search_kb"
-        )
+        build_injected_filter([_Spec("org_id", "org_id")], tool_name="search_kb")
 
 
 def test_a_clause_that_renders_match_all_is_refused_even_so(monkeypatch):
@@ -217,41 +207,55 @@ def test_a_clause_that_renders_match_all_is_refused_even_so(monkeypatch):
         lambda claim, *, tool_name: "",
     )
     with pytest.raises(RedisVLMCPError) as exc:
-        build_injected_filter(
-            [_Spec("org_id", "org_id")], _schema(), tool_name="search_kb"
-        )
+        build_injected_filter([_Spec("org_id", "org_id")], tool_name="search_kb")
     assert exc.value.code == MCPErrorCode.FORBIDDEN
     assert "matches every document" in str(exc.value)
 
 
-def test_injected_pipe_cannot_union_across_tenants(monkeypatch):
-    """Canary for the rendering property, not for a character class.
+def test_a_pipe_in_a_claim_is_content_not_a_union(monkeypatch):
+    """Canary for the rendering property the guarantee rests on.
 
-    ``Tag`` escapes ``|`` inside a single value as of 0.27.1. That character
-    class has already changed once, so this asserts the property the guarantee
-    actually rests on -- an injected value cannot produce a clause that matches
-    a tenant other than the one named -- rather than asserting which characters
-    are in which set.
+    An identifier such as an Auth0 ``sub`` carries ``|``. ``Tag`` escapes it
+    inside a single value, so the claim scopes to exactly its own documents;
+    the integration suite proves Redis matches the escaped form literally. A
+    list claim is the shape that genuinely unions, and is refused on type.
     """
     from redisvl.query.filter import Tag
 
-    # Property one: a scalar value carrying `|` is escaped, so it is content
-    # rather than structure.
-    assert str(Tag("org_id") == "acme|victim") == "@org_id:{acme\\|victim}"
+    _token(monkeypatch, {"org_id": "auth0|64f1c2"})
+    expression = build_injected_filter(
+        [_Spec("org_id", "org_id")], tool_name="search_kb"
+    )
+    assert str(expression) == "@org_id:{auth0\\|64f1c2}"
 
-    # Property two: a list value is *not* escaped into one value -- it renders
-    # a genuine union. This is why the claim reader rejects on type, and why a
-    # character scan of the rendered output would not close it.
+    # The structure a list produces is a real union, indistinguishable from a
+    # legitimate one by inspecting the output -- hence the type check.
     assert str(Tag("org_id") == ["acme", "victim"]) == "@org_id:{acme|victim}"
+    _token(monkeypatch, {"org_id": ["acme", "victim"]})
+    with pytest.raises(RedisVLMCPError) as exc:
+        build_injected_filter([_Spec("org_id", "org_id")], tool_name="search_kb")
+    assert exc.value.code == MCPErrorCode.FORBIDDEN
 
-    # So neither shape can reach a query through injection.
-    for value in ("acme|victim", ["acme", "victim"]):
-        _token(monkeypatch, {"org_id": value})
-        with pytest.raises(RedisVLMCPError) as exc:
-            build_injected_filter(
-                [_Spec("org_id", "org_id")], _schema(), tool_name="search_kb"
-            )
-        assert exc.value.code == MCPErrorCode.FORBIDDEN
+
+def test_a_combination_that_loses_a_clause_is_refused(monkeypatch):
+    # The last check before a query runs. `format_expression` elides a `*`
+    # operand by design; if any future change made it drop a real one, the
+    # query would be scoped by fewer clauses than were configured.
+    from redisvl.query.filter import FilterExpression
+
+    _token(monkeypatch, {"org_id": "acme", "region": "eu"})
+    monkeypatch.setattr(
+        FilterExpression,
+        "format_expression",
+        staticmethod(lambda left, right, operator_str: str(left)),
+    )
+    with pytest.raises(RedisVLMCPError) as exc:
+        build_injected_filter(
+            [_Spec("org_id", "org_id"), _Spec("region", "region")],
+            tool_name="search_kb",
+        )
+    assert exc.value.code == MCPErrorCode.INTERNAL_ERROR
+    assert "lost the clauses" in str(exc.value)
 
 
 # --- validate_inject_against_schema ----------------------------------------
@@ -282,3 +286,21 @@ def test_an_unusable_injected_field_fails_startup(field, expected):
         )
     assert expected in str(exc.value)
     assert "search_kb" in str(exc.value)
+
+
+def test_validation_warns_when_an_injected_tag_folds_case(caplog):
+    schema = _schema()
+    schema.fields["org_id"].attrs.case_sensitive = False
+    with caplog.at_level("WARNING", logger="redisvl.mcp.auth"):
+        validate_inject_against_schema(
+            [_Spec("org_id", "org_id")], schema, profile_name="search_kb"
+        )
+    assert any("not CASESENSITIVE" in record.message for record in caplog.records)
+
+
+def test_validation_does_not_warn_for_a_case_sensitive_tag(caplog):
+    with caplog.at_level("WARNING", logger="redisvl.mcp.auth"):
+        validate_inject_against_schema(
+            [_Spec("org_id", "org_id")], _schema(), profile_name="search_kb"
+        )
+    assert not any("CASESENSITIVE" in record.message for record in caplog.records)

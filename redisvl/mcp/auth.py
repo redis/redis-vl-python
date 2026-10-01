@@ -16,6 +16,7 @@ reintroduces the cross-tenant union.
 """
 
 import logging
+import unicodedata
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol
@@ -266,11 +267,12 @@ def _injection_refused(claim: str, tool_name: str, reason: str) -> RedisVLMCPErr
     what turns a misspelled claim name from an opaque permanent failure into a
     one-line diagnosis.
     """
+    # Not logged here: FastMCP logs every exception a tool raises, so a second
+    # line would only duplicate it.
     message = (
         f"Tool '{tool_name}' requires the '{claim}' claim to scope every query, "
         f"and {reason}; refusing to run an unscoped query"
     )
-    logger.warning("%s", message)
     return RedisVLMCPError(
         message,
         code=MCPErrorCode.FORBIDDEN,
@@ -326,41 +328,39 @@ def resolve_injected_claim(claim: str, *, tool_name: str) -> str:
         # be meaningful in a tag equality, so refuse it instead of guessing.
         raise _injection_refused(claim, tool_name, "it is padded with whitespace")
 
-    if "|" in value:
-        # Defence in depth. `Tag` escapes `|` inside a single value since
-        # 0.27.1, so this is unreachable through the `==` path today; it is the
-        # backstop for that character class changing again. `test_injected_pipe
-        # _cannot_union_across_tenants` pins the rendering property itself.
-        raise _injection_refused(claim, tool_name, "it contains the union operator '|'")
+    if any(_reads_as_separator(character) for character in value):
+        # Measured on Redis 8.4: inside tag braces the query parser reads every
+        # control character and the backtick as a term separator, the controls
+        # even when escaped. So `\x01acme` and `acme` plus a backtick match the
+        # tenant `acme`, and `acme\tcorp` matches `acme corp`. Escaping cannot
+        # neutralise the controls, so the value is refused rather than rendered.
+        #
+        # `|` is deliberately allowed. `Tag` escapes it inside a single value,
+        # and Redis matches the escaped form literally, so an identifier such as
+        # an Auth0 `sub` (`auth0|64f1c2`) scopes to exactly its own documents.
+        raise _injection_refused(
+            claim, tool_name, "it contains a character the query parser splits on"
+        )
 
     return value
 
 
-def _injected_tag_field(schema: IndexSchema, field_name: str) -> Any:
-    """Return the schema field an injection entry names, or ``None``.
-
-    ``None`` means "not usable for injection" for any reason -- absent, wrong
-    type, or unindexed. Callers decide whether that is a startup failure or a
-    request-time refusal.
-    """
-    field = schema.fields.get(field_name)
-    if field is None or field.type != "tag":
-        return None
-    if getattr(field.attrs, "no_index", False):
-        return None
-    return field
+def _reads_as_separator(character: str) -> bool:
+    """Report whether RediSearch splits a tag query term on this character."""
+    return character == "`" or unicodedata.category(character) == "Cc"
 
 
 def build_injected_filter(
     inject_specs: Sequence[InjectSpec],
-    schema: IndexSchema,
     *,
     tool_name: str,
 ) -> FilterExpression:
     """Build the tenant-scoping expression for the current request.
 
     Entries AND together, and any one unusable claim refuses the whole request
-    rather than narrowing by the entries that did resolve.
+    rather than narrowing by the entries that did resolve. Which fields may be
+    injected is settled at startup by :func:`validate_inject_against_schema`,
+    which re-runs against the freshly inspected schema on every start.
     """
     if not inject_specs:
         # Callers guard on truthiness before reaching here; an empty list would
@@ -378,18 +378,6 @@ def build_injected_filter(
 
     for spec in inject_specs:
         value = resolve_injected_claim(spec.claim, tool_name=tool_name)
-
-        if _injected_tag_field(schema, spec.field) is None:
-            # Startup validation already rejected this, so reaching it means the
-            # bound schema changed under a registered tool. Re-checking costs a
-            # dict lookup and keeps the guarantee tied to the schema actually in
-            # force rather than to the one present at registration.
-            raise _injection_refused(
-                spec.claim,
-                tool_name,
-                f"its target field '{spec.field}' is no longer an indexed tag "
-                "field on the bound index",
-            )
 
         clause = Tag(spec.field) == value
         if is_match_all_filter(clause):
@@ -436,6 +424,9 @@ def validate_inject_against_schema(
     binding has been inspected at startup. Without it, a profile would register
     cleanly and then refuse every request -- or, worse for a `no_index` field,
     return nothing and look like correct scoping.
+
+    A field that is usable but folds case only warns: see
+    :func:`_warn_on_case_folding`.
     """
     field_names = ", ".join(sorted(schema.field_names))
 
@@ -461,3 +452,28 @@ def validate_inject_against_schema(
                 "call would return an empty result set that looks like correct "
                 "scoping"
             )
+        _warn_on_case_folding(spec, field, profile_name=profile_name)
+
+
+def _warn_on_case_folding(spec: InjectSpec, field: Any, *, profile_name: str) -> None:
+    """Warn when an injected tag field folds case, which can merge tenants.
+
+    A tag field is case-insensitive unless declared ``CASESENSITIVE``, and the
+    folding is Unicode-wide rather than ASCII-only: measured on Redis 8.4,
+    ``Acme`` and ``acme`` merge, as do a Kelvin sign and ``K``, and composed and
+    decomposed accented forms. A warning rather than a failure, because an
+    identity provider that only ever emits one canonical form is safe, and only
+    the operator knows whether theirs does. The value is deliberately not
+    normalized here: that would hide a collision rather than surface it.
+    """
+    if getattr(field.attrs, "case_sensitive", False):
+        return
+    logger.warning(
+        "custom_tools '%s' injects claim '%s' into tag field '%s', which is not "
+        "CASESENSITIVE, so tenant identifiers that differ only in case match the "
+        "same documents. Declare the field CASESENSITIVE unless the identity "
+        "provider guarantees a single case.",
+        profile_name,
+        spec.claim,
+        spec.field,
+    )
