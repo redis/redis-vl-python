@@ -73,7 +73,7 @@ vertexai = [
 google-genai = ["google-genai>=1.0.0"]
 bedrock = [
     "boto3>=1.36.0,<2",
-    "urllib3<2.8.0",
+    "urllib3<2.9.0",
 ]
 pillow = [
     "pillow>=11.3.0",
@@ -92,7 +92,7 @@ all = [
     "protobuf>=5.28.0",
     "google-genai>=1.0.0",
     "boto3>=1.36.0,<2",
-    "urllib3<2.8.0",
+    "urllib3<2.9.0",
     "pillow>=11.3.0",
     "sql-redis>=0.7.1",
     "ollama>=0.5.4",
