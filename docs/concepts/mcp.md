@@ -99,7 +99,7 @@ Use read-only mode when Redis is serving approved content to assistants and anot
 
 ## Authentication and Authorization
 
-The HTTP transports can require a JWT bearer token issued by an existing identity provider. The server validates the token signature, issuer, and audience, and can gate read vs write by scope or role claim. This is coarse, per-tool authorization; it does not map token claims to Redis ACL users or per-tenant filters, which remain a gateway concern. The `stdio` transport is local and is never authenticated.
+The HTTP transports can require a JWT bearer token issued by an existing identity provider. The server validates the token signature, issuer, and audience, and can gate read vs write by scope or role claim. A custom tool profile can also scope every query to a tenant carried in the token; see [Tenant Scoping From Token Claims](#tenant-scoping-from-token-claims). What the server does not do is map token claims to Redis ACL users or to separate indexes, which remains a gateway concern. The `stdio` transport is local and is never authenticated.
 
 For configuration and the gateway boundary, see {doc}`/user_guide/how_to_guides/mcp_authentication`.
 
@@ -196,6 +196,70 @@ Profiles resolve to a built-in call and nothing more, so they inherit the concur
 Because adding near-duplicate tools makes tool selection harder rather than easier, built-ins that curated profiles supersede can be turned off with `server.builtin_tools` (see [Tool Surface](#tool-surface)).
 
 Misconfiguration fails at startup rather than at the first call. Among the checks: a name colliding with a built-in or using a reserved `redisvl-`/`redisvl_` prefix; a duplicate tool name; a missing or unknown `index`; a `params` key that is not a real argument; `max` on anything but `limit`, or a cap above the binding's `max_limit`; hiding `query`; locking `return_fields` while also exposing them; and a locked filter or projection naming a field the bound index does not have. Unrecognized keys are rejected too, so a typo in `lock` fails loudly instead of silently producing a tool that reads as locked but enforces nothing.
+
+### Tenant Scoping From Token Claims
+
+When several tenants share one index, separated by a field such as `org_id`, exposing `search-records` makes the tenant boundary depend on the model remembering to pass a filter. One forgotten filter is a cross-tenant read. A profile can remove that knob: `lock.inject` reads the tenant from the caller's verified token and AND-combines it into every query the profile runs.
+
+```yaml
+custom_tools:
+  - name: search-customer-kb
+    index: customer_kb
+    description: Search this customer's knowledge base.
+    lock:
+      inject:
+        - field: org_id                      # the tenant field in the index schema
+          from: claim                        # the value comes from the verified token
+          claim: "https://acme.example/org"  # the claim name your identity provider emits
+          required: true
+```
+
+`field` and `claim` are independent names: `field` is what the index schema calls the tenant column, and `claim` is what the identity provider calls it. A token carrying `"https://acme.example/org": "acme"` makes every query from that caller run as `@org_id:{acme} AND <everything else>`.
+
+The model cannot see or set the injected value. The field is absent from the tool's input schema, and it is left out of the field hints appended to the tool description, so the model is not told the field exists. If the model filters on it anyway, its clause ANDs with the injected one: it can narrow within its own tenant, and naming another tenant matches nothing. The rest of the profile works as before, so a static `lock.filter` on another field and a model-supplied filter both still apply.
+
+#### What Counts as a Usable Claim
+
+The claim must be a single, non-empty string. Anything else refuses the request with a `forbidden` error, and no query runs:
+
+| Claim value | Why it is refused |
+|---|---|
+| Absent, or the request has no token | There is no tenant to scope to. |
+| `null` or `""` | An empty tag value would drop the tenant clause from the query entirely. |
+| A list, such as `["acme", "victim"]` | It would render as a union, `@org_id:{acme\|victim}`, which spans both tenants. |
+| An object, number or boolean | It is not a tenant identifier. |
+| Padded with whitespace, or containing `\|` | Neither can be a real tenant identifier, and refusing is safer than guessing. |
+
+A list is refused because of its type, not because of what it renders as. The union it produces is indistinguishable from one a caller could legitimately ask for, so no inspection of the finished query could catch it.
+
+With several `inject` entries, every entry ANDs into the query, and one unusable claim refuses the whole request rather than narrowing by the entries that did resolve.
+
+#### What Fails at Startup
+
+Injection is checked at startup wherever the configuration alone can show it would not work:
+
+- authentication is not enabled, on any transport, including an unauthenticated loopback HTTP bind and any `--allow-unauthenticated` bind;
+- authentication is configured but the server runs over `stdio`, which is never authenticated;
+- the injected field is absent from the bound index, is not a tag field, or is declared `NOINDEX`;
+- an `inject` list is empty, names one field twice, or names a field that `lock.filter` also constrains;
+- `required` is anything but `true`, or `from` is anything but `claim`.
+
+An injected field must be a tag. Text equality is a phrase match over tokenised text, and text is tokenised on punctuation, so the phrase `acme-corp` would also match `acme-corp-eu`.
+
+The tool set registers once per process. If a restart reloads a configuration that differs from the registered one, the server normally logs a warning and keeps the old tools. When injection is configured on either side of the change, startup fails instead, because keeping the old tenant scoping in force is not something a log line should report.
+
+#### Threat Model
+
+The guarantee is precise: a client presenting a validly signed token cannot make the model widen or escape the tenant scope carried in that token. The trust boundary is the identity provider, not the MCP client, so the guarantee holds only while these hold:
+
+- The token is genuinely verified. Use a real signing key and an asymmetric algorithm. The server refuses to start an injecting profile without authentication, but it does not check which algorithm you configured.
+- The identity provider assigns the claim. If a tenant can mint its own token, or set the claim itself, nothing here stops it reading another tenant's data.
+- Every document carries its tenant. The tenant field must be stamped on each document and indexed as a tag. A document without the field matches no tenant, so it is invisible rather than shared.
+- Tenant identifiers differ by more than case. Tag fields fold case unless declared `CASESENSITIVE`, so `Acme` and `acme` would be one tenant. The server warns at startup when an injected field is not case-sensitive.
+
+Where tenants share one index, the injected filter is the only isolation boundary. There is no Redis ACL or keyspace separation behind it, so a defect in filter combination or claim validation is a full cross-tenant read. If you need defence in depth, separate tenants at the Redis layer as well.
+
+Listing the tenant claim under `auth.required_claims` is a cheap outer layer: the verifier then rejects a token that lacks the claim before any tool runs. That check confirms only that the claim is present. Its value is still validated by the profile on every call.
 
 ## Why Use MCP Instead of Direct RedisVL Calls
 

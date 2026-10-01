@@ -31,6 +31,14 @@ from redisvl.schema import IndexSchema
 
 logger = logging.getLogger(__name__)
 
+
+def _config_injects(config: Any) -> bool:
+    """Report whether any configured profile injects a claim-derived filter."""
+    if config is None:
+        return False
+    return any(profile.lock.inject for profile in config.custom_tools)
+
+
 try:
     from fastmcp import FastMCP
 except ImportError:
@@ -73,6 +81,10 @@ class RedisVLMCPServer(FastMCP):
         self._semaphore: asyncio.Semaphore | None = None
         self._tools_registered = False
         self._registered_tool_fingerprint = ""
+        self._registered_tools_inject = False
+        # Set by run_async, the only point in the process that knows it. None
+        # means an embedder started the server without naming a transport.
+        self._transport: str | None = None
 
         # Lifecycle management
         self._lifecycle_state = _LifecycleState.INITIAL  # Server lifecycle
@@ -118,6 +130,15 @@ class RedisVLMCPServer(FastMCP):
         outermost, rejecting DNS-rebinding requests before auth or tool handlers.
         ``stdio`` is untouched.
         """
+        # Resolved the way FastMCP resolves it, so `run_async()` with no
+        # argument is recorded as the stdio it will actually serve. Imported
+        # here because this module stays importable without the `mcp` extra.
+        import fastmcp
+
+        self._transport = (
+            transport if transport is not None else fastmcp.settings.transport
+        )
+
         if transport in ("sse", "streamable-http"):
             host = transport_kwargs.get("host", "127.0.0.1")
             port = transport_kwargs.get("port", 8000)
@@ -275,7 +296,7 @@ class RedisVLMCPServer(FastMCP):
 
         return hasattr(client.ft(index.schema.index.name), "hybrid_search")
 
-    def _validate_custom_tools(self) -> None:
+    def _validate_custom_tools_against_schema(self) -> None:
         """Fail startup on profiles that do not fit their bound index schema.
 
         Config load already checked naming, parameter policy, and that a pinned
@@ -292,6 +313,39 @@ class RedisVLMCPServer(FastMCP):
             binding_id = config.resolved_profile_index(profile)
             runtime = self._bindings[binding_id]
             validate_profile_against_schema(profile, runtime.schema)
+
+    def _verify_injection_has_a_token(self, profiles: Any) -> None:
+        """Refuse to start a claim-injection profile that can never succeed.
+
+        Keyed off "auth is enabled", not off the transport name alone, so it
+        covers an unauthenticated loopback bind and any --allow-unauthenticated
+        bind as well as stdio. Without a verified token every call would be
+        refused at request time -- safe, but advertised as a tool that works.
+
+        Auth configured under stdio is the second case: FastMCP never
+        authenticates stdio, so the verifier exists and is never consulted. Only
+        a transport recorded by run_async counts; an embedder that never names
+        one is left to the request-time refusal, which still fails closed.
+        """
+        injecting = sorted(profile.name for profile in profiles if profile.lock.inject)
+        if not injecting:
+            return
+
+        names = ", ".join(injecting)
+        if not self._auth_enabled:
+            raise ValueError(
+                f"custom_tools {names} inject a tenant filter from a token "
+                "claim, but authentication is not enabled, so there is no "
+                "verified token to read. Configure server.auth (or "
+                "REDISVL_MCP_AUTH_*) and serve over an HTTP transport."
+            )
+        if self._transport == "stdio":
+            raise ValueError(
+                f"custom_tools {names} inject a tenant filter from a token "
+                "claim, but the server is running over stdio, which is never "
+                "authenticated. Serve over an HTTP transport (sse or "
+                "streamable-http) so the configured auth applies."
+            )
 
     @staticmethod
     def _tool_surface_fingerprint(config: Any) -> str:
@@ -318,8 +372,22 @@ class RedisVLMCPServer(FastMCP):
             # The dangerous direction is an operator disabling a tool or tightening
             # a lock and believing the restart applied it.
             if self._tools_registered:
-                current = self._tool_surface_fingerprint(getattr(self, "config", None))
+                config = getattr(self, "config", None)
+                current = self._tool_surface_fingerprint(config)
                 if current != self._registered_tool_fingerprint:
+                    # For a tenant boundary "the old tools are still in effect"
+                    # is not a log line. Either side counts: adding injection
+                    # to a profile registered without it leaves that tool
+                    # serving every tenant while the config says otherwise.
+                    if self._registered_tools_inject or _config_injects(config):
+                        raise RuntimeError(
+                            "MCP tool configuration changed since tools were "
+                            "registered, and claim injection is configured on "
+                            "one side of the change. Tools register once per "
+                            "process, so the previously registered tenant "
+                            "scoping would stay in effect. Restart the process "
+                            "to apply the new configuration."
+                        )
                     logger.warning(
                         "MCP tool configuration (built-in or custom) changed "
                         "since tools were registered, but tools register once per "
@@ -381,6 +449,7 @@ class RedisVLMCPServer(FastMCP):
 
         self._warn_on_unusable_tool_surface(registered)
         self._registered_tool_fingerprint = self._tool_surface_fingerprint(config)
+        self._registered_tools_inject = _config_injects(config)
         self._tools_registered = True
 
     def _warn_on_unusable_tool_surface(self, registered: list[str]) -> None:
@@ -550,6 +619,9 @@ class RedisVLMCPServer(FastMCP):
         """Load config and initialize every configured binding independently."""
         self.config = load_mcp_config(self._config_path)
         self._verify_auth_not_stale()
+        # Before any binding connects: this depends only on the loaded config,
+        # so an unworkable one should not first need a reachable Redis.
+        self._verify_injection_has_a_token(self.config.custom_tools)
         # The semaphore is a single process-wide concurrency ceiling shared by
         # all bindings; take the max across bindings. This means the most
         # permissive binding sets the cap — e.g. five bindings each configured
@@ -571,7 +643,7 @@ class RedisVLMCPServer(FastMCP):
             )
         # Validate before registering so a bad profile fails startup rather than
         # leaving a half-registered tool set behind.
-        self._validate_custom_tools()
+        self._validate_custom_tools_against_schema()
         self._register_tools()
 
     async def _initialize_binding(

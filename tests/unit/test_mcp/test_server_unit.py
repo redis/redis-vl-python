@@ -181,6 +181,7 @@ def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[st
     server._bindings = bindings
     server._tools_registered = False
     server._registered_tool_fingerprint = ""
+    server._registered_tools_inject = False
     server.tool = object()
     server.config = config
     server.mcp_settings = SimpleNamespace(read_only=False)
@@ -356,6 +357,7 @@ def test_register_tools_names_index_ids_when_discovery_is_disabled(monkeypatch):
     }
     server._tools_registered = False
     server._registered_tool_fingerprint = ""
+    server._registered_tools_inject = False
     server.tool = object()
     server.config = _config_with(builtin_tools={"list-indexes": "disabled"})
     server.mcp_settings = SimpleNamespace(read_only=False)
@@ -388,6 +390,7 @@ def test_register_tools_omits_index_ids_when_discovery_is_available(monkeypatch)
     }
     server._tools_registered = False
     server._registered_tool_fingerprint = ""
+    server._registered_tools_inject = False
     server.tool = object()
     server.config = None
     server.mcp_settings = SimpleNamespace(read_only=False)
@@ -414,6 +417,7 @@ def test_register_tools_warns_when_builtin_config_changed_after_registration(
     server.tool = object()
     server._tools_registered = True
     server._registered_tool_fingerprint = ""
+    server._registered_tools_inject = False
     server.config = _config_with(builtin_tools={"upsert-records": "disabled"})
 
     with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
@@ -450,6 +454,7 @@ def test_register_tools_gives_upsert_the_same_index_ids_as_search(monkeypatch):
     }
     server._tools_registered = False
     server._registered_tool_fingerprint = ""
+    server._registered_tools_inject = False
     server.tool = object()
     server.config = _config_with(builtin_tools={"list-indexes": "disabled"})
     server.mcp_settings = SimpleNamespace(read_only=False)
@@ -578,7 +583,7 @@ def test_validate_custom_tools_checks_each_profile_against_its_bound_schema(
     server._bindings["knowledge"].schema.marker = "knowledge-schema"
     server._bindings["tickets"].schema.marker = "tickets-schema"
 
-    server._validate_custom_tools()
+    server._validate_custom_tools_against_schema()
 
     # Each profile is validated against the schema of the binding it is pinned to.
     assert validated == [("resolved-search", "tickets-schema")]
@@ -604,6 +609,7 @@ def test_register_tools_warns_when_profile_config_changed_after_registration(
     server.tool = object()
     server._tools_registered = True
     server._registered_tool_fingerprint = ""
+    server._registered_tools_inject = False
     server.config = _config_with(
         custom_tools=[
             {
@@ -624,3 +630,200 @@ def test_register_tools_warns_when_profile_config_changed_after_registration(
         for record in caplog.records
         if "changed since tools were registered" in record.message
     ]
+
+
+# --------------------------------------------------------------------------
+# Claim injection: refusing a profile that can never read a token
+# --------------------------------------------------------------------------
+
+_INJECTING = {
+    "name": "tenant-search",
+    "description": "Search this tenant.",
+    "lock": {"inject": [{"field": "category", "from": "claim", "claim": "org"}]},
+}
+
+
+def _injection_server(*, auth_enabled, transport, custom_tools=None):
+    """A server shell holding a validated injecting config."""
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server.config = _config_with(custom_tools=custom_tools or [_INJECTING])
+    server._bindings = {"knowledge": _binding_runtime("knowledge")}
+    server._auth_enabled = auth_enabled
+    server._transport = transport
+    return server
+
+
+@pytest.mark.parametrize("transport", ["stdio", "streamable-http", "sse", None])
+def test_injection_refuses_to_start_without_auth_on_any_transport(
+    monkeypatch, transport
+):
+    # Keyed off "auth is enabled", never off the transport name alone, so an
+    # unauthenticated HTTP bind -- loopback or --allow-unauthenticated -- is
+    # refused exactly as stdio is.
+    server = _injection_server(auth_enabled=False, transport=transport)
+    with pytest.raises(ValueError, match="authentication is not enabled"):
+        server._verify_injection_has_a_token(server.config.custom_tools)
+
+
+def test_injection_refuses_to_start_with_auth_configured_under_stdio(monkeypatch):
+    # FastMCP never authenticates stdio, so the verifier exists and is never
+    # consulted: every call would be refused at request time.
+    server = _injection_server(auth_enabled=True, transport="stdio")
+    with pytest.raises(ValueError, match="running over stdio"):
+        server._verify_injection_has_a_token(server.config.custom_tools)
+
+
+@pytest.mark.parametrize("transport", ["streamable-http", "sse", None])
+def test_injection_starts_with_auth_over_http_or_an_unnamed_transport(
+    monkeypatch, transport
+):
+    # None is an embedder that never named a transport; it is left to the
+    # request-time refusal, which still fails closed.
+    server = _injection_server(auth_enabled=True, transport=transport)
+    server._verify_injection_has_a_token(server.config.custom_tools)
+
+
+def test_a_server_without_injection_needs_no_auth(monkeypatch):
+    server = _injection_server(
+        auth_enabled=False,
+        transport="stdio",
+        custom_tools=[{"name": "open-search", "description": "Search open."}],
+    )
+    server._verify_injection_has_a_token(server.config.custom_tools)
+
+
+@pytest.mark.asyncio
+async def test_an_injection_profile_without_auth_fails_before_redis_is_touched(
+    monkeypatch,
+):
+    # The refusal depends only on the loaded config, so an unworkable one must
+    # not first need a reachable Redis and an existing index to be reported.
+    connected: list[str] = []
+
+    async def no_connect(self, binding_id, binding):
+        connected.append(binding_id)
+        raise AssertionError("a binding was initialized before the refusal")
+
+    monkeypatch.setattr(
+        "redisvl.mcp.server.load_mcp_config",
+        lambda path: _config_with(custom_tools=[_INJECTING]),
+    )
+    monkeypatch.setattr(RedisVLMCPServer, "_verify_auth_not_stale", lambda self: None)
+    monkeypatch.setattr(RedisVLMCPServer, "_initialize_binding", no_connect)
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._config_path = "unused.yaml"
+    server._auth_enabled = False
+    server._transport = None
+
+    with pytest.raises(ValueError, match="authentication is not enabled"):
+        await server._initialize_runtime_resources()
+    assert connected == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transport, recorded",
+    [
+        ("streamable-http", "streamable-http"),
+        # FastMCP resolves an omitted transport to its configured default, so
+        # `run_async()` must be recorded as the stdio it will actually serve.
+        (None, "stdio"),
+    ],
+)
+async def test_run_async_records_the_transport_it_will_serve(
+    monkeypatch, transport, recorded
+):
+    fastmcp = pytest.importorskip(
+        "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
+    )
+    monkeypatch.setattr(fastmcp.settings, "transport", "stdio")
+
+    async def no_serve(self, transport=None, show_banner=None, **kwargs):
+        return None
+
+    monkeypatch.setattr(fastmcp.FastMCP, "run_async", no_serve)
+    monkeypatch.setattr(
+        "redisvl.mcp.server.build_host_origin_middleware", lambda *args: []
+    )
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._transport_security = None
+
+    await server.run_async(transport=transport)
+
+    assert server._transport == recorded
+
+
+def _reregister_after_change(*, registered_with_inject, new_custom_tools):
+    """Simulate a stop/start against an edited config on an already-registered server."""
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {"knowledge": _binding_runtime("knowledge")}
+    server.tool = object()
+    server._tools_registered = True
+    server._registered_tool_fingerprint = "the-config-at-registration"
+    server._registered_tools_inject = registered_with_inject
+    server.config = _config_with(custom_tools=new_custom_tools)
+    server._register_tools()
+
+
+@pytest.mark.parametrize(
+    "registered_with_inject, new_custom_tools",
+    [
+        # Tightening or loosening an injection that is already live.
+        pytest.param(
+            True, [{"name": "tenant-search", "description": "x"}], id="removed"
+        ),
+        # The dangerous direction: injection added to a profile registered without
+        # it would keep serving every tenant while the config says otherwise.
+        pytest.param(False, [_INJECTING], id="added"),
+    ],
+)
+def test_a_changed_tool_surface_is_fatal_when_injection_is_on_either_side(
+    registered_with_inject, new_custom_tools
+):
+    with pytest.raises(RuntimeError, match="claim injection is configured"):
+        _reregister_after_change(
+            registered_with_inject=registered_with_inject,
+            new_custom_tools=new_custom_tools,
+        )
+
+
+def test_registration_remembers_that_it_installed_injection(monkeypatch):
+    # The flag the fatal check reads has to be set by registration itself. A
+    # first registration with injection, then a reload that drops it, is the
+    # case where only that remembered flag knows the live tools are scoped.
+    for target in (
+        "register_list_indexes_tool",
+        "register_search_tool",
+        "register_upsert_tool",
+    ):
+        monkeypatch.setattr(f"redisvl.mcp.server.{target}", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_profile_tools", lambda server: ["tenant-search"]
+    )
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {"knowledge": _binding_runtime("knowledge")}
+    server._tools_registered = False
+    server._registered_tool_fingerprint = ""
+    server._registered_tools_inject = False
+    server.tool = object()
+    server.mcp_settings = SimpleNamespace(read_only=False)
+    server.config = _config_with(custom_tools=[_INJECTING])
+    server._register_tools()
+
+    server.config = _config_with(
+        custom_tools=[{"name": "tenant-search", "description": "x"}]
+    )
+    with pytest.raises(RuntimeError, match="claim injection is configured"):
+        server._register_tools()
+
+
+def test_a_changed_tool_surface_without_injection_still_only_warns(caplog):
+    with caplog.at_level(logging.WARNING, logger="redisvl.mcp.server"):
+        _reregister_after_change(
+            registered_with_inject=False,
+            new_custom_tools=[{"name": "open-search", "description": "Search."}],
+        )
+    assert any(
+        "changed since tools were registered" in record.message
+        for record in caplog.records
+    )

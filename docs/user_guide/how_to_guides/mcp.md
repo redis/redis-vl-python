@@ -340,6 +340,78 @@ Rules worth knowing:
 
 Misconfiguration fails at startup, not at the first call — a name colliding with a built-in or using a reserved `redisvl-`/`redisvl_` prefix, a duplicate name, a missing or unknown `index`, a cap above `max_limit`, hiding `query`, locking `return_fields` while also exposing them, or a locked filter or projection naming a field the index does not have. Unrecognized keys are rejected too, so a typo in `lock` fails loudly instead of quietly producing a tool that reads as locked but enforces nothing.
 
+### Tenant Scoping With Claim Injection
+
+When tenants share one index, a profile can take the tenant from the caller's verified token instead of trusting the model to pass a filter. This needs authentication, so the example configures it; see {doc}`mcp_authentication` for the rest of that block.
+
+The index needs the tenant on every document, as a tag. Declare it `CASESENSITIVE` unless your identity provider guarantees one case, because tag fields otherwise treat `Acme` and `acme` as the same tenant:
+
+```yaml
+# The RedisVL schema the index was created from
+index:
+  name: customer-kb
+  prefix: kb
+fields:
+  - name: content
+    type: text
+  - name: org_id
+    type: tag
+    attrs:
+      case_sensitive: true
+```
+
+Then point a profile at it:
+
+```yaml
+server:
+  redis_url: redis://localhost:6379
+  builtin_tools:
+    search-records: disabled          # otherwise the unscoped built-in stays available
+  auth:
+    type: jwt
+    jwks_uri: ${MCP_JWKS_URI}
+    issuer: ${MCP_ISSUER}
+    audience: api://redisvl-mcp
+    required_claims: [exp, iat, "https://acme.example/org"]
+
+indexes:
+  customer_kb:
+    redis_name: customer-kb
+    search:
+      type: fulltext
+    runtime:
+      text_field_name: content
+
+custom_tools:
+  - name: search-customer-kb
+    index: customer_kb
+    description: Search this customer's knowledge base.
+    lock:
+      inject:
+        - field: org_id
+          from: claim
+          claim: "https://acme.example/org"
+          required: true
+```
+
+Serve it over HTTP:
+
+```bash
+rvl mcp --config /path/to/mcp_config.yaml --transport streamable-http
+```
+
+What the client sees for `search-customer-kb`:
+
+- `query` (required), `limit`, `offset`, `filter` and `return_fields`, with no argument for `org_id`.
+- A description whose field hints list `content` but not `org_id`.
+- Results from its own tenant only. A `filter` naming `org_id` ANDs with the injected value, so naming another tenant returns nothing.
+
+Disable `search-records`, as above, unless every tenant may read the whole index. The built-in has no injected scope, so leaving it enabled hands every caller an unscoped way round the profile.
+
+Listing the tenant claim under `required_claims` makes the verifier reject a token without it before any tool runs. That checks presence only: the profile still validates the value on every call, and refuses a missing, empty, list-valued or otherwise unusable claim with a `forbidden` error before any query runs.
+
+The server refuses to start an injecting profile without authentication, over `stdio`, or on a field the index does not hold as an indexed tag. For what the guarantee covers and what it rests on, read the threat model in {doc}`/concepts/mcp`.
+
 ## Tool Contracts
 
 RedisVL MCP exposes a small, implementation-owned contract.
@@ -721,3 +793,11 @@ If the vectorizer dims do not match the configured vector field dims, startup fa
 ### Hybrid Config Requires Native Runtime Support
 
 Some hybrid params depend on native hybrid support in Redis and redis-py. If your environment does not support that path, remove native-only params such as `knn_ef_runtime` or upgrade Redis and redis-py.
+
+### Claim Injection Requires Authentication
+
+A profile with `lock.inject` refuses to start when authentication is not enabled, or when the server runs over `stdio`, because neither can supply a verified token. Configure `server.auth` and serve over `sse` or `streamable-http`. The check runs before the server connects to Redis, so it reports even when Redis is unreachable.
+
+### Claim Injection Fails Every Request With `forbidden`
+
+The token is verified but its claim is unusable: missing, empty, padded with whitespace, or not a single string. The error names the claim and the tool. A misspelled `claim` name in the config is the usual cause, since a JWT claim name such as `https://acme.example/org` must match exactly.
