@@ -18,6 +18,7 @@ from redisvl.migration.models import (
 )
 from redisvl.redis.connection import supports_svs
 from redisvl.schema.schema import IndexSchema
+from redisvl.types import SyncRedisClient
 from redisvl.utils.utils import match_pattern
 
 
@@ -227,7 +228,7 @@ class MigrationPlanner:
                 prefixes=prefix_list,
                 key_separator=index.schema.index.key_separator,
                 key_sample=self._sample_keys(
-                    client=index.client,
+                    client=index._redis_client,
                     prefixes=prefix_list,
                     key_separator=index.schema.index.key_separator,
                 ),
@@ -648,10 +649,10 @@ class MigrationPlanner:
             yaml.safe_dump(plan.model_dump(exclude_none=True), f, sort_keys=False)
 
     def _sample_keys(
-        self, *, client: Any, prefixes: List[str], key_separator: str
+        self, *, client: SyncRedisClient, prefixes: List[str], key_separator: str
     ) -> List[str]:
         key_sample: List[str] = []
-        if client is None or self.key_sample_limit <= 0:
+        if self.key_sample_limit <= 0:
             return key_sample
 
         for prefix in prefixes:
