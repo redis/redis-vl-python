@@ -1018,20 +1018,38 @@ def test_startup_validation_rejects_injecting_into_a_non_tag_field():
         validate_profile_against_schema(profile, _schema())
 
 
-def test_startup_warns_when_the_injected_tag_folds_case(caplog):
-    # `category` is a plain tag, so `Acme` and `acme` would be one tenant.
-    with caplog.at_level("WARNING", logger="redisvl.mcp.tools.profiles"):
-        validate_profile_against_schema(
-            _profile(lock={"inject": INJECT_CATEGORY}), _schema()
-        )
-    assert any("not CASESENSITIVE" in record.message for record in caplog.records)
+@pytest.mark.asyncio
+async def test_a_client_cannot_pass_the_injected_field_over_the_wire(monkeypatch):
+    # The real `tools/call` path, on a real FastMCP server with a real client,
+    # rather than the wrapper called directly. FastMCP validates arguments
+    # against the narrowed signature, so a field the profile does not expose is
+    # rejected before the wrapper runs -- not dropped, and not passed through.
+    fastmcp = pytest.importorskip(
+        "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
+    )
+    _as_caller(monkeypatch, {"org": "acme"})
+    searched: list[dict[str, Any]] = []
 
+    async def record_search(server, **kwargs):
+        searched.append(kwargs)
+        return {"results": []}
 
-def test_startup_does_not_warn_for_a_case_sensitive_injected_tag(caplog):
-    schema = _schema()
-    schema.fields["category"].attrs.case_sensitive = True
-    with caplog.at_level("WARNING", logger="redisvl.mcp.tools.profiles"):
-        validate_profile_against_schema(
-            _profile(lock={"inject": INJECT_CATEGORY}), schema
+    monkeypatch.setattr("redisvl.mcp.tools.profiles.search_records", record_search)
+    mcp = fastmcp.FastMCP("tenant-test")
+    register_profile_tool(
+        mcp, _profile(lock={"inject": INJECT_CATEGORY}), "knowledge", _schema()
+    )
+
+    async with fastmcp.Client(mcp) as client:
+        (tool,) = await client.list_tools()
+        assert "category" not in tool.inputSchema["properties"]
+        assert tool.inputSchema["additionalProperties"] is False
+
+        refused = await client.call_tool(
+            tool.name, {"query": "jam", "category": "victim"}, raise_on_error=False
         )
-    assert not any("CASESENSITIVE" in record.message for record in caplog.records)
+        assert refused.is_error
+        assert searched == []
+
+        await client.call_tool(tool.name, {"query": "jam"})
+        assert str(searched[0]["locked_filter"]) == "@category:{acme}"

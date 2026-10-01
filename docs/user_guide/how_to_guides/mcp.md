@@ -366,7 +366,8 @@ Then point a profile at it:
 server:
   redis_url: redis://localhost:6379
   builtin_tools:
-    search-records: disabled          # otherwise the unscoped built-in stays available
+    search-records: disabled          # both built-ins reach the index unscoped,
+    upsert-records: disabled          # so the server refuses to start with either on
   auth:
     type: jwt
     jwks_uri: ${MCP_JWKS_URI}
@@ -402,15 +403,15 @@ rvl mcp --config /path/to/mcp_config.yaml --transport streamable-http
 
 What the client sees for `search-customer-kb`:
 
-- `query` (required), `limit`, `offset`, `filter` and `return_fields`, with no argument for `org_id`.
+- `query` (required), `limit`, `offset`, `filter` and `return_fields`, with no argument for `org_id`. A call that passes `org_id` anyway is rejected.
 - A description whose field hints list `content` but not `org_id`.
-- Results from its own tenant only. A `filter` naming `org_id` ANDs with the injected value, so naming another tenant returns nothing.
+- Results from its own tenant only. A `filter` naming `org_id` ANDs with the injected value, so naming another tenant returns nothing. Results still carry `org_id`, always with the caller's own value, unless you lock `return_fields` to leave it out.
 
-Disable `search-records`, as above, unless every tenant may read the whole index. The built-in has no injected scope, so leaving it enabled hands every caller an unscoped way round the profile.
+The server refuses to start while anything else can reach the same index without the tenant scope: `search-records`, `upsert-records` unless the index is `read_only`, or another custom tool on that index without `lock.inject`. Each would hand every caller a way round the profile, and a write could retag another tenant's document as the writer's own. Ingest documents outside the server, stamping `org_id` exactly as the identity provider emits it.
 
 Listing the tenant claim under `required_claims` makes the verifier reject a token without it before any tool runs. That checks presence only: the profile still validates the value on every call, and refuses a missing, empty, list-valued or otherwise unusable claim with a `forbidden` error before any query runs.
 
-The server refuses to start an injecting profile without authentication, over `stdio`, or on a field the index does not hold as an indexed tag. For what the guarantee covers and what it rests on, read the threat model in {doc}`/concepts/mcp`.
+The server refuses to start an injecting profile without authentication, over `stdio`, or on a field the index does not hold as an indexed tag. The `stdio` check applies when the server starts through `rvl mcp` or `run_async`. For what the guarantee covers and what it rests on, read the threat model in {doc}`/concepts/mcp`.
 
 ## Tool Contracts
 
@@ -798,6 +799,10 @@ Some hybrid params depend on native hybrid support in Redis and redis-py. If you
 
 A profile with `lock.inject` refuses to start when authentication is not enabled, or when the server runs over `stdio`, because neither can supply a verified token. Configure `server.auth` and serve over `sse` or `streamable-http`. The check runs before the server connects to Redis, so it reports even when Redis is unreachable.
 
+### Claim Injection Refuses an Unscoped Route
+
+A profile with `lock.inject` refuses to start while `search-records`, `upsert-records` on a writable index, or another custom tool without `lock.inject` can reach the same index. The error lists each route it found. Disable the built-ins under `server.builtin_tools`, mark the index `read_only`, or add the same `lock.inject` to the other custom tools.
+
 ### Claim Injection Fails Every Request With `forbidden`
 
-The token is verified but its claim is unusable: missing, empty, padded with whitespace, or not a single string. The error names the claim and the tool. A misspelled `claim` name in the config is the usual cause, since a JWT claim name such as `https://acme.example/org` must match exactly.
+The token is verified but its claim is unusable: missing, empty, padded with whitespace, not a single string, or containing a control character or backtick. The error names the claim and the tool. A misspelled `claim` name in the config is the usual cause, since a JWT claim name such as `https://acme.example/org` must match exactly.

@@ -216,7 +216,7 @@ custom_tools:
 
 `field` and `claim` are independent names: `field` is what the index schema calls the tenant column, and `claim` is what the identity provider calls it. A token carrying `"https://acme.example/org": "acme"` makes every query from that caller run as `@org_id:{acme} AND <everything else>`.
 
-The model cannot see or set the injected value. The field is absent from the tool's input schema, and it is left out of the field hints appended to the tool description, so the model is not told the field exists. If the model filters on it anyway, its clause ANDs with the injected one: it can narrow within its own tenant, and naming another tenant matches nothing. The rest of the profile works as before, so a static `lock.filter` on another field and a model-supplied filter both still apply.
+The model cannot set the injected value. The field is absent from the tool's input schema, a call that names it is rejected, and it is left out of the field hints appended to the tool description. It is not hidden outright: unless `lock.return_fields` excludes it, results carry the field, and `list-indexes` describes the whole schema. What the model sees there is only ever its own tenant. If the model filters on the field, its clause ANDs with the injected one, so it can narrow within its own tenant and naming another tenant matches nothing. The rest of the profile works as before, so a static `lock.filter` on another field and a model-supplied filter both still apply.
 
 #### What Counts as a Usable Claim
 
@@ -228,7 +228,10 @@ The claim must be a single, non-empty string. Anything else refuses the request 
 | `null` or `""` | An empty tag value would drop the tenant clause from the query entirely. |
 | A list, such as `["acme", "victim"]` | It would render as a union, `@org_id:{acme\|victim}`, which spans both tenants. |
 | An object, number or boolean | It is not a tenant identifier. |
-| Padded with whitespace, or containing `\|` | Neither can be a real tenant identifier, and refusing is safer than guessing. |
+| Padded with whitespace | It cannot be a real tenant identifier, and refusing is safer than guessing which tenant was meant. |
+| Containing a control character or a backtick | The query parser splits a tag term on these, so a value such as `acme` followed by a control character matches the tenant `acme`. |
+
+A `|` inside a single string is accepted. It is escaped, so an identifier such as the Auth0 subject `auth0|64f1c2` matches only its own documents.
 
 A list is refused because of its type, not because of what it renders as. The union it produces is indistinguishable from one a caller could legitimately ask for, so no inspection of the finished query could catch it.
 
@@ -236,10 +239,11 @@ With several `inject` entries, every entry ANDs into the query, and one unusable
 
 #### What Fails at Startup
 
-Injection is checked at startup wherever the configuration alone can show it would not work:
+Injection is checked at startup wherever the configuration alone can show it would not hold:
 
 - authentication is not enabled, on any transport, including an unauthenticated loopback HTTP bind and any `--allow-unauthenticated` bind;
-- authentication is configured but the server runs over `stdio`, which is never authenticated;
+- authentication is configured but the server runs over `stdio`, which is never authenticated (checked when the server starts through `rvl mcp` or `run_async`; an embedder that calls `startup()` directly is not, and every call is then refused at request time instead);
+- the index is also reachable without the tenant scope: through `search-records`, through `upsert-records` unless the index is read-only, or through another custom tool on the same index that does not inject;
 - the injected field is absent from the bound index, is not a tag field, or is declared `NOINDEX`;
 - an `inject` list is empty, names one field twice, or names a field that `lock.filter` also constrains;
 - `required` is anything but `true`, or `from` is anything but `claim`.
@@ -250,12 +254,13 @@ The tool set registers once per process. If a restart reloads a configuration th
 
 #### Threat Model
 
-The guarantee is precise: a client presenting a validly signed token cannot make the model widen or escape the tenant scope carried in that token. The trust boundary is the identity provider, not the MCP client, so the guarantee holds only while these hold:
+The guarantee is narrow: a client presenting a validly signed token cannot make the model widen or escape the tenant scope carried in that token. The trust boundary is the identity provider, not the MCP client, so the guarantee holds only while these hold:
 
 - The token is genuinely verified. Use a real signing key and an asymmetric algorithm. The server refuses to start an injecting profile without authentication, but it does not check which algorithm you configured.
 - The identity provider assigns the claim. If a tenant can mint its own token, or set the claim itself, nothing here stops it reading another tenant's data.
-- Every document carries its tenant. The tenant field must be stamped on each document and indexed as a tag. A document without the field matches no tenant, so it is invisible rather than shared.
-- Tenant identifiers differ by more than case. Tag fields fold case unless declared `CASESENSITIVE`, so `Acme` and `acme` would be one tenant. The server warns at startup when an injected field is not case-sensitive.
+- Only trusted ingestion writes the index. The server refuses `upsert-records` on a writable scoped index, because a write can retag another tenant's document as the writer's own. Whatever loads documents outside the server is inside the trust boundary.
+- Every document carries exactly its tenant. Stamp the tenant field on each document, indexed as a tag, with the identifier exactly as the identity provider emits it. Redis normalises the stored value, not the claim: it splits it on the field's separator (`,` by default), so a document stamped `acme,victim` belongs to both tenants; it trims surrounding whitespace; and on JSON storage it indexes every element of an array. A document without the field matches no tenant, so it is invisible rather than shared.
+- Tenant identifiers differ by more than case. Tag fields fold case unless declared `CASESENSITIVE`, and the folding is Unicode-wide: `Acme` and `acme` are one tenant, and so are a Kelvin sign and `K`, or composed and decomposed forms of an accented letter. The server warns at startup when an injected field is not case-sensitive.
 
 Where tenants share one index, the injected filter is the only isolation boundary. There is no Redis ACL or keyspace separation behind it, so a defect in filter combination or claim validation is a full cross-tenant read. If you need defence in depth, separate tenants at the Redis layer as well.
 

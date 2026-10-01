@@ -12,7 +12,6 @@ ignored when supplied, it is not offered to the model at all.
 """
 
 import inspect
-import logging
 from typing import Annotated, Any, Optional
 
 from pydantic import Field
@@ -32,8 +31,6 @@ from redisvl.mcp.tools.search import (
 )
 from redisvl.query.filter import FilterExpression
 from redisvl.schema import IndexSchema
-
-logger = logging.getLogger(__name__)
 
 # Ordered so the generated signature reads like the built-in's: required query
 # first, then the optional narrowing arguments. Real type objects rather than
@@ -148,32 +145,6 @@ def validate_profile_against_schema(
         validate_inject_against_schema(
             profile.lock.inject, schema, profile_name=profile.name
         )
-        _warn_on_case_insensitive_inject(profile, schema)
-
-
-def _warn_on_case_insensitive_inject(
-    profile: MCPCustomToolConfig, schema: IndexSchema
-) -> None:
-    """Warn when an injected tag field folds case, which merges tenants.
-
-    A tag field is case-insensitive unless declared ``CASESENSITIVE``, so the
-    tenants ``Acme`` and ``acme`` are one tenant to Redis. A warning rather than
-    a failure: an IdP that only ever emits lower-case identifiers is safe, and
-    only the operator knows whether theirs does. The value is deliberately not
-    normalized here -- that would hide the collision rather than surface it.
-    """
-    for entry in profile.lock.inject or ():
-        field = schema.fields.get(entry.field)
-        if field is not None and not getattr(field.attrs, "case_sensitive", False):
-            logger.warning(
-                "custom_tools '%s' injects claim '%s' into tag field '%s', which "
-                "is not CASESENSITIVE, so tenant identifiers differing only in "
-                "case match the same documents. Declare the field CASESENSITIVE "
-                "unless the identity provider guarantees a single case.",
-                profile.name,
-                entry.claim,
-                entry.field,
-            )
 
 
 def _validate_locked_exists_fields(
@@ -262,7 +233,10 @@ def register_profile_tool(
     value belongs to the caller's token rather than to the configuration.
     """
     locked_filter = resolve_locked_filter(profile, schema)
-    inject_specs = profile.lock.inject or []
+    # `None` means "does not inject". Gated on that rather than truthiness, so
+    # an empty list -- which config validation rejects -- would still reach the
+    # builder's own refusal instead of silently skipping the tenant clause.
+    inject_specs = profile.lock.inject
     locked_return_fields = profile.lock.return_fields
     limit_cap = profile.param_max("limit")
     exposes_limit = profile.param_exposed("limit")
@@ -280,10 +254,8 @@ def register_profile_tool(
         # locked side forces the caller's filter through the escape backstop.
         # A fresh local, so the registration-time expression is never rebound.
         effective_locked = locked_filter
-        if inject_specs:
-            injected = build_injected_filter(
-                inject_specs, schema, tool_name=profile.name
-            )
+        if inject_specs is not None:
+            injected = build_injected_filter(inject_specs, tool_name=profile.name)
             effective_locked = (
                 injected if effective_locked is None else effective_locked & injected
             )

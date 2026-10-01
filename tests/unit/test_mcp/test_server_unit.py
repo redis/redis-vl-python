@@ -827,3 +827,109 @@ def test_a_changed_tool_surface_without_injection_still_only_warns(caplog):
         "changed since tools were registered" in record.message
         for record in caplog.records
     )
+
+
+# --------------------------------------------------------------------------
+# Claim injection: refusing an unscoped route to a tenant-scoped index
+# --------------------------------------------------------------------------
+
+_BUILTINS_OFF = {"search-records": "disabled", "upsert-records": "disabled"}
+
+
+def _route_check(*, builtin_tools, custom_tools=None, read_only=False, indexes=None):
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server.mcp_settings = SimpleNamespace(read_only=read_only)
+    if indexes is None:
+        config = _config_with(
+            builtin_tools=builtin_tools, custom_tools=custom_tools or [_INJECTING]
+        )
+    else:
+        config = MCPConfig.model_validate(
+            {
+                "server": {
+                    "redis_url": "redis://localhost:6379",
+                    "builtin_tools": builtin_tools,
+                },
+                "indexes": {
+                    index_id: {
+                        "redis_name": f"{index_id}-index",
+                        "search": {"type": "fulltext"},
+                        "runtime": {"text_field_name": "content"},
+                    }
+                    for index_id in indexes
+                },
+                "custom_tools": custom_tools,
+            }
+        )
+    server._verify_no_unscoped_route_to_injected_indexes(config)
+
+
+@pytest.mark.parametrize(
+    "builtin_tools, custom_tools, expected",
+    [
+        pytest.param(
+            {"upsert-records": "disabled"}, None, "through search-records", id="search"
+        ),
+        # A write can retag another tenant's document as the writer's own.
+        pytest.param(
+            {"search-records": "disabled"}, None, "through upsert-records", id="upsert"
+        ),
+        pytest.param(
+            _BUILTINS_OFF,
+            [_INJECTING, {"name": "open-search", "description": "Search."}],
+            "custom tool 'open-search'",
+            id="unscoped-profile",
+        ),
+    ],
+)
+def test_an_unscoped_route_to_an_injected_index_is_refused(
+    builtin_tools, custom_tools, expected
+):
+    with pytest.raises(ValueError, match=expected):
+        _route_check(builtin_tools=builtin_tools, custom_tools=custom_tools)
+
+
+def test_a_fully_scoped_surface_starts():
+    _route_check(builtin_tools=_BUILTINS_OFF)
+
+
+@pytest.mark.parametrize("server_read_only", [False, True])
+def test_upsert_is_no_route_to_a_read_only_index(server_read_only):
+    # Server-wide read-only, or the binding's own flag, both refuse writes per
+    # call, so upsert-records cannot reach the index either way.
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server.mcp_settings = SimpleNamespace(read_only=server_read_only)
+    raw = {
+        "server": {
+            "redis_url": "redis://localhost:6379",
+            "builtin_tools": {"search-records": "disabled"},
+        },
+        "indexes": {
+            "knowledge": {
+                "redis_name": "docs-index",
+                "read_only": not server_read_only,
+                "search": {"type": "fulltext"},
+                "runtime": {"text_field_name": "content"},
+            }
+        },
+        "custom_tools": [_INJECTING],
+    }
+    server._verify_no_unscoped_route_to_injected_indexes(MCPConfig.model_validate(raw))
+
+
+def test_an_unscoped_profile_on_another_index_is_no_route():
+    _route_check(
+        builtin_tools=_BUILTINS_OFF,
+        indexes=("knowledge", "public"),
+        custom_tools=[
+            {**_INJECTING, "index": "knowledge"},
+            {"name": "public-search", "description": "Search.", "index": "public"},
+        ],
+    )
+
+
+def test_a_server_without_injection_keeps_every_route():
+    _route_check(
+        builtin_tools={},
+        custom_tools=[{"name": "open-search", "description": "Search open."}],
+    )

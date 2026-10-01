@@ -347,6 +347,58 @@ class RedisVLMCPServer(FastMCP):
                 "streamable-http) so the configured auth applies."
             )
 
+    def _verify_no_unscoped_route_to_injected_indexes(self, config: Any) -> None:
+        """Refuse a tool surface that reaches a tenant-scoped index unscoped.
+
+        Injection isolates a tool, but tenant data lives in an index, and every
+        tool passes the same read scope gate. So any other route to that index
+        -- the generic search, a write, or a profile without the injection --
+        hands every caller the data the profile was meant to fence off, and a
+        write can retag another tenant's document as the writer's own. That is
+        configuration which voids the guarantee it declares, not a redundant
+        surface, so it is refused rather than warned about.
+        """
+        injected = sorted(
+            {
+                config.resolved_profile_index(profile)
+                for profile in config.custom_tools
+                if profile.lock.inject is not None
+            }
+        )
+        if not injected:
+            return
+
+        routes: list[str] = []
+        if config.server.builtin_tool_enabled("search-records"):
+            routes.append("search-records")
+        if config.server.builtin_tool_enabled("upsert-records"):
+            writable = [
+                binding_id
+                for binding_id in injected
+                if not (
+                    self.mcp_settings.read_only or config.indexes[binding_id].read_only
+                )
+            ]
+            if writable:
+                routes.append("upsert-records")
+        routes.extend(
+            f"custom tool '{profile.name}'"
+            for profile in config.custom_tools
+            if profile.lock.inject is None
+            and config.resolved_profile_index(profile) in injected
+        )
+        if not routes:
+            return
+
+        raise ValueError(
+            f"Index {', '.join(repr(i) for i in injected)} is scoped by an "
+            "injected token claim, but is also reachable without that scope "
+            f"through {', '.join(routes)}. Each of those bypasses the tenant "
+            "filter. Disable the built-ins with server.builtin_tools (for "
+            "example 'search-records: disabled'), mark the index read_only to "
+            "stop writes, or give the other custom tools the same lock.inject."
+        )
+
     @staticmethod
     def _tool_surface_fingerprint(config: Any) -> str:
         """Summarize the config that a registered tool set baked in."""
@@ -619,9 +671,10 @@ class RedisVLMCPServer(FastMCP):
         """Load config and initialize every configured binding independently."""
         self.config = load_mcp_config(self._config_path)
         self._verify_auth_not_stale()
-        # Before any binding connects: this depends only on the loaded config,
+        # Before any binding connects: both depend only on the loaded config,
         # so an unworkable one should not first need a reachable Redis.
         self._verify_injection_has_a_token(self.config.custom_tools)
+        self._verify_no_unscoped_route_to_injected_indexes(self.config)
         # The semaphore is a single process-wide concurrency ceiling shared by
         # all bindings; take the max across bindings. This means the most
         # permissive binding sets the cap — e.g. five bindings each configured
