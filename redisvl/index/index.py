@@ -72,7 +72,7 @@ from redisvl.query import (
     TextQuery,
 )
 from redisvl.query.aggregate import AggregateHybridQuery
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, is_match_all_filter
 from redisvl.redis.connection import (
     RedisConnectionFactory,
     _split_from_existing_kwargs,
@@ -233,30 +233,11 @@ class BulkResult:
     dry_run: bool = False
 
 
-def _is_match_all_filter(filter_expression: str | FilterExpression | None) -> bool:
-    """Return True if the filter would match every document in the index.
-
-    Guards the bulk ``*_by_filter`` methods against an accidental full-index
-    wipe/update. ``None`` is treated as match-all because it defaults to
-    ``FilterExpression("*")`` downstream; a default/empty ``FilterExpression``
-    (whose ``str()`` raises) is likewise treated as match-all rather than
-    surfacing an opaque error.
-    """
-    if filter_expression is None:
-        return True
-    try:
-        rendered = str(filter_expression).strip()
-    except ValueError:
-        # Improperly initialized FilterExpression() - treat as the match-all sentinel
-        return True
-    return rendered in ("", "*")
-
-
 def _require_specific_filter(
     filter_expression: str | FilterExpression | None, allow_all: bool
 ) -> None:
     """Raise unless the filter is specific or the caller opted into match-all."""
-    if not allow_all and _is_match_all_filter(filter_expression):
+    if not allow_all and is_match_all_filter(filter_expression):
         raise ValueError(
             "Refusing to run a bulk operation that matches all documents. "
             "Pass a specific filter_expression, set allow_all=True to override, "
