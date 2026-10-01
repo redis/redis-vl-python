@@ -67,7 +67,7 @@ class SemanticRouter(BaseModel):
         redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         create_index: bool = True,
         **kwargs,
     ):
@@ -176,10 +176,7 @@ class SemanticRouter(BaseModel):
         overwrite = kwargs.pop("overwrite", False)
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs",),
-        )
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
         lib_name = init_kwargs.get("lib_name")
         index_kwargs: dict[str, Any] = {}
         created_redis_client = False
@@ -197,7 +194,11 @@ class SemanticRouter(BaseModel):
                 **factory_kwargs,
             )
             index_kwargs["_client_validated"] = True
-            index_kwargs["_owns_redis_client"] = True
+            # index_kwargs wins the merge below, so only claim ownership when
+            # the caller has not already answered -- and an explicit None is
+            # not an answer. Matches SearchIndex.from_existing.
+            if init_kwargs.get("owns_client") is None:
+                index_kwargs["owns_client"] = True
             if lib_name is not None:
                 index_kwargs["lib_name"] = lib_name
             created_redis_client = True
@@ -929,8 +930,8 @@ class SemanticRouter(BaseModel):
     def get_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Get references for an existing route route.
 
@@ -965,8 +966,8 @@ class SemanticRouter(BaseModel):
     def delete_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> int:
         """Get references for an existing semantic router route.
 
