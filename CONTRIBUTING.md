@@ -284,6 +284,23 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
+### Testing external and Dependabot PRs
+
+PRs from forks and from Dependabot can't run the tests that call external services, because GitHub withholds the credentials from them. A maintainer runs those tests by hand once they've reviewed the PR. Until then, the PR shows only the standard checks.
+
+For maintainers, the procedure is:
+
+1. Review the PR's full diff, including any change to `conftest.py`, `Makefile`, `pyproject.toml` or `uv.lock`: these run with the credentials in scope. Copy the head commit SHA you reviewed.
+2. Dispatch the **Test External PR** workflow from `main` with the PR number and that SHA:
+
+   ```bash
+   gh workflow run test-fork-pr.yml -f pr_number=<number> -f expected_head_sha=<sha>
+   ```
+
+3. Open the run, titled `External PR #<number> @ <sha>`, and check the compare link in its summary. Then choose **Review deployments**, select `ci-external` and approve.
+4. Read the result from the **External PR - Service Tests** check on the PR.
+5. If the PR receives any new commit, dispatch again with the new SHA. A run only ever tests the commit it was dispatched for.
+
 ### PR Labels
 
 This project uses an automated release process powered by [Auto](https://intuit.github.io/auto/). PRs must be labeled to indicate the type of change:
