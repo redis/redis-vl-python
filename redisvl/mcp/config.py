@@ -627,6 +627,53 @@ class MCPProfileParamConfig(BaseModel):
         return self
 
 
+def iter_filter_clauses(node: Any) -> Any:
+    """Yield every leaf clause of a JSON filter DSL expression."""
+    if not isinstance(node, dict):
+        return
+    for operator in ("and", "or"):
+        if operator in node:
+            for child in node[operator] or []:
+                yield from iter_filter_clauses(child)
+            return
+    if "not" in node:
+        yield from iter_filter_clauses(node["not"])
+        return
+    yield node
+
+
+class MCPProfileInjectConfig(BaseModel):
+    """One tenant-scoping filter whose value comes from the caller's verified token.
+
+    ``field`` and ``claim`` are independent author-chosen strings: ``field`` is
+    what the index schema calls the tenant column, ``claim`` is what the identity
+    provider calls it. Only ``field`` can be checked at startup, against the
+    bound schema; ``claim`` cannot, because no token exists until a request.
+    """
+
+    # `from` is a Python keyword, so the attribute is `source`. populate_by_name
+    # keeps it constructible from Python as well as from YAML.
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    field: str = Field(..., min_length=1)
+    # Required rather than defaulted, and a single-value Literal today: the
+    # source is the whole point of the entry, so it is stated, not inferred.
+    source: Literal["claim"] = Field(..., alias="from")
+    claim: str = Field(..., min_length=1)
+    # Optional injection is unscoped injection, so `false` is not a value this
+    # accepts. The key exists so the proposal's published YAML loads verbatim.
+    required: Literal[True] = True
+
+    @model_validator(mode="after")
+    def _validate_inject(self) -> "MCPProfileInjectConfig":
+        """Reject a blank field or claim name, which min_length lets through."""
+        if not self.field.strip():
+            raise ValueError("custom_tools lock.inject field must not be blank")
+        if not self.claim.strip():
+            raise ValueError("custom_tools lock.inject claim must not be blank")
+        return self
+
+
 class MCPProfileLockConfig(BaseModel):
     """Author-locked arguments that the model cannot override or remove."""
 
@@ -634,6 +681,7 @@ class MCPProfileLockConfig(BaseModel):
 
     return_fields: list[str] | None = None
     filter: dict[str, Any] | None = None
+    inject: list[MCPProfileInjectConfig] | None = None
 
     @model_validator(mode="after")
     def _validate_lock(self) -> "MCPProfileLockConfig":
@@ -652,6 +700,38 @@ class MCPProfileLockConfig(BaseModel):
             if any(not field_name.strip() for field_name in self.return_fields):
                 raise ValueError(
                     "custom_tools lock.return_fields must contain non-empty strings"
+                )
+
+        if self.inject is not None:
+            if not self.inject:
+                raise ValueError(
+                    "custom_tools lock.inject must contain at least one entry; "
+                    "drop the key for a profile that does not inject"
+                )
+
+            injected = [entry.field for entry in self.inject]
+            duplicated = sorted({name for name in injected if injected.count(name) > 1})
+            if duplicated:
+                raise ValueError(
+                    "custom_tools lock.inject names the same field more than "
+                    f"once: {', '.join(duplicated)}"
+                )
+
+            # A static lock and an injected value on one field are two answers
+            # to "which tenant", and they AND together -- so a mismatch matches
+            # nothing and a match makes one of them dead config. Either way the
+            # author meant only one of them.
+            locked = {
+                clause.get("field")
+                for clause in iter_filter_clauses(self.filter)
+                if isinstance(clause.get("field"), str)
+            }
+            colliding = sorted(locked.intersection(injected))
+            if colliding:
+                raise ValueError(
+                    "custom_tools lock.inject and lock.filter both constrain "
+                    f"{', '.join(colliding)}; an injected field must not also "
+                    "appear in lock.filter"
                 )
         return self
 
