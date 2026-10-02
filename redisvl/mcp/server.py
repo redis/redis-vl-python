@@ -32,6 +32,15 @@ from redisvl.schema import IndexSchema
 logger = logging.getLogger(__name__)
 
 
+def _describe_scope(scope: frozenset[tuple[str, str]]) -> str:
+    """Render one tool's injected scope for a startup error."""
+    if not scope:
+        return "injects nothing"
+    return "injects " + ", ".join(
+        f"{field} from claim '{claim}'" for field, claim in sorted(scope)
+    )
+
+
 def _config_injects(config: Any) -> bool:
     """Report whether any configured profile injects a claim-derived filter."""
     if config is None:
@@ -352,22 +361,32 @@ class RedisVLMCPServer(FastMCP):
 
         Injection isolates a tool, but tenant data lives in an index, and every
         tool passes the same read scope gate. So any other route to that index
-        -- the generic search, a write, or a profile without the injection --
-        hands every caller the data the profile was meant to fence off, and a
-        write can retag another tenant's document as the writer's own. That is
-        configuration which voids the guarantee it declares, not a redundant
-        surface, so it is refused rather than warned about.
+        -- the generic search, a write, or a custom tool injecting a different
+        scope or none -- hands every caller the data the profile was meant to
+        fence off, and a write can retag another tenant's document as the
+        writer's own. That is configuration which voids the guarantee it
+        declares, not a redundant surface, so it is refused rather than warned
+        about.
+
+        The scope is a property of the index, so every custom tool on it must
+        inject the same entries. Injecting *something* is not enough: a second
+        tool scoped by another field, or by the same field from another claim,
+        reads across the tenants the first one separates.
         """
+        scopes: dict[str, dict[str, frozenset[tuple[str, str]]]] = {}
+        for profile in config.custom_tools:
+            scopes.setdefault(config.resolved_profile_index(profile), {})[
+                profile.name
+            ] = frozenset(
+                (entry.field, entry.claim) for entry in profile.lock.inject or ()
+            )
         injected = sorted(
-            {
-                config.resolved_profile_index(profile)
-                for profile in config.custom_tools
-                if profile.lock.inject is not None
-            }
+            index_id for index_id, by_tool in scopes.items() if any(by_tool.values())
         )
         if not injected:
             return
 
+        problems: list[str] = []
         routes: list[str] = []
         if config.server.builtin_tool_enabled("search-records"):
             routes.append("search-records")
@@ -381,22 +400,33 @@ class RedisVLMCPServer(FastMCP):
             ]
             if writable:
                 routes.append("upsert-records")
-        routes.extend(
-            f"custom tool '{profile.name}'"
-            for profile in config.custom_tools
-            if profile.lock.inject is None
-            and config.resolved_profile_index(profile) in injected
-        )
-        if not routes:
+        if routes:
+            problems.append(
+                "it is also reachable without that scope through "
+                f"{', '.join(routes)}"
+            )
+
+        for index_id in injected:
+            by_tool = scopes[index_id]
+            if len(set(by_tool.values())) > 1:
+                problems.append(
+                    f"the custom tools on index '{index_id}' do not inject the "
+                    "same scope: "
+                    + "; ".join(
+                        f"'{name}' {_describe_scope(scope)}"
+                        for name, scope in sorted(by_tool.items())
+                    )
+                )
+        if not problems:
             return
 
         raise ValueError(
             f"Index {', '.join(repr(i) for i in injected)} is scoped by an "
-            "injected token claim, but is also reachable without that scope "
-            f"through {', '.join(routes)}. Each of those bypasses the tenant "
-            "filter. Disable the built-ins with server.builtin_tools (for "
-            "example 'search-records: disabled'), mark the index read_only to "
-            "stop writes, or give the other custom tools the same lock.inject."
+            f"injected token claim, but {'; and '.join(problems)}. Each of those "
+            "bypasses the tenant filter. Disable the built-ins with "
+            "server.builtin_tools (for example 'search-records: disabled'), mark "
+            "the index read_only to stop writes, and give every custom tool on "
+            "the index the same lock.inject."
         )
 
     @staticmethod

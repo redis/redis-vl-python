@@ -243,7 +243,7 @@ Injection is checked at startup wherever the configuration alone can show it wou
 
 - authentication is not enabled, on any transport, including an unauthenticated loopback HTTP bind and any `--allow-unauthenticated` bind;
 - authentication is configured but the server runs over `stdio`, which is never authenticated (checked when the server starts through `rvl mcp` or `run_async`; an embedder that calls `startup()` directly is not, and every call is then refused at request time instead);
-- the index is also reachable without the tenant scope: through `search-records`, through `upsert-records` unless the index is read-only, or through another custom tool on the same index that does not inject;
+- the index is also reachable without the tenant scope: through `search-records`, through `upsert-records` unless the index is read-only, or through another custom tool on the same index that does not inject exactly the same entries, since a tool scoped by another field, or by the same field from another claim, reads across the tenants this one separates;
 - the injected field is absent from the bound index, is not a tag field, or is declared `NOINDEX`;
 - an `inject` list is empty, names one field twice, or names a field that `lock.filter` also constrains;
 - `required` is anything but `true`, or `from` is anything but `claim`.

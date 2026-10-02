@@ -877,8 +877,43 @@ def _route_check(*, builtin_tools, custom_tools=None, read_only=False, indexes=N
         pytest.param(
             _BUILTINS_OFF,
             [_INJECTING, {"name": "open-search", "description": "Search."}],
-            "custom tool 'open-search'",
+            "'open-search' injects nothing",
             id="unscoped-profile",
+        ),
+        # Injecting *something* is not the tenant scope. Scoped by another
+        # field, the second tool reads across the tenants the first separates.
+        pytest.param(
+            _BUILTINS_OFF,
+            [
+                _INJECTING,
+                {
+                    "name": "region-search",
+                    "description": "Search.",
+                    "lock": {
+                        "inject": [{"field": "rating", "from": "claim", "claim": "r"}]
+                    },
+                },
+            ],
+            "'region-search' injects rating from claim 'r'",
+            id="different-field",
+        ),
+        # The same field read from another claim scopes by a different value.
+        pytest.param(
+            _BUILTINS_OFF,
+            [
+                _INJECTING,
+                {
+                    "name": "other-org-search",
+                    "description": "Search.",
+                    "lock": {
+                        "inject": [
+                            {"field": "category", "from": "claim", "claim": "alt"}
+                        ]
+                    },
+                },
+            ],
+            "'other-org-search' injects category from claim 'alt'",
+            id="different-claim",
         ),
     ],
 )
@@ -932,4 +967,27 @@ def test_a_server_without_injection_keeps_every_route():
     _route_check(
         builtin_tools={},
         custom_tools=[{"name": "open-search", "description": "Search open."}],
+    )
+
+
+def test_tools_injecting_the_same_scope_share_an_index():
+    # Entry order does not matter: the scope is the set of (field, claim) pairs.
+    two_entry = [
+        {"field": "category", "from": "claim", "claim": "org"},
+        {"field": "rating", "from": "claim", "claim": "tier"},
+    ]
+    _route_check(
+        builtin_tools=_BUILTINS_OFF,
+        custom_tools=[
+            {
+                "name": "tenant-search",
+                "description": "Search.",
+                "lock": {"inject": two_entry},
+            },
+            {
+                "name": "tenant-recent",
+                "description": "Recent.",
+                "lock": {"inject": list(reversed(two_entry))},
+            },
+        ],
     )

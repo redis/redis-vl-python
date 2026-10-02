@@ -312,7 +312,7 @@ async def test_an_unusable_claim_is_refused_before_any_query(
         pytest.param(
             [_PROFILE, {"name": "open-search", "description": "Search the kb."}],
             {},
-            "custom tool 'open-search'",
+            "'open-search' injects nothing",
             id="unscoped-profile",
         ),
     ],

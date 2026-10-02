@@ -407,7 +407,7 @@ What the client sees for `search-customer-kb`:
 - A description whose field hints list `content` but not `org_id`.
 - Results from its own tenant only. A `filter` naming `org_id` ANDs with the injected value, so naming another tenant returns nothing. Results still carry `org_id`, always with the caller's own value, unless you lock `return_fields` to leave it out.
 
-The server refuses to start while anything else can reach the same index without the tenant scope: `search-records`, `upsert-records` unless the index is `read_only`, or another custom tool on that index without `lock.inject`. Each would hand every caller a way round the profile, and a write could retag another tenant's document as the writer's own. Ingest documents outside the server, stamping `org_id` exactly as the identity provider emits it.
+The server refuses to start while anything else can reach the same index without the tenant scope: `search-records`, `upsert-records` unless the index is `read_only`, or another custom tool on that index whose `lock.inject` differs, including one with none. Each would hand every caller a way round the profile, and a write could retag another tenant's document as the writer's own. Ingest documents outside the server, stamping `org_id` exactly as the identity provider emits it.
 
 Listing the tenant claim under `required_claims` makes the verifier reject a token without it before any tool runs. That checks presence only: the profile still validates the value on every call, and refuses a missing, empty, list-valued or otherwise unusable claim with a `forbidden` error before any query runs.
 
@@ -801,7 +801,7 @@ A profile with `lock.inject` refuses to start when authentication is not enabled
 
 ### Claim Injection Refuses an Unscoped Route
 
-A profile with `lock.inject` refuses to start while `search-records`, `upsert-records` on a writable index, or another custom tool without `lock.inject` can reach the same index. The error lists each route it found. Disable the built-ins under `server.builtin_tools`, mark the index `read_only`, or add the same `lock.inject` to the other custom tools.
+A profile with `lock.inject` refuses to start while `search-records`, `upsert-records` on a writable index, or another custom tool on the same index whose `lock.inject` differs, including one with none. The error lists each route it found, and each tool's injected scope. Disable the built-ins under `server.builtin_tools`, mark the index `read_only`, and give every custom tool on the index the same `lock.inject`.
 
 ### Claim Injection Fails Every Request With `forbidden`
 
