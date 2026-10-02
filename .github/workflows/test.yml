@@ -12,66 +12,97 @@ on:
 
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.12.3"
 
 jobs:
-  service-tests:
-    name: Service Tests
+  lock:
+    name: Check uv.lock is up to date
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Run service tests
-        uses: ./.github/actions/run-service-tests
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      # Fails a pyproject.toml change that was never locked, before the drift
+      # lands on main and dirties the next contributor's tree.
+      - name: Check lockfile
+        run: uv lock --check
+
+  # `service-tests` and `test` gate on this single 3.11 leg, not on the full
+  # matrix below. Style and typing failures are almost always version-independent,
+  # so one leg catches them, while a wobble on one interpreter no longer
+  # suppresses every test result on the PR.
+  #
+  # The display name is spelled out because `jobs.<id>.name` cannot read the
+  # `env` context; keep it in step with PYTHON_VERSION above.
+  lint:
+    name: Style-check 3.11
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Run style checks
+        uses: ./.github/actions/lint
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           uv-version: ${{ env.UV_VERSION }}
-        env:
-          HF_HOME: ${{ github.workspace }}/hf_cache
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          # The live Azure OpenAI tests gate themselves on AZURE_OPENAI_ENDPOINT,
-          # AZURE_OPENAI_API_KEY and OPENAI_API_VERSION: if any of the three is empty
-          # or unset they skip, so an absent secret disables them and re-adding it
-          # re-enables them with no code change. These lines stay wired up for that
-          # reason. (test_non_supported_dtypes is deliberately left ungated -- it
-          # validates dtype before any client is built and needs no network.)
-          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
-          OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          LANGCACHE_WITH_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_API_KEY }}
-          LANGCACHE_WITH_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_CACHE_ID }}
-          LANGCACHE_WITH_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_URL }}
-          LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
-          LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
-          LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
+
+  # The remaining interpreters. Nothing depends on this job, so a version-specific
+  # mypy or install failure reports on its own without gating the test matrix.
+  lint-matrix:
+    name: Style-check ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Run style checks
+        uses: ./.github/actions/lint
+        with:
+          python-version: ${{ matrix.python-version }}
+          uv-version: ${{ env.UV_VERSION }}
+
+  service-tests:
+    needs: lint
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')
+    uses: ./.github/workflows/service-tests.yml
+    with:
+      environment: ci-internal
 
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
-    # `needs` is here to order this job after the HF model cache is primed, not
-    # to gate it on the service suite passing (it was `needs: prime-cache` when
-    # it was introduced in #306). Without a status check function, `needs` also
-    # implies `success()`, which meant a third-party API outage skipped all 45
-    # matrix legs and left PRs with zero Redis coverage behind a single red
-    # check. `!cancelled()` keeps the ordering and drops the cascade: a cold
-    # cache just costs these legs a model download.
-    needs: service-tests
-    if: ${{ !cancelled() }}
+    # Gated on the 3.11 lint leg only. service-tests no longer primes a shared
+    # HuggingFace cache, so there is no ordering reason to wait for it, and a
+    # third-party outage there cannot skip these legs.
+    needs: lint
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
       REDIS_IMAGE: ${{ matrix.redis-image }}
@@ -137,22 +168,20 @@ jobs:
   notebooks:
     name: Notebook Validation
     runs-on: ubuntu-latest
-    # Ordered after the HF cache is primed, not gated on it; see the `test` job.
+    # Runs after service-tests without depending on its result: `!cancelled()`
+    # stops a failing service suite from skipping this job. It needs API-key
+    # secrets, which fork and Dependabot PRs cannot reach, so keep the guard in
+    # sync with service-tests.
     needs: service-tests
-    # Needs API-key secrets, unavailable to fork PRs. Keep in sync with
-    # service-tests.
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) }}
+    environment:
+      name: ci-internal
+      deployment: false
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
-      - name: Cache HuggingFace Models
-        uses: actions/cache@v4
-        with:
-          path: hf_cache
-          key: ${{ runner.os }}-hf-cache
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -163,11 +192,9 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          # Jobs that hold credentials do not use the Actions cache.
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
 
       - name: Install dependencies
         run: |
@@ -244,7 +271,7 @@ jobs:
           cache-dependency-glob: |
             pyproject.toml
             uv.lock
-  
+
       - name: Install dependencies
         run: |
           uv sync --group docs --frozen

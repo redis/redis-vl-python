@@ -1,0 +1,48 @@
+name: 'Lint'
+description: 'Run import-sort, formatting and type checks for a single Python version'
+
+inputs:
+  python-version:
+    description: 'Python version to check against'
+    required: true
+  uv-version:
+    description: 'uv version to use'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.0.0
+      with:
+        version: ${{ inputs.uv-version }}
+        enable-cache: true
+        python-version: ${{ inputs.python-version }}   # sets UV_PYTHON
+        cache-dependency-glob: |
+          pyproject.toml
+          uv.lock
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        uv sync --all-extras --frozen
+
+    - name: check-sort-import
+      shell: bash
+      run: |
+        make check-sort-imports
+
+    - name: check-black-format
+      shell: bash
+      run: |
+        make check-format
+
+    - name: check-mypy
+      shell: bash
+      run: |
+        make check-types

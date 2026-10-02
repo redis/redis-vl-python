@@ -1,0 +1,125 @@
+name: Service Tests
+
+# Reusable home of the credentialed service-test recipe. Two callers share it:
+# test.yml for internal branch PRs, pushes and the nightly, and test-fork-pr.yml
+# for maintainer-dispatched fork and Dependabot PRs.
+#
+# It is a reusable workflow so that GitHub loads these steps from the calling
+# workflow's commit in this repository. Keep the recipe in this file rather than
+# moving it into a local composite action.
+#
+# Credentials come only from the GitHub environment the caller names, never from
+# repository secrets, which callers deliberately do not forward. `ci-internal` serves
+# trusted runs and has no protection rules. `ci-external` serves test-fork-pr.yml
+# and requires a reviewer-team approval before this job starts, so its keys reach
+# only a run that someone has approved for one pinned commit.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment holding the test credentials: ci-internal or ci-external.'
+        required: true
+        type: string
+      repository:
+        description: 'Repository to test. Defaults to the calling repository.'
+        required: false
+        type: string
+        default: ''
+      ref:
+        description: 'Ref or SHA to test. Defaults to the calling commit.'
+        required: false
+        type: string
+        default: ''
+
+env:
+  # Keep in sync with test.yml. A reusable-workflow `with:` block cannot read the
+  # `env` context, so a caller could not forward these even if they were inputs.
+  PYTHON_VERSION: "3.11"
+  UV_VERSION: "0.12.3"
+
+jobs:
+  service-tests:
+    name: Service Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Environment secrets reach a reusable workflow only through a job that names
+    # the environment itself. `deployment: false` keeps required reviewers but
+    # records no deployment against main's SHA for every run.
+    environment:
+      name: ${{ inputs.environment }}
+      deployment: false
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          # Jobs that hold credentials do not use the Actions cache. The explicit
+          # `false` matters: setup-uv's default ("auto") would still cache here.
+          enable-cache: false
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+
+      - name: Install required dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Test module imports
+        run: |
+          uv run python -m tests.test_imports redisvl
+
+      - name: Install all dependencies
+        run: |
+          uv sync --all-extras --frozen
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      # Credentials are scoped to this step alone rather than the job, so the
+      # dependency installs and any PEP 517 build hooks above run without them.
+      - name: Run full test suite
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          # The live Azure OpenAI tests gate themselves on AZURE_OPENAI_ENDPOINT,
+          # AZURE_OPENAI_API_KEY and OPENAI_API_VERSION: if any of the three is empty
+          # or unset they skip, so an absent secret disables them and re-adding it
+          # re-enables them with no code change. These lines stay wired up for that
+          # reason. (test_non_supported_dtypes is deliberately left ungated -- it
+          # validates dtype before any client is built and needs no network.)
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+          OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          LANGCACHE_WITH_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_API_KEY }}
+          LANGCACHE_WITH_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_CACHE_ID }}
+          LANGCACHE_WITH_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_URL }}
+          LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
+          LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
+          LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
+        run: |
+          make test-all
