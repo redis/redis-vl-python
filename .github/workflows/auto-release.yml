@@ -111,11 +111,9 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          # Release jobs install from the lockfile without the Actions cache.
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -194,11 +192,9 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          # Release jobs install from the lockfile without the Actions cache.
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
 
       - name: Apply release version to pyproject.toml and uv.lock
         run: |
@@ -320,11 +316,9 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          # Release jobs install from the lockfile without the Actions cache.
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
 
       - name: Install dependencies
         run: uv sync --frozen
