@@ -176,10 +176,7 @@ class SemanticRouter(BaseModel):
         overwrite = kwargs.pop("overwrite", False)
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs",),
-        )
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
         lib_name = init_kwargs.get("lib_name")
         index_kwargs: dict[str, Any] = {}
         created_redis_client = False
@@ -197,7 +194,11 @@ class SemanticRouter(BaseModel):
                 **factory_kwargs,
             )
             index_kwargs["_client_validated"] = True
-            index_kwargs["_owns_redis_client"] = True
+            # index_kwargs wins the merge below, so only claim ownership when
+            # the caller has not already answered -- and an explicit None is
+            # not an answer. Matches SearchIndex.from_existing.
+            if init_kwargs.get("owns_client") is None:
+                index_kwargs["owns_client"] = True
             if lib_name is not None:
                 index_kwargs["lib_name"] = lib_name
             created_redis_client = True

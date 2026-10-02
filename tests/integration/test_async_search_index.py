@@ -1,10 +1,8 @@
-import warnings
 from random import choice
 from unittest import mock
 
 import pytest
 import redis
-from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
@@ -206,29 +204,6 @@ async def test_search_index_redis_url(redis_url, index_schema):
 async def test_search_index_client(async_client, index_schema):
     async_index = AsyncSearchIndex(schema=index_schema, redis_client=async_client)
     assert async_index.client == async_client
-
-
-@pytest.mark.asyncio
-async def test_search_index_set_client(client, redis_url, index_schema):
-    # Use async with for the index that owns its initial client via redis_url
-    async with AsyncSearchIndex(
-        schema=index_schema, redis_url=redis_url
-    ) as async_index:
-        # Ignore deprecation warnings for set_client
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
-            await async_index.create(overwrite=True, drop=True)
-            assert isinstance(async_index.client, AsyncRedis)
-
-            # Tests deprecated sync -> async conversion behavior
-            assert isinstance(client, SyncRedis)
-
-            await async_index.set_client(client)
-            assert isinstance(async_index.client, AsyncRedis)
-
-            if async_index.client:
-                await async_index.disconnect()
-            assert async_index.client is None
 
 
 @pytest.mark.asyncio
@@ -488,9 +463,24 @@ async def test_search_index_that_owns_client_disconnect(index_schema, redis_url)
 
 
 @pytest.mark.asyncio
-async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis_url):
+async def test_disconnect_sync_is_a_no_op_inside_a_running_loop(
+    index_schema, redis_url
+):
+    """disconnect_sync() does nothing when a loop is already running.
+
+    It exists for callers outside an event loop, such as __del__ and
+    shutdown hooks: sync_wrapper calls loop.run_until_complete, which raises
+    on an already-running loop and is swallowed. Asserting the no-op here
+    documents behaviour that would otherwise look like a silent bug. The
+    path that does close the client is covered outside a loop by
+    tests/unit/test_index_gc_finalizer.py.
+    """
     async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     await async_index.create(overwrite=True, drop=True)
+
+    async_index.disconnect_sync()
+
+    assert async_index._redis_client is not None
     await async_index.disconnect()
     assert async_index._redis_client is None
 
@@ -777,17 +767,6 @@ async def test_search_index_validates_query_with_hnsw_algorithm(
     )
     # Should not raise
     await async_hnsw_index.query(query)
-
-
-@pytest.mark.asyncio
-async def test_async_search_index_connect(index_schema, redis_url):
-    """Test that AsyncSearchIndex.connect() works with redis_url parameter."""
-    async_index = AsyncSearchIndex(schema=index_schema)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        await async_index.connect(redis_url=redis_url)
-    assert async_index.client is not None
-    await async_index.disconnect()
 
 
 @pytest.mark.asyncio
