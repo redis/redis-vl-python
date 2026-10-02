@@ -37,6 +37,7 @@ from redisvl.migration.utils import (
     wait_for_index_ready,
 )
 from redisvl.migration.validation import MigrationValidator
+from redisvl.redis.utils import convert_bytes
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
 
@@ -144,6 +145,7 @@ def _map_keys_prefix(
 
 def _extract_prefixes_from_info(info: Any) -> List[str]:
     """Extract Redis Search index prefixes from dict or list FT.INFO shapes."""
+    info = convert_bytes(info)
 
     def _prefixes_from_definition(definition: Any) -> Any:
         if isinstance(definition, dict):
@@ -216,6 +218,22 @@ def _checkpoint_identity_matches(
     )
 
 
+def _extract_aggregate_keys(results_data: Any) -> Generator[str, None, None]:
+    """Read keys from raw RESP2 rows or a RESP3 aggregate result map."""
+    results_data = convert_bytes(results_data)
+    if isinstance(results_data, dict):
+        keys = (row["extra_attributes"]["__key"] for row in results_data["results"])
+    else:
+        # Skip the leading RESP2 metadata; the remaining rows are field/value pairs.
+        keys = (
+            row[1]
+            for row in results_data[1:]
+            if isinstance(row, (list, tuple)) and len(row) >= 2
+        )
+    for key in keys:
+        yield key.decode() if isinstance(key, bytes) else str(key)
+
+
 class MigrationExecutor:
     def __init__(self, validator: Optional[MigrationValidator] = None):
         self.validator = validator or MigrationValidator()
@@ -250,9 +268,10 @@ class MigrationExecutor:
         # condition means FT.AGGREGATE would miss documents, so fall
         # back to SCAN for complete enumeration.
         try:
-            info = client.ft(index_name).info()
+            info = convert_bytes(client.ft(index_name).info())
             failures = int(info.get("hash_indexing_failures", 0) or 0)
-            percent_indexed = float(info.get("percent_indexed", 1.0) or 1.0)
+            progress = info.get("percent_indexed")
+            percent_indexed = float(progress) if progress is not None else 1.0
             if failures > 0:
                 logger.warning(
                     f"Index '{index_name}' has {failures} indexing failures. "
@@ -331,11 +350,7 @@ class MigrationExecutor:
             while True:
                 results_data, cursor_id = result
 
-                # Extract keys from results (skip first element which is count)
-                for item in results_data[1:]:
-                    if isinstance(item, (list, tuple)) and len(item) >= 2:
-                        key = item[1]
-                        yield key.decode() if isinstance(key, bytes) else str(key)
+                yield from _extract_aggregate_keys(results_data)
 
                 # Check if done (cursor_id == 0)
                 if cursor_id == 0:
@@ -1092,9 +1107,8 @@ class MigrationExecutor:
         source_failures = int(
             plan.source.stats_snapshot.get("hash_indexing_failures", 0) or 0
         )
-        source_percent_indexed = float(
-            plan.source.stats_snapshot.get("percent_indexed", 1.0) or 1.0
-        )
+        progress = plan.source.stats_snapshot.get("percent_indexed")
+        source_percent_indexed = float(progress) if progress is not None else 1.0
         needs_exact_count = source_failures > 0 or source_percent_indexed < 1.0
         needs_enumeration = (
             needs_quantization
