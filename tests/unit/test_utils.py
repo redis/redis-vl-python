@@ -1,3 +1,4 @@
+import asyncio
 import re
 import sys
 from functools import wraps
@@ -13,6 +14,7 @@ from redisvl.redis.utils import (
     make_dict,
 )
 from redisvl.utils.utils import (
+    LoopLocal,
     assert_no_warnings,
     denorm_cosine_distance,
     deprecated_argument,
@@ -946,3 +948,28 @@ def test_keys_share_hash_tag_multiple_braces():
 )
 def test_match_pattern(segments, expected):
     assert match_pattern(*segments) == expected
+
+
+def test_loop_local_rebuilds_its_primitive_on_a_new_loop():
+    """One primitive per loop, so a contended lock never meets a foreign loop.
+
+    The contention matters: only a lock's slow path binds it to a loop, so an
+    uncontended version of this test would pass on a bare ``asyncio.Lock``.
+    """
+    holder = LoopLocal(asyncio.Lock)
+
+    async def contend():
+        lock = holder.get()
+        assert holder.get() is lock
+
+        async def hold():
+            async with holder.get():
+                await asyncio.sleep(0)
+
+        await asyncio.gather(hold(), hold())
+        return lock
+
+    first = asyncio.run(contend())
+    second = asyncio.run(contend())
+
+    assert first is not second
