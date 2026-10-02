@@ -129,7 +129,10 @@ class MCP:
         No-op for stdio or when auth is enabled. Warns for loopback binds and
         fails closed for non-loopback binds unless explicitly allowed.
         """
-        if transport not in ("sse", "streamable-http") or auth_enabled:
+        # Imported here so `rvl` stays usable without the optional `mcp` extra.
+        from redisvl.mcp.transport_security import HTTP_TRANSPORTS
+
+        if transport not in HTTP_TRANSPORTS or auth_enabled:
             return None
 
         if host not in cls._LOOPBACK_HOSTS and not allow_unauthenticated:
@@ -163,8 +166,10 @@ class MCP:
         if warning:
             print(warning, file=sys.stderr)
 
+        from redisvl.mcp.transport_security import HTTP_TRANSPORTS
+
         transport_kwargs = {}
-        if transport in ("sse", "streamable-http"):
+        if transport in HTTP_TRANSPORTS:
             transport_kwargs["host"] = host
             transport_kwargs["port"] = port
 
