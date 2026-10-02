@@ -237,3 +237,48 @@ def test_build_middleware_merges_configured_hosts():
     kwargs = built[0].kwargs
     assert "proxy.internal:8000" in kwargs["allowed_hosts"]
     assert "127.0.0.1:8000" in kwargs["allowed_hosts"]
+
+
+# --- which transports get the guard -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "transport, configured_default, guarded",
+    [
+        ("streamable-http", "stdio", True),
+        ("sse", "stdio", True),
+        # FastMCP's own default HTTP name, served exactly like streamable-http.
+        ("http", "stdio", True),
+        # An omitted transport falls back to fastmcp.settings.transport, which
+        # can name an HTTP transport just as an explicit argument can.
+        (None, "streamable-http", True),
+        (None, "http", True),
+        ("stdio", "stdio", False),
+        (None, "stdio", False),
+    ],
+)
+def test_every_http_transport_is_served_behind_the_guard(
+    monkeypatch, transport, configured_default, guarded
+):
+    fastmcp = pytest.importorskip(
+        "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
+    )
+    from redisvl.mcp.server import RedisVLMCPServer
+
+    served: dict = {}
+
+    async def record_serve(self, transport=None, show_banner=None, **kwargs):
+        served["middleware"] = kwargs.get("middleware")
+
+    monkeypatch.setattr(fastmcp.FastMCP, "run_async", record_serve)
+    monkeypatch.setattr(fastmcp.settings, "transport", configured_default)
+    guard = object()
+    monkeypatch.setattr(
+        "redisvl.mcp.server.build_host_origin_middleware", lambda *args: [guard]
+    )
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._transport_security = MCPTransportSecurityConfig()
+
+    asyncio.run(server.run_async(transport=transport, host="0.0.0.0", port=8000))
+
+    assert (served["middleware"] == [guard]) is guarded

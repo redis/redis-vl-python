@@ -23,6 +23,7 @@ from redisvl.mcp.tools.profiles import (
 from redisvl.mcp.tools.search import register_search_tool
 from redisvl.mcp.tools.upsert import register_upsert_tool
 from redisvl.mcp.transport_security import (
+    HTTP_TRANSPORTS,
     build_host_origin_middleware,
     resolve_transport_security_config,
 )
@@ -118,7 +119,15 @@ class RedisVLMCPServer(FastMCP):
         outermost, rejecting DNS-rebinding requests before auth or tool handlers.
         ``stdio`` is untouched.
         """
-        if transport in ("sse", "streamable-http"):
+        # Resolved the way FastMCP resolves it: an omitted transport falls back
+        # to `fastmcp.settings.transport`, which can name an HTTP transport, so
+        # testing the raw argument would leave that server unguarded.
+        # Imported here because this module stays importable without the
+        # `mcp` extra.
+        import fastmcp
+
+        resolved = transport if transport is not None else fastmcp.settings.transport
+        if resolved in HTTP_TRANSPORTS:
             host = transport_kwargs.get("host", "127.0.0.1")
             port = transport_kwargs.get("port", 8000)
             guard = build_host_origin_middleware(self._transport_security, host, port)
