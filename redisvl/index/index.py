@@ -40,7 +40,7 @@ from redisvl.redis.utils import (
     make_dict,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
-from redisvl.utils.utils import deprecated_argument, sync_wrapper
+from redisvl.utils.utils import LoopLocal, deprecated_argument, sync_wrapper
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -2352,8 +2352,11 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._redis_client = redis_client
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
-        self._lock = asyncio.Lock()
+        # Guard lazy client and SQL executor creation, which suspend on an
+        # await. Loop-local so the index survives a change of event loop.
+        self._lock = LoopLocal(asyncio.Lock)
         self._sql_executors: dict[str, Any] = {}
+        self._sql_executors_lock = LoopLocal(asyncio.Lock)
 
         self._validated_client = kwargs.pop("_client_validated", False)
         # Must be assigned before _register_client_finalizer, which gates on
@@ -2474,7 +2477,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                     "Build a new index, or pass redis_url so the index can "
                     "manage its own connection."
                 )
-            async with self._lock:
+            async with self._lock.get():
                 # Double-check to protect against concurrent access
                 if self._redis_client is None:
                     # Pass lib_name to connection factory
@@ -3372,16 +3375,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         sql_redis_options = _get_sql_redis_options(sql_query)
         cache_key = _sql_executor_cache_key(sql_redis_options)
 
-        sql_executors_lock = getattr(self, "_sql_executors_lock", None)
-        if sql_executors_lock is None:
-            sql_executors_lock = asyncio.Lock()
-            existing_sql_executors_lock = getattr(self, "_sql_executors_lock", None)
-            if existing_sql_executors_lock is None:
-                self._sql_executors_lock = sql_executors_lock
-            else:
-                sql_executors_lock = existing_sql_executors_lock
-
-        async with sql_executors_lock:
+        async with self._sql_executors_lock.get():
             executor = self._sql_executors.get(cache_key)
             if executor is None:
                 executor = await create_async_executor(client, **sql_redis_options)

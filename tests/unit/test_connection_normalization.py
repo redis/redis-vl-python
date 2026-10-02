@@ -467,6 +467,43 @@ def test_base_cache_async_client_reconnects_on_a_second_event_loop():
     assert len(created) == 2, "each loop should get exactly one client"
 
 
+def test_async_search_index_reconnects_on_a_second_event_loop():
+    """Reconnecting after ``disconnect`` must work on a fresh event loop.
+
+    The lock guarding lazy client creation used to live for the index's
+    lifetime; an ``asyncio.Lock`` rejects any loop but the one that first
+    contended it. Two racing callers per loop force the lock's slow path,
+    the only one that checks the loop -- a single caller passes either way.
+    """
+    index = AsyncSearchIndex(
+        IndexSchema.from_dict(_schema_dict("async-index")),
+        redis_url="redis://localhost:6379",
+    )
+    created = []
+
+    async def factory(*args, **kwargs):
+        await asyncio.sleep(0)  # the suspension the real factory introduces
+        client = AsyncMock(name=f"client{len(created)}")
+        created.append(client)
+        return client
+
+    async def race():
+        await asyncio.gather(index._get_client(), index._get_client())
+
+    async def connect_then_disconnect():
+        await race()
+        await index.disconnect()
+
+    with patch(
+        "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+        new=factory,
+    ):
+        asyncio.run(connect_then_disconnect())
+        asyncio.run(race())
+
+    assert len(created) == 2, "each loop should get exactly one client"
+
+
 def test_sql_query_uses_connection_factory_for_redis_url():
     """Build SQL query helper connections through the shared connection factory."""
     fake_sql_redis_module = _fake_sql_redis_module()

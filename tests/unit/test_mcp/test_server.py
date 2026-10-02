@@ -477,3 +477,42 @@ async def test_shutdown_after_stop_is_idempotent():
     await server.shutdown()
 
     assert server._lifecycle_state.name == "STOPPED"
+
+
+def test_server_restarts_on_a_second_event_loop():
+    """A server stopped on one loop must serve and stop again on another.
+
+    Shutdown waits on the drained event while requests are in flight, and a
+    second concurrent shutdown waits on the transition lock; both are the
+    contended paths that bind an asyncio primitive to its loop. The server
+    supports stop/start, and a second ``run()`` brings a new loop.
+    """
+    server = RedisVLMCPServer(_dummy_settings())
+
+    async def serve_then_stop():
+        # What startup() leaves behind, without loading a real config.
+        server._semaphore = asyncio.Semaphore(2)
+        server.config = _startup_config()
+        server._lifecycle_state = server._LifecycleState.RUNNING
+
+        release = asyncio.Event()
+
+        async def request():
+            await release.wait()
+            return "ok"
+
+        requests = [
+            asyncio.create_task(
+                server.run_guarded("test", request(), timeout_seconds=1)
+            )
+            for _ in range(2)
+        ]
+        await asyncio.sleep(0)  # admit both requests
+        shutdowns = [asyncio.create_task(server.shutdown()) for _ in range(2)]
+        await asyncio.sleep(0)  # both shutdowns now block, one per primitive
+        release.set()
+        await asyncio.gather(*shutdowns)
+        return await asyncio.gather(*requests)
+
+    assert asyncio.run(serve_then_stop()) == ["ok", "ok"]
+    assert asyncio.run(serve_then_stop()) == ["ok", "ok"]

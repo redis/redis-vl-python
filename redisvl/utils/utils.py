@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Coroutine, ParamSpec, Sequence, TypeVar, cast
+from typing import Any, Callable, Coroutine, Generic, ParamSpec, Sequence, TypeVar, cast
 from warnings import warn
 
 from pydantic import BaseModel
@@ -275,6 +275,38 @@ def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Non
             return
 
     return wrapper
+
+
+class LoopLocal(Generic[T]):
+    """An asyncio primitive that is rebuilt whenever the running loop changes.
+
+    ``asyncio.Lock``, ``Event``, ``Semaphore`` and ``Condition`` record the
+    loop that first makes them wait and raise ``RuntimeError`` if awaited from
+    any other. An object that holds one for its whole lifetime therefore
+    breaks as soon as it is used on a second loop -- a later ``asyncio.run``,
+    a fresh pytest-asyncio loop, a notebook cell. A primitive that only has to
+    coordinate tasks within one loop can be discarded when the loop changes,
+    so :meth:`get` builds a fresh one from ``factory`` whenever it is called
+    from a loop other than the one the current primitive was built on.
+
+    Only the contended path performs the loop check, so code that never
+    waits on the primitive will not show the bug; test with racing callers.
+    """
+
+    __slots__ = ("_factory", "_value", "_loop")
+
+    def __init__(self, factory: Callable[[], T]) -> None:
+        self._factory = factory
+        self._value: T | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def get(self) -> T:
+        """Return the primitive for the running loop, building it if needed."""
+        loop = asyncio.get_running_loop()
+        if self._value is None or self._loop is not loop:
+            self._value = self._factory()
+            self._loop = loop
+        return self._value
 
 
 def norm_cosine_distance(value: float) -> float:

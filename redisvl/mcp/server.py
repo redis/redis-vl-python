@@ -29,6 +29,7 @@ from redisvl.mcp.transport_security import (
 )
 from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.schema import IndexSchema
+from redisvl.utils.utils import LoopLocal
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +105,15 @@ class RedisVLMCPServer(FastMCP):
 
         # Lifecycle management
         self._lifecycle_state = _LifecycleState.INITIAL  # Server lifecycle
-        self._transition_lock = asyncio.Lock()  # Prevents overlapping startup/shutdown
-        self._request_state_lock = asyncio.Lock()  # Guards request admission state
+        # Loop-local, so a server stopped on one event loop can start again
+        # on another (a second ``run()``, a fresh test loop).
+        # Prevents overlapping startup/shutdown
+        self._transition_lock = LoopLocal(asyncio.Lock)
+        # Guards request admission state
+        self._request_state_lock = LoopLocal(asyncio.Lock)
         self._active_requests = 0
-        self._active_requests_drained = (
-            asyncio.Event()
-        )  # Set when no requests are active
-        self._active_requests_drained.set()
+        # Set when no requests are active
+        self._active_requests_drained = LoopLocal(self._new_drained_event)
         self._fastmcp_lifespan = self._server_lifespan  # FastMCP startup/shutdown hook
 
         # Resolve the config path to an absolute path so a later working-directory
@@ -185,7 +188,7 @@ class RedisVLMCPServer(FastMCP):
 
     async def startup(self) -> None:
         """Load config, inspect the configured index, and initialize dependencies."""
-        async with self._transition_lock:
+        async with self._transition_lock.get():
             await self._begin_startup()
             try:
                 await self._initialize_runtime_resources()
@@ -202,7 +205,7 @@ class RedisVLMCPServer(FastMCP):
 
     async def shutdown(self) -> None:
         """Release owned vectorizer and Redis resources."""
-        async with self._transition_lock:
+        async with self._transition_lock.get():
             if await self._begin_shutdown():
                 # _begin_shutdown() returns True when startup never finished or teardown already ran.
                 return
@@ -267,7 +270,7 @@ class RedisVLMCPServer(FastMCP):
             raise RuntimeError("MCP server is not running")
 
         async with semaphore:
-            async with self._request_state_lock:
+            async with self._request_state_lock.get():
                 if self._lifecycle_state is not _LifecycleState.RUNNING:
                     self._close_awaitable(awaitable)
                     raise RuntimeError("MCP server is not running")
@@ -277,15 +280,15 @@ class RedisVLMCPServer(FastMCP):
                     raise RuntimeError("MCP server is not running")
 
                 self._active_requests += 1
-                self._active_requests_drained.clear()
+                self._active_requests_drained.get().clear()
 
             try:
                 return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
             finally:
-                async with self._request_state_lock:
+                async with self._request_state_lock.get():
                     self._active_requests -= 1
                     if self._active_requests == 0:
-                        self._active_requests_drained.set()
+                        self._active_requests_drained.get().set()
 
     @staticmethod
     def _build_vectorizer(binding: MCPIndexBindingConfig) -> Any:
@@ -684,7 +687,7 @@ class RedisVLMCPServer(FastMCP):
 
     async def _begin_startup(self) -> None:
         """Move the server into STARTING or fail on invalid transitions."""
-        async with self._request_state_lock:
+        async with self._request_state_lock.get():
             if self._lifecycle_state in (
                 _LifecycleState.STARTING,
                 _LifecycleState.RUNNING,
@@ -694,12 +697,12 @@ class RedisVLMCPServer(FastMCP):
 
     async def _mark_running(self) -> None:
         """Mark the server as fully initialized and ready to admit requests."""
-        async with self._request_state_lock:
+        async with self._request_state_lock.get():
             self._lifecycle_state = _LifecycleState.RUNNING
 
     async def _begin_shutdown(self) -> bool:
         """Move the server into STOPPING unless it is already stopped."""
-        async with self._request_state_lock:
+        async with self._request_state_lock.get():
             if self._lifecycle_state in (
                 _LifecycleState.INITIAL,
                 _LifecycleState.STOPPED,
@@ -715,12 +718,19 @@ class RedisVLMCPServer(FastMCP):
 
     async def _mark_stopped(self) -> None:
         """Mark the server as fully stopped."""
-        async with self._request_state_lock:
+        async with self._request_state_lock.get():
             self._lifecycle_state = _LifecycleState.STOPPED
+
+    def _new_drained_event(self) -> asyncio.Event:
+        """Build the drained event for a new loop, set if nothing is in flight."""
+        event = asyncio.Event()
+        if self._active_requests == 0:
+            event.set()
+        return event
 
     async def _wait_for_active_requests(self) -> None:
         """Wait for already-admitted guarded requests to finish."""
-        await self._active_requests_drained.wait()
+        await self._active_requests_drained.get().wait()
 
     def _verify_auth_not_stale(self) -> None:
         """Fail closed if startup-time auth disagrees with what was wired.
