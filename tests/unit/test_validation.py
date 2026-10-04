@@ -115,7 +115,7 @@ def valid_hash_data():
         "test_id": "doc1",
         "title": "Test Document",
         "rating": 4.5,
-        "location": "37.7749,-122.4194",
+        "location": "-122.4194,37.7749",
         "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",  # Bytes for HASH
         "int_vector": b"\x01\x02\x03",  # Bytes for HASH
     }
@@ -305,6 +305,57 @@ class TestJsonPathExtraction:
 # # -------------------- CATEGORY 2: PARAMETRIZED VALIDATOR TESTS --------------------
 
 
+@pytest.mark.parametrize(
+    "location,valid,field_type",
+    [
+        ("-122.4194,37.7749", True, "geo"),
+        ("151.2093,-33.8688", True, "geo"),
+        ("180,90", True, "geo"),
+        ("-180,-90", True, "geo"),
+        ("180.000,0", True, "geo"),
+        ("-180.000,0", True, "geo"),
+        ("+120.5,+45.5", True, "geo"),
+        (" 120.5, -45.5 ", True, "geo"),
+        ("0,0", True, "geo"),
+        ("181,0", False, "text"),
+        ("-181,0", False, "text"),
+        ("180.1,0", False, "text"),
+        ("-180.1,0", False, "text"),
+        ("0,90.1", False, "text"),
+        ("0,-90.1", False, "text"),
+        ("37.7749,-122.4194", False, "text"),
+        ("120.5", False, "numeric"),
+        ("120.5,", False, "text"),
+        (",45.5", False, "text"),
+        ("120.5,45.5,0", False, "text"),
+    ],
+)
+class TestGeoCoordinateOrder:
+    def test_generate_fields(self, location, valid, field_type):
+        schema = IndexSchema.from_dict({"index": {"name": "locations"}})
+
+        fields = schema.generate_fields({"location": location})
+
+        assert fields[0]["type"] == field_type
+
+    @pytest.mark.parametrize("storage_type", ["hash", "json"])
+    def test_validate_object(self, location, valid, field_type, storage_type):
+        schema = IndexSchema.from_dict(
+            {
+                "index": {"name": "locations", "storage_type": storage_type},
+                "fields": [{"name": "location", "type": "geo"}],
+            }
+        )
+
+        if valid:
+            assert validate_object(schema, {"location": location}) == {
+                "location": location
+            }
+        else:
+            with pytest.raises(ValueError, match="lon,lat"):
+                validate_object(schema, {"location": location})
+
+
 class TestBasicFieldValidation:
     """Tests for validating non-vector field types."""
 
@@ -343,19 +394,19 @@ class TestBasicFieldValidation:
                 "location",
                 [
                     ("0,0", None),
-                    ("90,-180", None),
-                    ("-90,180", None),
-                    ("37.7749,-122.4194", None),
+                    ("-180,90", None),
+                    ("180,-90", None),
+                    ("-122.4194,37.7749", None),
                 ],
                 [
-                    ("invalid_geo", "lat,lon"),
-                    ("37.7749", "lat,lon"),
-                    ("37.7749,", "lat,lon"),
-                    (",122.4194", "lat,lon"),
-                    ("91,0", "lat,lon"),  # Latitude > 90
-                    ("-91,0", "lat,lon"),  # Latitude < -90
-                    ("0,181", "lat,lon"),  # Longitude > 180
-                    ("0,-181", "lat,lon"),  # Longitude < -180
+                    ("invalid_geo", "lon,lat"),
+                    ("37.7749", "lon,lat"),
+                    ("37.7749,", "lon,lat"),
+                    (",122.4194", "lon,lat"),
+                    ("0,91", "lon,lat"),  # Latitude > 90
+                    ("0,-91", "lon,lat"),  # Latitude < -90
+                    ("181,0", "lon,lat"),  # Longitude > 180
+                    ("-181,0", "lon,lat"),  # Longitude < -180
                     (123, "string"),
                     (True, "string"),
                 ],
@@ -560,7 +611,7 @@ class TestEndToEndValidation:
                     "test_id": "doc1",
                     "title": "Test Document",
                     "rating": 4.5,
-                    "location": "37.7749,-122.4194",
+                    "location": "-122.4194,37.7749",
                     "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
                     "int_vector": b"\x01\x02\x03",
                 },
