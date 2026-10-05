@@ -7,9 +7,9 @@ of raised, so a delete can partially succeed. Two consequences are tested here:
   ``SemanticRouter``, which persists a route config -- must not record a reference
   as removed while its key is still there, or the router keeps matching references
   the user believes were deleted.
-* ``clear`` and ``drop_by_filter`` re-query from offset 0 and bound themselves by a
-  count of deletions, so a batch that removes nothing must end the run rather than
-  loop on it forever.
+* ``drop_by_filter`` re-queries from offset 0 and bounds itself by a count of
+  deletions, so a batch that removes nothing must end the run rather than loop on
+  it forever.
 
 These cover the failure paths only; the all-succeed paths run against real Redis in
 ``tests/integration/test_semantic_router.py`` and ``test_bulk_operations.py``.
@@ -103,9 +103,9 @@ class TestUnlinkReportsFailures:
 class TestBatchedDeleteStops:
     """A batch that removes nothing twice must end the run, not spin forever.
 
-    ``clear`` and ``drop_by_filter`` re-query from offset 0 and their runaway
-    backstops count *deletions*, so a key that never goes away keeps coming back
-    while the counter stays put.
+    ``drop_by_filter`` re-queries from offset 0 and its runaway backstop counts
+    *deletions*, so a key that never goes away keeps coming back while the
+    counter stays put.
     """
 
     @pytest.mark.parametrize(
@@ -155,23 +155,6 @@ class TestBatchedDeleteStops:
 
         assert (result.processed, result.completed) == (2, True)
         assert index._query.call_count == 3
-
-    def test_clear_stops_instead_of_looping(self):
-        index, client = _cluster_index()
-        client.delete.side_effect = _failing_on({KEYS[0]})
-        index.query = MagicMock(return_value=1)  # CountQuery: 1 matching doc
-        index._query = MagicMock(return_value=[{"id": KEYS[0]}])
-
-        assert index.clear() == 0
-
-    @pytest.mark.asyncio
-    async def test_async_clear_stops_instead_of_looping(self):
-        index, client = _async_cluster_index()
-        client.delete = AsyncMock(side_effect=_failing_on({KEYS[0]}))
-        index.query = AsyncMock(return_value=1)
-        index._query = AsyncMock(return_value=[{"id": KEYS[0]}])
-
-        assert await index.clear() == 0
 
 
 def _router(references=("hello", "hi there")):

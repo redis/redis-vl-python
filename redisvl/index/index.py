@@ -265,9 +265,9 @@ _PER_KEY_DELETE_ERRORS = (redis.exceptions.RedisError, RedisClusterException)
 def _stalled(unremovable: set[str], batch_keys: list[str]) -> bool:
     """Record a batch that removed nothing, and say whether the run is stuck.
 
-    ``clear`` and ``drop_by_filter`` re-query from offset 0 and bound themselves
-    by a count of *deletions*, so a batch that removes nothing leaves them looping
-    on the same documents with the counter flat — an unterminating loop.
+    ``drop_by_filter`` re-queries from offset 0 and bounds itself by a count of
+    *deletions*, so a batch that removes nothing leaves it looping on the same
+    documents with the counter flat — an unterminating loop.
 
     Bailing out the first time a batch removes nothing would be wrong, though:
     another client may have deleted exactly those documents between the search and
@@ -288,10 +288,10 @@ def _warn_removed_nothing(
 ) -> None:
     """Log why a batched delete stopped before exhausting its match set.
 
-    ``clear`` and ``drop_by_filter`` both re-query from offset 0 and bound
-    themselves by a count of *deletions*, so a batch that removes nothing twice
-    over would leave them looping on the same documents forever. Both stop
-    instead, and this says why — distinguishing the two causes, because only one
+    ``drop_by_filter`` re-queries from offset 0 and bounds itself by a count of
+    *deletions*, so a batch that removes nothing twice over would leave it
+    looping on the same documents forever. It stops instead, and this says why,
+    distinguishing the two causes because only one
     of them is worth retrying: the deletes failed (on cluster they are issued per
     key and logged rather than raised), or the index still lists documents whose
     keys are already gone.
@@ -1361,13 +1361,8 @@ class SearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
 
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
-
-        # Keys a batch failed to remove. Re-querying from offset 0 hands them back
-        # every round, so without this the loop cannot terminate: the backstop
-        # above counts deletions, which stay flat. See _stalled().
-        unremovable: set[str] = set()
 
         while True:
             if total_records_deleted > max_records:
@@ -1381,17 +1376,34 @@ class SearchIndex(BaseSearchIndex):
                 )
                 break
 
+            query.paging(offset, batch_size)
             batch = self._query(query)
             if not batch:
                 break
 
             batch_keys = [record["id"] for record in batch]
-            deleted, failed_keys = self._delete_batch(batch_keys)
-            total_records_deleted += deleted
+            records_deleted, _ = self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
 
-            if not deleted and _stalled(unremovable, batch_keys):
-                _warn_removed_nothing("clear", batch_keys, failed_keys)
-                break
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted, most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past it: the documents behind may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -2810,12 +2822,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
 
         total_records_deleted: int = 0
+        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
-        query.paging(0, batch_size)
-
-        # See SearchIndex.clear: without this the loop cannot terminate when a
-        # batch removes nothing.
-        unremovable: set[str] = set()
 
         while True:
             if total_records_deleted > max_records:
@@ -2829,17 +2837,34 @@ class AsyncSearchIndex(BaseSearchIndex):
                 )
                 break
 
+            query.paging(offset, batch_size)
             batch = await self._query(query)
             if not batch:
                 break
 
             batch_keys = [record["id"] for record in batch]
-            deleted, failed_keys = await self._delete_batch(batch_keys)
-            total_records_deleted += deleted
+            records_deleted, _ = await self._delete_batch(batch_keys)
+            total_records_deleted += records_deleted
 
-            if not deleted and _stalled(unremovable, batch_keys):
-                _warn_removed_nothing("clear", batch_keys, failed_keys)
-                break
+            if records_deleted:
+                # Deleted documents leave the index, so the next page of
+                # survivors is at offset 0 again.
+                offset = 0
+            else:
+                # Nothing in this page could be deleted, most plausibly a
+                # permission denial swallowed by _delete_batch's cluster branch.
+                # Page past it: the documents behind may still be deletable.
+                offset += batch_size
+                if offset > max_records:
+                    logger.warning(
+                        "clear() of index %s paged past its runaway backstop "
+                        "(%d) without being able to delete; %d records were "
+                        "deleted. Documents remain.",
+                        self.schema.index.name,
+                        max_records,
+                        total_records_deleted,
+                    )
+                    break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
