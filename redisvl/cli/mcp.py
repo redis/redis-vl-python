@@ -5,6 +5,15 @@ import asyncio
 import inspect
 import sys
 
+# The HTTP transports the CLI offers. One tuple drives both the `--transport`
+# choices and every HTTP-only branch below, so offering another HTTP transport
+# here cannot silently skip the unauthenticated-bind check or the bind
+# arguments. Deliberately local: the CLI imports nothing from `redisvl.mcp` at
+# module level, so `rvl` stays usable without the optional `mcp` extra. The
+# server's own set, which also covers FastMCP's `"http"`, is
+# `redisvl.mcp.transport_security.HTTP_TRANSPORTS`.
+_HTTP_TRANSPORT_CHOICES = ("sse", "streamable-http")
+
 
 class _MCPArgumentParser(argparse.ArgumentParser):
     """ArgumentParser variant that reports usage errors with exit code 2."""
@@ -51,7 +60,7 @@ class MCP:
         parser.add_argument(
             "--transport",
             help="Transport protocol (default: stdio)",
-            choices=["stdio", "sse", "streamable-http"],
+            choices=["stdio", *_HTTP_TRANSPORT_CHOICES],
             default="stdio",
         )
         parser.add_argument(
@@ -129,10 +138,7 @@ class MCP:
         No-op for stdio or when auth is enabled. Warns for loopback binds and
         fails closed for non-loopback binds unless explicitly allowed.
         """
-        # Imported here so `rvl` stays usable without the optional `mcp` extra.
-        from redisvl.mcp.transport_security import HTTP_TRANSPORTS
-
-        if transport not in HTTP_TRANSPORTS or auth_enabled:
+        if transport not in _HTTP_TRANSPORT_CHOICES or auth_enabled:
             return None
 
         if host not in cls._LOOPBACK_HOSTS and not allow_unauthenticated:
@@ -166,10 +172,8 @@ class MCP:
         if warning:
             print(warning, file=sys.stderr)
 
-        from redisvl.mcp.transport_security import HTTP_TRANSPORTS
-
         transport_kwargs = {}
-        if transport in HTTP_TRANSPORTS:
+        if transport in _HTTP_TRANSPORT_CHOICES:
             transport_kwargs["host"] = host
             transport_kwargs["port"] = port
 

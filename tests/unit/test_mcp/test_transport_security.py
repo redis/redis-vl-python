@@ -282,3 +282,61 @@ def test_every_http_transport_is_served_behind_the_guard(
     asyncio.run(server.run_async(transport=transport, host="0.0.0.0", port=8000))
 
     assert (served["middleware"] == [guard]) is guarded
+
+
+def _run_with_settings(monkeypatch, settings, **run_kwargs):
+    """Run `run_async` against substitute FastMCP settings, recording the guard."""
+    fastmcp = pytest.importorskip(
+        "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
+    )
+    from redisvl.mcp.server import RedisVLMCPServer
+
+    built: list = []
+    served: dict = {}
+
+    async def record_serve(self, transport=None, show_banner=None, **kwargs):
+        served["middleware"] = kwargs.get("middleware")
+
+    monkeypatch.setattr(fastmcp.FastMCP, "run_async", record_serve)
+    monkeypatch.setattr(fastmcp, "settings", settings)
+    monkeypatch.setattr(
+        "redisvl.mcp.server.build_host_origin_middleware",
+        lambda config, host, port: built.append((host, port)) or ["guard"],
+    )
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._transport_security = MCPTransportSecurityConfig()
+    asyncio.run(server.run_async(**run_kwargs))
+    return built, served.get("middleware")
+
+
+def test_an_omitted_transport_serves_stdio_on_fastmcp_without_the_setting(
+    monkeypatch,
+):
+    # `settings.transport` arrived in FastMCP 3.1; before it an omitted
+    # transport was always stdio. The supported range starts at 2.0.
+    from types import SimpleNamespace
+
+    built, middleware = _run_with_settings(
+        monkeypatch, SimpleNamespace(host="127.0.0.1", port=8000), transport=None
+    )
+    assert built == []
+    assert middleware is None
+
+
+def test_the_guard_allowlists_the_address_fastmcp_actually_binds(monkeypatch):
+    # FastMCP binds FASTMCP_HOST / FASTMCP_PORT when no host or port is passed,
+    # so a hardcoded 127.0.0.1:8000 allowlist would reject legitimate Host
+    # headers on that bind.
+    from types import SimpleNamespace
+
+    settings = SimpleNamespace(transport="streamable-http", host="0.0.0.0", port=9123)
+
+    built, middleware = _run_with_settings(monkeypatch, settings, transport=None)
+    assert built == [("0.0.0.0", 9123)]
+    assert middleware == ["guard"]
+
+    # An explicit host and port still take precedence over settings.
+    built, _ = _run_with_settings(
+        monkeypatch, settings, transport="http", host="10.0.0.5", port=7000
+    )
+    assert built == [("10.0.0.5", 7000)]

@@ -119,17 +119,31 @@ class RedisVLMCPServer(FastMCP):
         outermost, rejecting DNS-rebinding requests before auth or tool handlers.
         ``stdio`` is untouched.
         """
-        # Resolved the way FastMCP resolves it: an omitted transport falls back
-        # to `fastmcp.settings.transport`, which can name an HTTP transport, so
-        # testing the raw argument would leave that server unguarded.
-        # Imported here because this module stays importable without the
-        # `mcp` extra.
+        # Resolved the way FastMCP resolves it, because the guard has to know
+        # what will actually be served. An omitted transport falls back to
+        # `fastmcp.settings.transport` (FASTMCP_TRANSPORT), which can name an
+        # HTTP transport; FastMCP before 3.1 has no such setting and always
+        # served stdio, so that is the fallback. Imported here because this
+        # module stays importable without the `mcp` extra.
         import fastmcp
 
-        resolved = transport if transport is not None else fastmcp.settings.transport
+        settings = getattr(fastmcp, "settings", None)
+        resolved = (
+            transport
+            if transport is not None
+            else getattr(settings, "transport", "stdio")
+        )
         if resolved in HTTP_TRANSPORTS:
-            host = transport_kwargs.get("host", "127.0.0.1")
-            port = transport_kwargs.get("port", 8000)
+            # The allowlist must match the address FastMCP binds, which falls
+            # back to settings (FASTMCP_HOST / FASTMCP_PORT) the same way.
+            # Hardcoded defaults would reject legitimate Host headers on a
+            # settings-driven bind.
+            host: Any = transport_kwargs.get("host")
+            if host is None:
+                host = getattr(settings, "host", "127.0.0.1")
+            port: Any = transport_kwargs.get("port")
+            if port is None:
+                port = getattr(settings, "port", 8000)
             guard = build_host_origin_middleware(self._transport_security, host, port)
             if guard:
                 existing = transport_kwargs.get("middleware") or []
