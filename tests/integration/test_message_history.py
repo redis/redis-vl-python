@@ -6,6 +6,7 @@ from redis.exceptions import ConnectionError, NoPermissionError
 
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
+from redisvl.utils.vectorize import CustomVectorizer
 from tests.conftest import skip_if_no_redis_search
 
 
@@ -30,6 +31,28 @@ def semantic_history(app_name, client, hf_vectorizer):
     yield history
     history.clear()
     history.delete()
+
+
+@pytest.fixture
+def stub_semantic_history(app_name, client):
+    """Semantic history with a stub vectorizer, for tests that never search by vector."""
+    skip_if_no_redis_search(client)
+    history = SemanticMessageHistory(
+        app_name,
+        redis_client=client,
+        overwrite=True,
+        vectorizer=CustomVectorizer(lambda text: [0.1, 0.2, 0.3]),
+    )
+    yield history
+    history.clear()
+    history.delete()
+
+
+def _numbered_messages(count, prefix="message"):
+    return [
+        {"role": "user" if i % 2 == 0 else "llm", "content": f"{prefix} {i:04d}"}
+        for i in range(count)
+    ]
 
 
 @pytest.fixture(autouse=True)
@@ -240,6 +263,24 @@ def test_standard_messages_property(standard_history):
         {"role": "llm", "content": "second response", "metadata": {"params": "abc"}},
         {"role": "user", "content": "third prompt", "metadata": 42},
     ]
+
+
+def test_standard_messages_property_past_1000(standard_history):
+    messages = _numbered_messages(1005)
+    standard_history.add_messages(messages)
+    assert standard_history.count() == 1005
+
+    assert standard_history.messages == messages
+
+
+def test_standard_messages_property_scope(standard_history):
+    own = _numbered_messages(5)
+    standard_history.add_messages(own)
+    standard_history.add_messages(
+        _numbered_messages(15, prefix="other"), session_tag="other_session"
+    )
+
+    assert standard_history.messages == own
 
 
 def test_standard_scope(standard_history):
@@ -524,6 +565,55 @@ def test_semantic_messages_property(semantic_history):
         {"role": "llm", "content": "second response"},
         {"role": "user", "content": "third prompt"},
     ]
+
+
+def test_semantic_messages_property_past_10(stub_semantic_history):
+    messages = _numbered_messages(12)
+    stub_semantic_history.add_messages(messages)
+    assert stub_semantic_history.count() == 12
+
+    assert stub_semantic_history.messages == messages
+
+
+def test_semantic_messages_property_matches_get_recent(stub_semantic_history):
+    stub_semantic_history.add_messages(_numbered_messages(25))
+    recent = stub_semantic_history.get_recent(top_k=25)
+    assert len(recent) == 25
+
+    assert stub_semantic_history.messages == recent
+
+
+def test_semantic_messages_property_up_to_10(stub_semantic_history):
+    assert stub_semantic_history.messages == []
+
+    messages = _numbered_messages(7)
+    stub_semantic_history.add_messages(messages)
+    assert stub_semantic_history.messages == messages
+
+
+def test_semantic_messages_property_scope(stub_semantic_history):
+    own = _numbered_messages(5)
+    stub_semantic_history.add_messages(own)
+    stub_semantic_history.add_messages(
+        _numbered_messages(15, prefix="other"), session_tag="other_session"
+    )
+
+    assert stub_semantic_history.messages == own
+
+
+def test_semantic_messages_property_keeps_tool_fields(stub_semantic_history):
+    messages = [
+        {"role": "user", "content": "first prompt"},
+        {
+            "role": "tool",
+            "content": "tool result",
+            "tool_call_id": "tool call one",
+            "metadata": {"params": "abc"},
+        },
+    ]
+    stub_semantic_history.add_messages(messages)
+
+    assert stub_semantic_history.messages == messages
 
 
 @pytest.mark.requires_hf

@@ -159,10 +159,12 @@ class MessageHistory(BaseMessageHistory):
         query = FilterQuery(
             filter_expression=self._default_session_filter,
             return_fields=return_fields,
-            num_results=1000,
         )
         query.sort_by(TIMESTAMP_FIELD_NAME, asc=True)
-        messages = self._index.query(query)
+        # Page through the whole session: a single query stops at num_results.
+        messages = [
+            m for page in self._index.paginate(query, page_size=1000) for m in page
+        ]
 
         return self._format_context(messages, as_text=False)
 
