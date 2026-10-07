@@ -691,7 +691,7 @@ class SemanticRouter(BaseModel):
             for reference in route.references
         ]
         keys = list({key for key, _ in keyed_references})
-        _, failed_keys = self._index._drop_keys(keys)
+        deleted, failed_keys = self._index._drop_keys(keys)
         failed = set(failed_keys)
         remaining = [ref for key, ref in keyed_references if key in failed]
 
@@ -707,6 +707,7 @@ class SemanticRouter(BaseModel):
                 f"{route_name!r}, so the route was kept with those references. "
                 f"Retry to remove it.",
                 failed_keys=sorted(failed),
+                deleted=deleted,
             )
 
     def delete(self) -> None:
@@ -1067,7 +1068,8 @@ class SemanticRouter(BaseModel):
                     f"reference in the router config; the config may be stale."
                 )
                 continue
-            route.references.remove(reference)
+            # Duplicate references share one hash, so every copy went with it.
+            route.references = [ref for ref in route.references if ref != reference]
 
         # A route whose last reference was just deleted has nothing left to match,
         # and `Route` rejects an empty reference list -- persisting one would write a

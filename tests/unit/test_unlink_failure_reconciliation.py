@@ -231,6 +231,19 @@ class TestSemanticRouterReconcilesFailedUnlinks:
         assert router.get("support:billing") is None
         assert _persisted_routes(client) == []
 
+    def test_delete_route_references_drops_every_copy_of_a_deleted_reference(self):
+        """Duplicate references share one hash, so unlinking it removes them all."""
+        router, client = _router(references=("hello", "hello", "hi there"))
+        client.hgetall.side_effect = lambda key: {
+            "route_name": "greeting",
+            "reference": "hello",
+        }
+        client.unlink.side_effect = _failing_on(set())
+
+        assert router.delete_route_references(keys=["rtr:greeting:h1"]) == 1
+        assert router.get("greeting").references == ["hi there"]
+        assert _persisted_routes(client)[0]["references"] == ["hi there"]
+
     def test_delete_route_references_persists_when_the_hash_is_already_gone(self):
         """A vanished hash yields no reference to reconcile -- and must not raise.
 
@@ -254,6 +267,7 @@ class TestSemanticRouterReconcilesFailedUnlinks:
             router.remove_route("greeting")
 
         assert excinfo.value.failed_keys == [failing_key]
+        assert excinfo.value.deleted == 1
         route = router.get("greeting")
         assert route is not None, "route was dropped while a reference key remains"
         assert route.references == ["hi there"]
