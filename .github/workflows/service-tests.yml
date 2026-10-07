@@ -49,6 +49,11 @@ jobs:
     environment:
       name: ${{ inputs.environment }}
       deployment: false
+    # `id-token: write` lets the GCP auth step exchange this job's GitHub OIDC
+    # token for short-lived Google credentials. Each caller must grant it too.
+    permissions:
+      contents: read
+      id-token: write
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
@@ -85,17 +90,19 @@ jobs:
         run: |
           uv sync --all-extras --frozen
 
+      # Workload Identity Federation, so no Google key is stored anywhere. The
+      # provider's resource name comes from the GCP_WORKLOAD_IDENTITY_PROVIDER
+      # Actions variable rather than being written here.
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
 
       # Credentials are scoped to this step alone rather than the job, so the
       # dependency installs and any PEP 517 build hooks above run without them.
       - name: Run full test suite
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}

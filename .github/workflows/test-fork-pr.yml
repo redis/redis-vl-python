@@ -248,6 +248,7 @@ jobs:
     needs: setup
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/service-tests.yml
     with:
       environment: ci-external
