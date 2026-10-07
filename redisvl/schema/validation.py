@@ -6,6 +6,7 @@ using dynamically generated Pydantic models.
 """
 
 import json
+from functools import lru_cache
 from typing import Any
 
 from jsonpath_ng import parse as jsonpath_parse
@@ -210,6 +211,28 @@ class SchemaModelGenerator:
         return type(model_name, (BaseModel,), class_dict)
 
 
+@lru_cache(maxsize=512)
+def _compile_json_path(path: str) -> Any:
+    """
+    Parse a JSONPath expression, reusing the result for repeated paths.
+
+    Schema field paths are fixed, and parsing costs ~1ms against microseconds to
+    evaluate, so validating per field re-did the expensive half every time.
+    Sharing one expression is safe: it holds no per-evaluation state.
+
+    Args:
+        path: JSONPath expression, with or without the leading ``$``
+
+    Returns:
+        The parsed jsonpath-ng expression
+    """
+    # If path doesn't start with $, add it as per JSONPath spec
+    if not path.startswith("$"):
+        path = f"$.{path}"
+
+    return jsonpath_parse(path)
+
+
 def extract_from_json_path(obj: dict[str, Any], path: str) -> Any:
     """
     Extract a value from a nested JSON object using a JSONPath expression.
@@ -226,13 +249,7 @@ def extract_from_json_path(obj: dict[str, Any], path: str) -> Any:
         and supports the full JSONPath specification including filters, wildcards,
         and array indexing.
     """
-    # If path doesn't start with $, add it as per JSONPath spec
-    if not path.startswith("$"):
-        path = f"$.{path}"
-
-    # Parse and find the JSONPath expression
-    jsonpath_expr = jsonpath_parse(path)
-    matches = jsonpath_expr.find(obj)
+    matches = _compile_json_path(path).find(obj)
 
     # Return the first match value, or None if no matches
     if matches:

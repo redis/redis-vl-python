@@ -14,11 +14,13 @@ from typing import Any
 import pytest
 
 from redisvl.schema import IndexSchema
+from redisvl.schema import validation as validation_module
 from redisvl.schema.fields import FieldTypes, VectorDataType
 from redisvl.schema.schema import StorageType
 from redisvl.schema.type_utils import TypeInferrer
 from redisvl.schema.validation import (
     SchemaModelGenerator,
+    _compile_json_path,
     extract_from_json_path,
     validate_object,
 )
@@ -300,6 +302,51 @@ class TestJsonPathExtraction:
     def test_extract_from_json_path(self, valid_json_data, path, expected_value):
         """Test extracting values using JSON paths."""
         assert extract_from_json_path(valid_json_data, path) == expected_value
+
+    @pytest.fixture
+    def parse_calls(self, monkeypatch):
+        """Record every path handed to jsonpath-ng's parser."""
+        calls: list[str] = []
+        real_parse = validation_module.jsonpath_parse
+
+        def counting_parse(path):
+            calls.append(path)
+            return real_parse(path)
+
+        _compile_json_path.cache_clear()
+        monkeypatch.setattr(validation_module, "jsonpath_parse", counting_parse)
+        return calls
+
+    def test_repeated_path_compiles_once(self, valid_json_data, parse_calls):
+        """A repeated path compiles once, not once per call."""
+        for _ in range(25):
+            assert (
+                extract_from_json_path(valid_json_data, "$.metadata.user") == "user123"
+            )
+
+        assert parse_calls == ["$.metadata.user"]
+
+    def test_distinct_paths_each_compile(self, valid_json_data, parse_calls):
+        """Caching must not collapse distinct paths onto one expression."""
+        assert extract_from_json_path(valid_json_data, "$.metadata.user") == "user123"
+        assert extract_from_json_path(valid_json_data, "$.metadata.rating") == 4.5
+        assert len(parse_calls) == 2
+
+    def test_shared_expression_holds_no_state(self):
+        """Reusing one expression must not leak values between evaluations."""
+        _compile_json_path.cache_clear()
+
+        for expected in ("alice", "bob", "carol"):
+            obj = {"metadata": {"user": expected}}
+            assert extract_from_json_path(obj, "$.metadata.user") == expected
+
+        assert extract_from_json_path({"metadata": {}}, "$.metadata.user") is None
+
+    def test_leading_dollar_is_optional(self, valid_json_data):
+        """Both spellings of a path resolve to the same value."""
+        assert extract_from_json_path(
+            valid_json_data, "metadata.user"
+        ) == extract_from_json_path(valid_json_data, "$.metadata.user")
 
 
 # # -------------------- CATEGORY 2: PARAMETRIZED VALIDATOR TESTS --------------------
