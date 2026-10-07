@@ -4,7 +4,8 @@ This module defines the abstract base cache interface that is implemented by
 specific cache types such as LLM caches and embedding caches.
 """
 
-from typing import Any, cast
+import asyncio
+from typing import Any, TypedDict
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
@@ -16,6 +17,18 @@ from redisvl.utils.utils import match_pattern
 # Keys deleted per DEL when clearing. Also the SCAN count hint, so one page of
 # keys maps to one delete round-trip.
 CLEAR_BATCH_SIZE = 500
+
+
+class _CacheConnectionKwargs(TypedDict):
+    """The connection parameters a cache keeps for building its clients.
+
+    Annotated so each value keeps its own type. Without it the dict literal
+    widens to the union of all three, and every read needs a cast.
+    """
+
+    redis_client: SyncRedisClient | None
+    redis_url: str
+    connection_kwargs: dict[str, Any]
 
 
 class BaseCache:
@@ -54,7 +67,7 @@ class BaseCache:
         self._ttl: int | None = None
         self.set_ttl(ttl)
 
-        self.redis_kwargs = {
+        self.redis_kwargs: _CacheConnectionKwargs = {
             "redis_client": redis_client,
             "redis_url": redis_url,
             "connection_kwargs": connection_kwargs,
@@ -63,7 +76,15 @@ class BaseCache:
         # Initialize Redis clients
         self._async_redis_client = async_redis_client
         self._redis_client = redis_client
+        # Guards lazy async client creation, which suspends on an await and so
+        # cannot rely on a bare check-then-set. Rebuilt whenever the running
+        # loop changes -- see _get_async_client_lock.
+        self._async_client_lock: asyncio.Lock | None = None
+        self._async_client_lock_loop: asyncio.AbstractEventLoop | None = None
 
+        # Caches never close a caller-supplied client and register no GC
+        # finalizer, so the index's owns_client handover has no cache
+        # equivalent by design.
         if redis_client or async_redis_client:
             self._owns_redis_client = False
         else:
@@ -118,13 +139,31 @@ class BaseCache:
         """
         if self._redis_client is None:
             # Create new Redis client
-            url = cast(str | None, self.redis_kwargs["redis_url"])
-            kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
+            url = self.redis_kwargs["redis_url"]
+            kwargs = self.redis_kwargs["connection_kwargs"]
             self._redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=url,
                 **kwargs,
             )
         return self._redis_client
+
+    def _get_async_client_lock(self) -> asyncio.Lock:
+        """Return the client-creation lock, bound to the running loop.
+
+        An ``asyncio.Lock`` records the loop that first contends it and raises
+        ``RuntimeError`` if awaited from any other, so one long-lived lock
+        would break a reconnect that lands on a second loop -- a later
+        ``asyncio.run``, a fresh pytest-asyncio loop, a notebook cell. The
+        lock only has to serialise tasks within a single loop, so discarding
+        it when the loop changes is both sufficient and cheap.
+        """
+        loop = asyncio.get_running_loop()
+        lock = self._async_client_lock
+        if lock is None or self._async_client_lock_loop is not loop:
+            lock = asyncio.Lock()
+            self._async_client_lock = lock
+            self._async_client_lock_loop = loop
+        return lock
 
     async def _get_async_redis_client(self) -> AsyncRedisClient:
         """Get or create an async Redis client.
@@ -132,22 +171,24 @@ class BaseCache:
         Returns:
             AsyncRedisClient: An async Redis client instance.
         """
-        if not hasattr(self, "_async_redis_client") or self._async_redis_client is None:
-            client = self.redis_kwargs.get("redis_client")
-
-            if client and isinstance(client, (Redis, RedisCluster)):
-                self._async_redis_client = RedisConnectionFactory.sync_to_async_redis(
-                    client
-                )
-            else:
-                url = cast(str | None, self.redis_kwargs["redis_url"])
-                kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
-                self._async_redis_client = (
-                    RedisConnectionFactory.get_async_redis_connection(
-                        redis_url=url, **kwargs
-                    )
-                )
-        return self._async_redis_client
+        client = getattr(self, "_async_redis_client", None)
+        if client is None:
+            async with self._get_async_client_lock():
+                # Double-check: another task may have created the client while
+                # this one waited on the lock or on the factory's round trip.
+                client = getattr(self, "_async_redis_client", None)
+                if client is None:
+                    provided = self.redis_kwargs.get("redis_client")
+                    if provided and isinstance(provided, (Redis, RedisCluster)):
+                        client = RedisConnectionFactory.sync_to_async_redis(provided)
+                    else:
+                        url = self.redis_kwargs["redis_url"]
+                        kwargs = self.redis_kwargs["connection_kwargs"]
+                        client = await RedisConnectionFactory._get_aredis_connection(
+                            redis_url=url, **kwargs
+                        )
+                    self._async_redis_client = client
+        return client
 
     def _resolve_ttl(self, ttl: int | None = None) -> int | None:
         """Resolve an explicit TTL against this cache's default TTL.
