@@ -187,6 +187,7 @@ def index(sample_data, redis_url, worker_id):
             ],
         },
         redis_url=redis_url,
+        validate_on_load=True,
     )
 
     # create the index (no data yet)
@@ -1122,7 +1123,7 @@ def missing_fields_index(worker_id, client):
             "title": "Complete Document",
             "category": "electronics",
             "price": 99,
-            "location": "37.7749,-122.4194",
+            "location": "-122.4194,37.7749",
             "description": "A complete document with all fields",
         },
         {
@@ -1130,7 +1131,7 @@ def missing_fields_index(worker_id, client):
             "title": "",  # Empty title
             "category": "",  # Empty category
             "price": 150,
-            "location": "40.7128,-74.0060",
+            "location": "-74.0060,40.7128",
             "description": "Document with empty string values",
         },
         {
@@ -1151,7 +1152,7 @@ def missing_fields_index(worker_id, client):
             "title": "Zero Price Item",
             "category": "free",
             "price": 0,  # Valid zero value
-            "location": "34.0522,-118.2437",
+            "location": "-118.2437,34.0522",
             "description": "Document with zero price",
         },
     ]

@@ -129,7 +129,7 @@ class SchemaModelGenerator:
                             # Validate against pattern
                             if not TypeInferrer._is_geographic(value):
                                 raise ValueError(
-                                    f"Geo field '{fname}' value '{value}' is not a valid 'lon,lat' format"
+                                    f"Geo field '{fname}' value '{value}' is not a valid 'longitude,latitude' pair, e.g. '-122.4194,37.7749'"
                                 )
                         return value
 

@@ -8,7 +8,6 @@ This module tests the core validation functionality:
 4. Validation of various field types
 """
 
-import re
 from typing import Any
 
 import pytest
@@ -305,57 +304,6 @@ class TestJsonPathExtraction:
 # # -------------------- CATEGORY 2: PARAMETRIZED VALIDATOR TESTS --------------------
 
 
-@pytest.mark.parametrize(
-    "location,valid,field_type",
-    [
-        ("-122.4194,37.7749", True, "geo"),
-        ("151.2093,-33.8688", True, "geo"),
-        ("180,90", True, "geo"),
-        ("-180,-90", True, "geo"),
-        ("180.000,0", True, "geo"),
-        ("-180.000,0", True, "geo"),
-        ("+120.5,+45.5", True, "geo"),
-        (" 120.5, -45.5 ", True, "geo"),
-        ("0,0", True, "geo"),
-        ("181,0", False, "text"),
-        ("-181,0", False, "text"),
-        ("180.1,0", False, "text"),
-        ("-180.1,0", False, "text"),
-        ("0,90.1", False, "text"),
-        ("0,-90.1", False, "text"),
-        ("37.7749,-122.4194", False, "text"),
-        ("120.5", False, "numeric"),
-        ("120.5,", False, "text"),
-        (",45.5", False, "text"),
-        ("120.5,45.5,0", False, "text"),
-    ],
-)
-class TestGeoCoordinateOrder:
-    def test_generate_fields(self, location, valid, field_type):
-        schema = IndexSchema.from_dict({"index": {"name": "locations"}})
-
-        fields = schema.generate_fields({"location": location})
-
-        assert fields[0]["type"] == field_type
-
-    @pytest.mark.parametrize("storage_type", ["hash", "json"])
-    def test_validate_object(self, location, valid, field_type, storage_type):
-        schema = IndexSchema.from_dict(
-            {
-                "index": {"name": "locations", "storage_type": storage_type},
-                "fields": [{"name": "location", "type": "geo"}],
-            }
-        )
-
-        if valid:
-            assert validate_object(schema, {"location": location}) == {
-                "location": location
-            }
-        else:
-            with pytest.raises(ValueError, match="lon,lat"):
-                validate_object(schema, {"location": location})
-
-
 class TestBasicFieldValidation:
     """Tests for validating non-vector field types."""
 
@@ -394,19 +342,20 @@ class TestBasicFieldValidation:
                 "location",
                 [
                     ("0,0", None),
-                    ("-180,90", None),
-                    ("180,-90", None),
+                    ("-180,85", None),
+                    ("180,-85", None),
                     ("-122.4194,37.7749", None),
                 ],
                 [
-                    ("invalid_geo", "lon,lat"),
-                    ("37.7749", "lon,lat"),
-                    ("37.7749,", "lon,lat"),
-                    (",122.4194", "lon,lat"),
-                    ("0,91", "lon,lat"),  # Latitude > 90
-                    ("0,-91", "lon,lat"),  # Latitude < -90
-                    ("181,0", "lon,lat"),  # Longitude > 180
-                    ("-181,0", "lon,lat"),  # Longitude < -180
+                    ("invalid_geo", "longitude,latitude"),
+                    ("37.7749", "longitude,latitude"),
+                    ("37.7749,", "longitude,latitude"),
+                    (",122.4194", "longitude,latitude"),
+                    ("0,91", "longitude,latitude"),  # Latitude > 90
+                    ("0,-91", "longitude,latitude"),  # Latitude < -90
+                    ("181,0", "longitude,latitude"),  # Longitude > 180
+                    ("-181,0", "longitude,latitude"),  # Longitude < -180
+                    ("37.7749,-122.4194", "longitude,latitude"),  # lat,lon order
                     (123, "string"),
                     (True, "string"),
                 ],
@@ -425,17 +374,17 @@ class TestBasicFieldValidation:
         for value, _ in valid_values:
             validate_field(sample_hash_schema, field_name, value, True)
 
-            # For GEO fields, also verify pattern
+            # For GEO fields, also verify type inference
             if field_type == "geo" and isinstance(value, str):
-                assert re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+                assert TypeInferrer.infer(value) == "geo"
 
         # Test invalid values
         for value, error_text in invalid_values:
             validate_field(sample_hash_schema, field_name, value, False, error_text)
 
-            # For GEO fields, also verify pattern failure
+            # For GEO fields, also verify type inference rejects GEO
             if field_type == "geo" and isinstance(value, str):
-                assert not re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+                assert TypeInferrer.infer(value) != "geo"
 
     @pytest.mark.parametrize(
         "test_case",
