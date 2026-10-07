@@ -8,7 +8,6 @@ This module tests the core validation functionality:
 4. Validation of various field types
 """
 
-import re
 from typing import Any
 
 import pytest
@@ -117,7 +116,7 @@ def valid_hash_data():
         "test_id": "doc1",
         "title": "Test Document",
         "rating": 4.5,
-        "location": "37.7749,-122.4194",
+        "location": "-122.4194,37.7749",
         "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",  # Bytes for HASH
         "int_vector": b"\x01\x02\x03",  # Bytes for HASH
     }
@@ -390,19 +389,20 @@ class TestBasicFieldValidation:
                 "location",
                 [
                     ("0,0", None),
-                    ("90,-180", None),
-                    ("-90,180", None),
-                    ("37.7749,-122.4194", None),
+                    ("-180,85", None),
+                    ("180,-85", None),
+                    ("-122.4194,37.7749", None),
                 ],
                 [
-                    ("invalid_geo", "lat,lon"),
-                    ("37.7749", "lat,lon"),
-                    ("37.7749,", "lat,lon"),
-                    (",122.4194", "lat,lon"),
-                    ("91,0", "lat,lon"),  # Latitude > 90
-                    ("-91,0", "lat,lon"),  # Latitude < -90
-                    ("0,181", "lat,lon"),  # Longitude > 180
-                    ("0,-181", "lat,lon"),  # Longitude < -180
+                    ("invalid_geo", "longitude,latitude"),
+                    ("37.7749", "longitude,latitude"),
+                    ("37.7749,", "longitude,latitude"),
+                    (",122.4194", "longitude,latitude"),
+                    ("0,91", "longitude,latitude"),  # Latitude > 90
+                    ("0,-91", "longitude,latitude"),  # Latitude < -90
+                    ("181,0", "longitude,latitude"),  # Longitude > 180
+                    ("-181,0", "longitude,latitude"),  # Longitude < -180
+                    ("37.7749,-122.4194", "longitude,latitude"),  # lat,lon order
                     (123, "string"),
                     (True, "string"),
                 ],
@@ -421,17 +421,17 @@ class TestBasicFieldValidation:
         for value, _ in valid_values:
             validate_field(sample_hash_schema, field_name, value, True)
 
-            # For GEO fields, also verify pattern
+            # For GEO fields, also verify type inference
             if field_type == "geo" and isinstance(value, str):
-                assert re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+                assert TypeInferrer.infer(value) == "geo"
 
         # Test invalid values
         for value, error_text in invalid_values:
             validate_field(sample_hash_schema, field_name, value, False, error_text)
 
-            # For GEO fields, also verify pattern failure
+            # For GEO fields, also verify type inference rejects GEO
             if field_type == "geo" and isinstance(value, str):
-                assert not re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+                assert TypeInferrer.infer(value) != "geo"
 
     @pytest.mark.parametrize(
         "test_case",
@@ -607,7 +607,7 @@ class TestEndToEndValidation:
                     "test_id": "doc1",
                     "title": "Test Document",
                     "rating": 4.5,
-                    "location": "37.7749,-122.4194",
+                    "location": "-122.4194,37.7749",
                     "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
                     "int_vector": b"\x01\x02\x03",
                 },

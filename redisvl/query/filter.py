@@ -418,8 +418,8 @@ class GeoRadius(GeoSpec):
 
 
 class Geo(FilterField):
-    """A Geo is a FilterField representing a geographic (lat/lon) field in a
-    Redis index.
+    """A Geo is a FilterField representing a geographic (longitude, latitude)
+    field in a Redis index.
 
     Note:
         Redis indexes latitudes only within +/-85.05112878 degrees (EPSG:900913).
