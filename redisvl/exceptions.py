@@ -17,6 +17,29 @@ class RedisSearchError(RedisVLError):
     pass
 
 
+class PartialDeletionError(RedisVLError):
+    """Raised when some keys could not be removed from Redis.
+
+    On Redis Cluster, keys are removed one at a time and a per-key failure is
+    logged rather than raised, so one unreachable slot does not abort the whole
+    batch. That is fine for callers who only want a best-effort count, but not for
+    ones that mirror the keyspace in their own state — a ``SemanticRouter``, for
+    instance, persists the list of references it holds. Those callers reconcile
+    their state against the keys that actually went away, persist it, and *then*
+    raise this, so the partial deletion cannot pass unnoticed and a retry targets
+    exactly what is left.
+
+    Attributes:
+        failed_keys (List[str]): The keys still present in Redis.
+        deleted (int): How many keys were removed.
+    """
+
+    def __init__(self, message: str, failed_keys: list[str], deleted: int = 0):
+        super().__init__(message)
+        self.failed_keys = list(failed_keys)
+        self.deleted = deleted
+
+
 class SchemaValidationError(RedisVLError):
     """Error when validating data against a schema."""
 

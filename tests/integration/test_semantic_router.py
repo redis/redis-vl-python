@@ -650,9 +650,13 @@ def test_add_delete_route_references(semantic_router):
 
     assert deleted == 1
 
+    # "greeting" keeps the 2 of its 4 references that were not deleted. "farewell"
+    # lost all of its references, so the route itself is gone -- a route with none
+    # can never match, and Route rejects an empty list, so persisting one would make
+    # the config unloadable by from_existing.
     router_dict = semantic_router.to_dict()
+    assert [r["name"] for r in router_dict["routes"]] == ["greeting"]
     assert len(router_dict["routes"][0]["references"]) == 2
-    assert len(router_dict["routes"][1]["references"]) == 0
 
 
 def test_from_existing(client, redis_url, routes, redis_test_name):
@@ -712,6 +716,39 @@ def test_delete_removes_route_config_key(
         SemanticRouter.from_existing(name=router.name, redis_client=client)
 
 
+def test_from_existing_after_deleting_every_reference_of_a_route(
+    client, routes, hf_vectorizer, redis_test_name
+):
+    """Emptying a route must leave a config from_existing can still load.
+
+    delete_route_references(route_name=...) removes a route's last reference, and
+    Route rejects references=[], so persisting the emptied route made the config
+    unparsable -- from_existing failed with "References must not be empty" and the
+    router could not be reloaded or repaired through the API.
+    """
+    skip_if_no_redis_search(client)
+
+    router = SemanticRouter(
+        name=redis_test_name("test_router_empty_refs"),
+        routes=routes,
+        routing_config=RoutingConfig(max_k=2),
+        redis_client=client,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    try:
+        router.delete_route_references(route_name="greeting")
+
+        reloaded = SemanticRouter.from_existing(
+            name=router.name, redis_client=client, vectorizer=hf_vectorizer
+        )
+        assert "greeting" not in [route.name for route in reloaded.routes]
+        assert reloaded.to_dict() == router.to_dict()
+    finally:
+        with suppress(Exception):
+            router.delete()
+
+
 def test_get_route_references(semantic_router):
     # Get references for a specific route
     refs = semantic_router.get_route_references(route_name="greeting")
@@ -755,5 +792,8 @@ def test_delete_route_references(semantic_router):
 
     assert deleted == 2
 
+    # Deleting every reference of a route removes the route: it can no longer match
+    # anything, and a persisted route with references=[] fails Route validation on
+    # the way back in, so from_existing could not reload the config.
     router_dict = semantic_router.to_dict()
-    assert len(router_dict["routes"][0]["references"]) == 0
+    assert [r["name"] for r in router_dict["routes"]] == ["farewell"]
