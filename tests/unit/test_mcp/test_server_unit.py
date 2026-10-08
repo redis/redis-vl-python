@@ -855,8 +855,9 @@ def _route_check(*, builtin_tools, custom_tools=None, read_only=False, indexes=N
                         "redis_name": f"{index_id}-index",
                         "search": {"type": "fulltext"},
                         "runtime": {"text_field_name": "content"},
+                        **overrides,
                     }
-                    for index_id in indexes
+                    for index_id, overrides in indexes.items()
                 },
                 "custom_tools": custom_tools,
             }
@@ -955,10 +956,60 @@ def test_upsert_is_no_route_to_a_read_only_index(server_read_only):
 def test_an_unscoped_profile_on_another_index_is_no_route():
     _route_check(
         builtin_tools=_BUILTINS_OFF,
-        indexes=("knowledge", "public"),
+        indexes={"knowledge": {}, "public": {}},
         custom_tools=[
             {**_INJECTING, "index": "knowledge"},
             {"name": "public-search", "description": "Search.", "index": "public"},
+        ],
+    )
+
+
+# Two bindings over one Redis index, for example a vector and a fulltext view of
+# the same documents. Each is a route to the documents the other scopes.
+_SIBLINGS = {
+    "kb_semantic": {"redis_name": "customer-kb"},
+    "kb_keyword": {"redis_name": "customer-kb"},
+}
+
+
+def test_an_unscoped_profile_on_a_binding_over_the_same_redis_index_is_refused():
+    with pytest.raises(ValueError) as exc:
+        _route_check(
+            builtin_tools=_BUILTINS_OFF,
+            indexes=_SIBLINGS,
+            custom_tools=[
+                {**_INJECTING, "index": "kb_semantic"},
+                {"name": "search-all", "description": "Search.", "index": "kb_keyword"},
+            ],
+        )
+
+    message = str(exc.value)
+    assert "'search-all' injects nothing" in message
+    # The binding ids alone would not tell the operator the two share data.
+    assert "'customer-kb' (bindings 'kb_keyword', 'kb_semantic')" in message
+
+
+def test_upsert_through_a_writable_binding_over_the_same_redis_index_is_refused():
+    # The scoped binding is read-only, but a write naming its writable sibling
+    # still lands in the same documents.
+    with pytest.raises(ValueError, match="through upsert-records via 'kb_keyword'"):
+        _route_check(
+            builtin_tools={"search-records": "disabled"},
+            indexes={
+                "kb_semantic": {"redis_name": "customer-kb", "read_only": True},
+                "kb_keyword": {"redis_name": "customer-kb"},
+            },
+            custom_tools=[{**_INJECTING, "index": "kb_semantic"}],
+        )
+
+
+def test_bindings_over_the_same_redis_index_may_inject_the_same_scope():
+    _route_check(
+        builtin_tools=_BUILTINS_OFF,
+        indexes=_SIBLINGS,
+        custom_tools=[
+            {**_INJECTING, "index": "kb_semantic"},
+            {**_INJECTING, "name": "keyword-search", "index": "kb_keyword"},
         ],
     )
 

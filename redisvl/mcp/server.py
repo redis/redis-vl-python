@@ -41,6 +41,12 @@ def _describe_scope(scope: frozenset[tuple[str, str]]) -> str:
     )
 
 
+def _describe_redis_index(redis_name: str, binding_ids: list[str]) -> str:
+    """Render a Redis index and the bindings over it for a startup error."""
+    noun = "bindings" if len(binding_ids) > 1 else "binding"
+    return f"'{redis_name}' ({noun} {', '.join(repr(b) for b in sorted(binding_ids))})"
+
+
 def _config_injects(config: Any) -> bool:
     """Report whether any configured profile injects a claim-derived filter."""
     if config is None:
@@ -372,16 +378,26 @@ class RedisVLMCPServer(FastMCP):
         inject the same entries. Injecting *something* is not enough: a second
         tool scoped by another field, or by the same field from another claim,
         reads across the tenants the first one separates.
+
+        The index here is the Redis index, not the binding: two bindings with
+        the same ``redis_name`` are two routes to one set of documents. The
+        check sees only what this config names, so an alias, or a second index
+        over the same key prefix, is outside it.
         """
+        bindings: dict[str, list[str]] = {}
+        for binding_id, binding in config.indexes.items():
+            bindings.setdefault(binding.redis_name, []).append(binding_id)
+
         scopes: dict[str, dict[str, frozenset[tuple[str, str]]]] = {}
         for profile in config.custom_tools:
-            scopes.setdefault(config.resolved_profile_index(profile), {})[
-                profile.name
-            ] = frozenset(
+            binding = config.indexes[config.resolved_profile_index(profile)]
+            scopes.setdefault(binding.redis_name, {})[profile.name] = frozenset(
                 (entry.field, entry.claim) for entry in profile.lock.inject or ()
             )
         injected = sorted(
-            index_id for index_id, by_tool in scopes.items() if any(by_tool.values())
+            redis_name
+            for redis_name, by_tool in scopes.items()
+            if any(by_tool.values())
         )
         if not injected:
             return
@@ -391,27 +407,32 @@ class RedisVLMCPServer(FastMCP):
         if config.server.builtin_tool_enabled("search-records"):
             routes.append("search-records")
         if config.server.builtin_tool_enabled("upsert-records"):
-            writable = [
+            # Any writable binding over the index reaches its documents, not
+            # only the ones the injecting tools are pinned to.
+            writable = sorted(
                 binding_id
-                for binding_id in injected
+                for redis_name in injected
+                for binding_id in bindings[redis_name]
                 if not (
                     self.mcp_settings.read_only or config.indexes[binding_id].read_only
                 )
-            ]
+            )
             if writable:
-                routes.append("upsert-records")
+                routes.append(
+                    f"upsert-records via {', '.join(repr(b) for b in writable)}"
+                )
         if routes:
             problems.append(
                 "it is also reachable without that scope through "
                 f"{', '.join(routes)}"
             )
 
-        for index_id in injected:
-            by_tool = scopes[index_id]
+        for redis_name in injected:
+            by_tool = scopes[redis_name]
             if len(set(by_tool.values())) > 1:
                 problems.append(
-                    f"the custom tools on index '{index_id}' do not inject the "
-                    "same scope: "
+                    f"the custom tools on Redis index '{redis_name}' do not inject "
+                    "the same scope: "
                     + "; ".join(
                         f"'{name}' {_describe_scope(scope)}"
                         for name, scope in sorted(by_tool.items())
@@ -420,13 +441,18 @@ class RedisVLMCPServer(FastMCP):
         if not problems:
             return
 
+        described = ", ".join(
+            _describe_redis_index(redis_name, bindings[redis_name])
+            for redis_name in injected
+        )
         raise ValueError(
-            f"Index {', '.join(repr(i) for i in injected)} is scoped by an "
-            f"injected token claim, but {'; and '.join(problems)}. Each of those "
-            "bypasses the tenant filter. Disable the built-ins with "
-            "server.builtin_tools (for example 'search-records: disabled'), mark "
-            "the index read_only to stop writes, and give every custom tool on "
-            "the index the same lock.inject."
+            f"Redis index {described} is scoped by an injected token claim, but "
+            f"{'; and '.join(problems)}. Each of those bypasses the tenant filter. "
+            "Disable the built-ins with server.builtin_tools (for example "
+            "'search-records: disabled'), mark every binding over the index "
+            "read_only to stop writes, and give every custom tool on the index "
+            "the same lock.inject. A tool meant to read across tenants belongs "
+            "on a separate server with its own authentication."
         )
 
     @staticmethod
