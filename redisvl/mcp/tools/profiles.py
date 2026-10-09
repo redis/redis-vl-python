@@ -16,8 +16,12 @@ from typing import Annotated, Any, Optional
 
 from pydantic import Field
 
-from redisvl.mcp.auth import ensure_read_scope
-from redisvl.mcp.config import MCPCustomToolConfig
+from redisvl.mcp.auth import (
+    build_injected_filter,
+    ensure_read_scope,
+    validate_inject_against_schema,
+)
+from redisvl.mcp.config import MCPCustomToolConfig, iter_filter_clauses
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.filters import parse_filter
 from redisvl.mcp.tools.search import (
@@ -56,11 +60,16 @@ def build_profile_description(profile: MCPCustomToolConfig, schema: IndexSchema)
     if profile.suppress_schema_hints:
         return description
 
+    # Narrower than suppressing the hints wholesale: the model still learns
+    # which fields it may legitimately narrow on, and only the tenant field it
+    # must not reason about is withheld.
+    injected = frozenset(entry.field for entry in profile.lock.inject or ())
+
     parts = [description]
     if profile.param_exposed("filter"):
-        parts.append(_build_filter_hint(schema))
+        parts.append(_build_filter_hint(schema, exclude=injected))
     if profile.param_exposed("return_fields"):
-        parts.append(_build_return_fields_hint(schema))
+        parts.append(_build_return_fields_hint(schema, exclude=injected))
     return " ".join(parts)
 
 
@@ -132,20 +141,10 @@ def validate_profile_against_schema(
     # Raises RedisVLMCPError(INVALID_FILTER) naming the offending field.
     resolve_locked_filter(profile, schema)
 
-
-def _iter_filter_clauses(node: Any) -> Any:
-    """Yield every leaf clause of a JSON filter DSL expression."""
-    if not isinstance(node, dict):
-        return
-    for operator in ("and", "or"):
-        if operator in node:
-            for child in node[operator] or []:
-                yield from _iter_filter_clauses(child)
-            return
-    if "not" in node:
-        yield from _iter_filter_clauses(node["not"])
-        return
-    yield node
+    if profile.lock.inject:
+        validate_inject_against_schema(
+            profile.lock.inject, schema, profile_name=profile.name
+        )
 
 
 def _validate_locked_exists_fields(
@@ -165,7 +164,7 @@ def _validate_locked_exists_fields(
     if profile.lock.filter is None:
         return
 
-    for clause in _iter_filter_clauses(profile.lock.filter):
+    for clause in iter_filter_clauses(profile.lock.filter):
         if str(clause.get("op", "")).lower() != "exists":
             continue
         field_name = clause.get("field")
@@ -229,8 +228,15 @@ def register_profile_tool(
     ``limit`` collapses its cap into a fixed result count. The wrapper then
     ignores anything the profile does not expose, so a lock holds even if a
     caller reaches it without schema validation.
+
+    The one thing resolved per call is the injected tenant filter, because its
+    value belongs to the caller's token rather than to the configuration.
     """
     locked_filter = resolve_locked_filter(profile, schema)
+    # `None` means "does not inject". Gated on that rather than truthiness, so
+    # an empty list -- which config validation rejects -- would still reach the
+    # builder's own refusal instead of silently skipping the tenant clause.
+    inject_specs = profile.lock.inject
     locked_return_fields = profile.lock.return_fields
     limit_cap = profile.param_max("limit")
     exposes_limit = profile.param_exposed("limit")
@@ -241,6 +247,18 @@ def register_profile_tool(
 
     async def profile_tool(**kwargs: Any) -> dict[str, Any]:
         ensure_read_scope(server)
+
+        # Per request, because the value is the caller's. Folded into the locked
+        # side rather than passed alongside it: `merge_locked_filter` returns the
+        # caller's filter untouched when nothing is locked, so only a non-None
+        # locked side forces the caller's filter through the escape backstop.
+        # A fresh local, so the registration-time expression is never rebound.
+        effective_locked = locked_filter
+        if inject_specs is not None:
+            injected = build_injected_filter(inject_specs, tool_name=profile.name)
+            effective_locked = (
+                injected if effective_locked is None else effective_locked & injected
+            )
 
         # A hidden argument is already absent from the advertised schema, so a
         # compliant client cannot send one. Ignoring it here too means the lock
@@ -280,7 +298,7 @@ def register_profile_tool(
                 if locked_return_fields is not None
                 else supplied("return_fields")
             ),
-            locked_filter=locked_filter,
+            locked_filter=effective_locked,
             # Passed down rather than checked here: an omitted limit resolves to
             # the binding default inside search_records, so that is the only
             # place able to bound both paths.
