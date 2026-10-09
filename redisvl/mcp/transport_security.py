@@ -19,6 +19,12 @@ import yaml
 from redisvl.mcp.config import MCPTransportSecurityConfig, _substitute_env
 from redisvl.mcp.settings import MCPSettings
 
+# Every transport name FastMCP serves over HTTP. `"http"` is FastMCP's own
+# default HTTP name, distinct from `"streamable-http"` though served the same
+# way, and testing for only the two names the CLI offers left the guard off
+# for it. Defined once so the server and the CLI cannot drift apart again.
+HTTP_TRANSPORTS = frozenset({"http", "sse", "streamable-http"})
+
 # Hosts that only ever refer to the local machine. Kept in sync with
 # ``redisvl.cli.mcp.MCP._LOOPBACK_HOSTS``.
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
