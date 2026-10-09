@@ -29,22 +29,34 @@ _FALLBACK_HYBRID_UNSUPPORTED_PARAMS = frozenset(
 )
 
 
-def _build_filter_hint(schema: IndexSchema) -> str:
-    """Describe fields with typed operator support in the JSON filter DSL."""
+def _build_filter_hint(
+    schema: IndexSchema, exclude: frozenset[str] = frozenset()
+) -> str:
+    """Describe fields with typed operator support in the JSON filter DSL.
+
+    ``exclude`` drops fields the model must not reason about, such as a
+    claim-injected tenant field: filtering on it is harmless -- the caller's
+    clause ANDs with the injected one -- but naming it contradicts the promise
+    that the model never sees the knob.
+    """
     filter_fields = [
         f"{field.name}({getattr(field.type, 'value', field.type)})"
         for field in schema.fields.values()
-        if field.type in _DSL_FILTER_FIELD_TYPES
+        if field.type in _DSL_FILTER_FIELD_TYPES and field.name not in exclude
     ]
     if not filter_fields:
         return "Object filter fields: none."
     return "Object filter fields: " + ", ".join(filter_fields) + "."
 
 
-def _build_return_fields_hint(schema: IndexSchema) -> str:
+def _build_return_fields_hint(
+    schema: IndexSchema, exclude: frozenset[str] = frozenset()
+) -> str:
     """Describe all fields that callers can request in `return_fields`."""
     returnable_fields = [
-        field.name for field in schema.fields.values() if field.type != "vector"
+        field.name
+        for field in schema.fields.values()
+        if field.type != "vector" and field.name not in exclude
     ]
     if not returnable_fields:
         return "Allowed return_fields: none."

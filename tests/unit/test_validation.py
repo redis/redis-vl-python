@@ -8,17 +8,18 @@ This module tests the core validation functionality:
 4. Validation of various field types
 """
 
-import re
 from typing import Any
 
 import pytest
 
 from redisvl.schema import IndexSchema
+from redisvl.schema import validation as validation_module
 from redisvl.schema.fields import FieldTypes, VectorDataType
 from redisvl.schema.schema import StorageType
 from redisvl.schema.type_utils import TypeInferrer
 from redisvl.schema.validation import (
     SchemaModelGenerator,
+    _compile_json_path,
     extract_from_json_path,
     validate_object,
 )
@@ -115,7 +116,7 @@ def valid_hash_data():
         "test_id": "doc1",
         "title": "Test Document",
         "rating": 4.5,
-        "location": "37.7749,-122.4194",
+        "location": "-122.4194,37.7749",
         "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",  # Bytes for HASH
         "int_vector": b"\x01\x02\x03",  # Bytes for HASH
     }
@@ -301,6 +302,51 @@ class TestJsonPathExtraction:
         """Test extracting values using JSON paths."""
         assert extract_from_json_path(valid_json_data, path) == expected_value
 
+    @pytest.fixture
+    def parse_calls(self, monkeypatch):
+        """Record every path handed to jsonpath-ng's parser."""
+        calls: list[str] = []
+        real_parse = validation_module.jsonpath_parse
+
+        def counting_parse(path):
+            calls.append(path)
+            return real_parse(path)
+
+        _compile_json_path.cache_clear()
+        monkeypatch.setattr(validation_module, "jsonpath_parse", counting_parse)
+        return calls
+
+    def test_repeated_path_compiles_once(self, valid_json_data, parse_calls):
+        """A repeated path compiles once, not once per call."""
+        for _ in range(25):
+            assert (
+                extract_from_json_path(valid_json_data, "$.metadata.user") == "user123"
+            )
+
+        assert parse_calls == ["$.metadata.user"]
+
+    def test_distinct_paths_each_compile(self, valid_json_data, parse_calls):
+        """Caching must not collapse distinct paths onto one expression."""
+        assert extract_from_json_path(valid_json_data, "$.metadata.user") == "user123"
+        assert extract_from_json_path(valid_json_data, "$.metadata.rating") == 4.5
+        assert len(parse_calls) == 2
+
+    def test_shared_expression_holds_no_state(self):
+        """Reusing one expression must not leak values between evaluations."""
+        _compile_json_path.cache_clear()
+
+        for expected in ("alice", "bob", "carol"):
+            obj = {"metadata": {"user": expected}}
+            assert extract_from_json_path(obj, "$.metadata.user") == expected
+
+        assert extract_from_json_path({"metadata": {}}, "$.metadata.user") is None
+
+    def test_leading_dollar_is_optional(self, valid_json_data):
+        """Both spellings of a path resolve to the same value."""
+        assert extract_from_json_path(
+            valid_json_data, "metadata.user"
+        ) == extract_from_json_path(valid_json_data, "$.metadata.user")
+
 
 # # -------------------- CATEGORY 2: PARAMETRIZED VALIDATOR TESTS --------------------
 
@@ -343,19 +389,20 @@ class TestBasicFieldValidation:
                 "location",
                 [
                     ("0,0", None),
-                    ("90,-180", None),
-                    ("-90,180", None),
-                    ("37.7749,-122.4194", None),
+                    ("-180,85", None),
+                    ("180,-85", None),
+                    ("-122.4194,37.7749", None),
                 ],
                 [
-                    ("invalid_geo", "lat,lon"),
-                    ("37.7749", "lat,lon"),
-                    ("37.7749,", "lat,lon"),
-                    (",122.4194", "lat,lon"),
-                    ("91,0", "lat,lon"),  # Latitude > 90
-                    ("-91,0", "lat,lon"),  # Latitude < -90
-                    ("0,181", "lat,lon"),  # Longitude > 180
-                    ("0,-181", "lat,lon"),  # Longitude < -180
+                    ("invalid_geo", "longitude,latitude"),
+                    ("37.7749", "longitude,latitude"),
+                    ("37.7749,", "longitude,latitude"),
+                    (",122.4194", "longitude,latitude"),
+                    ("0,91", "longitude,latitude"),  # Latitude > 90
+                    ("0,-91", "longitude,latitude"),  # Latitude < -90
+                    ("181,0", "longitude,latitude"),  # Longitude > 180
+                    ("-181,0", "longitude,latitude"),  # Longitude < -180
+                    ("37.7749,-122.4194", "longitude,latitude"),  # lat,lon order
                     (123, "string"),
                     (True, "string"),
                 ],
@@ -374,17 +421,17 @@ class TestBasicFieldValidation:
         for value, _ in valid_values:
             validate_field(sample_hash_schema, field_name, value, True)
 
-            # For GEO fields, also verify pattern
+            # For GEO fields, also verify type inference
             if field_type == "geo" and isinstance(value, str):
-                assert re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+                assert TypeInferrer.infer(value) == "geo"
 
         # Test invalid values
         for value, error_text in invalid_values:
             validate_field(sample_hash_schema, field_name, value, False, error_text)
 
-            # For GEO fields, also verify pattern failure
+            # For GEO fields, also verify type inference rejects GEO
             if field_type == "geo" and isinstance(value, str):
-                assert not re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+                assert TypeInferrer.infer(value) != "geo"
 
     @pytest.mark.parametrize(
         "test_case",
@@ -560,7 +607,7 @@ class TestEndToEndValidation:
                     "test_id": "doc1",
                     "title": "Test Document",
                     "rating": 4.5,
-                    "location": "37.7749,-122.4194",
+                    "location": "-122.4194,37.7749",
                     "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
                     "int_vector": b"\x01\x02\x03",
                 },
