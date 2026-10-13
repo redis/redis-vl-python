@@ -300,16 +300,18 @@ def test_merge_locked_filter_ands_a_multi_value_tag_in_caller_filter():
         # Balanced parens, so only the phrase branch can refuse this: skipping to
         # end-of-string instead would swallow the injected union.
         ("unterminated phrase", '@content:"unterminated | @category:{secret}'),
-        # A backslash inside a phrase is refused wherever it sits. The last row
-        # is escaped, so a scan that trusted the quote after it would read the
-        # union as the inside of the second phrase.
-        ("backslash in an eq phrase", '@content:("trailing\\")'),
-        ("backslash in a ne phrase", '(-@content:"C:\\Users\\")'),
-        ("backslash mid-phrase", '@content:("a\\b")'),
+        # The phrase shapes `Text` never renders. In the first two the parser
+        # pairs the first phrase's closing quote with the second's opening one,
+        # so a scan that trusted it would read the union as phrase text.
         (
-            "escaped backslash before a phrase quote",
+            "escaped quote",
+            '(@content:("a\\") | @content:(" | @category:{secret} "))',
+        ),
+        (
+            "escaped backslash before the closing quote",
             '(@content:("a\\\\") | @content:(" | @category:{secret} "))',
         ),
+        ("backslash escaping a letter", '(-@content:"C:\\Users\\bob")'),
     ],
 )
 def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
@@ -348,11 +350,11 @@ def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
             "unbalanced bracket in a value",
             {"field": "content", "op": "eq", "value": "a[b"},
         ),
-        # The backstop refuses a backslash inside a phrase, so this passes only
-        # because `Text` replaces it before rendering.
+        # Rendered raw, this value would be refused. It passes only because
+        # `Text` drops, keeps or spaces off each backslash as needed.
         (
-            "value ending in a backslash",
-            {"field": "content", "op": "eq", "value": "C:\\Users\\"},
+            "backslashes in a value",
+            {"field": "content", "op": "eq", "value": "C:\\Users foo\\-bar back\\\\"},
         ),
         (
             "compound with exclusive bound",
@@ -417,6 +419,8 @@ def test_merge_locked_filter_returns_each_side_unchanged_when_the_other_is_absen
         # end. Unbounded it reads this as a union hidden in the range and
         # refuses, and it costs the whole remaining string on every `[`.
         ("pipe after a range span", "(@rating:[4 5] | @category:{sports})"),
+        # The escapes `Text` keeps, with a trailing one spaced off the quote.
+        ("escaped separators in a phrase", '@content:("foo\\-bar back\\\\ ")'),
     ],
 )
 def test_merge_locked_filter_accepts_a_legitimate_rendering(label, rendered):

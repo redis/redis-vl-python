@@ -329,10 +329,15 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
         ("__eq__", '"', '@text_field:(" ")'),
         ("__ne__", '""', '(-@text_field:"  ")'),
         ("__eq__", "   ", '@text_field:("   ")'),
-        ("__eq__", "\\\\", '@text_field:(" ")'),
-        # A backslash vanishes into the term around it, as it did at index time.
+        ("__eq__", "\\", '@text_field:(" ")'),
+        # A backslash goes the way the indexer took it: dropped before a letter
+        # or the end, kept before a separator or another backslash. It never
+        # escapes a quote, and never sits right before the closing one.
         ("__eq__", "trailing\\", '@text_field:("trailing")'),
         ("__ne__", "C:\\Users\\bob", '(-@text_field:"C:Usersbob")'),
+        ("__eq__", "foo\\-bar", '@text_field:("foo\\-bar")'),
+        ("__eq__", 'say \\"hi', '@text_field:("say  hi")'),
+        ("__eq__", "back\\\\", '@text_field:("back\\\\ ")'),
         # Everything else survives untouched. Replacing any of it would ask for a
         # term no document stored -- a silent zero-hit failure. This row fails if
         # a single extra character joins the pattern.
@@ -365,9 +370,12 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
         "eq_quotes_only",
         "ne_quotes_only",
         "eq_whitespace_only",
-        "eq_backslashes_only",
-        "eq_backslash_neutralized",
-        "ne_backslash_neutralized",
+        "eq_backslash_only",
+        "eq_backslash_dropped_at_end",
+        "ne_backslash_dropped_before_letter",
+        "eq_backslash_kept_before_separator",
+        "eq_escaped_quote_neutralized",
+        "eq_trailing_backslash_padded",
         "eq_punctuation_preserved",
         "like_raw_by_design",
     ],

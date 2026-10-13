@@ -701,31 +701,60 @@ class Num(FilterField):
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
 
+# The characters a backslash may escape inside a quoted phrase: the term
+# separators, whose escape the query parser and the indexer both read as joining
+# the character into the term, and the backslash itself. The quote is left out
+# because escaping one is what moves a phrase's end, and the tab because its
+# escape matches nothing that was indexed.
+_PHRASE_ESCAPABLE = frozenset(" !#$%&'()*+,-./:;<=>?@[\\]^`{|}~")
+
+
 def _phrase_value(value: str) -> str:
-    """Return `value` with nothing in it that can move where its phrase ends.
+    """Return `value` as the body of a quoted phrase that ends where it appears to.
 
-    A `"` closes the phrase early, and a `\\` before the closing quote makes the
-    parser pair that quote with a later one, even when the backslash is itself
-    escaped. Neither can be escaped, since the escape is a backslash, so each
-    goes the way the tokenizer took it at index time: a quote separates terms,
-    and a backslash vanishes into the term around it (`C:\\Users\\bob` indexes
-    `usersbob`).
+    Each character goes the way the indexer took it, so the phrase asks for the
+    terms the document stored. A backslash before a character in
+    `_PHRASE_ESCAPABLE` stays, since the parser joins that pair into the term
+    just as the indexer did (`foo\\-bar` indexes `foo-bar`). Any other backslash
+    is dropped, since the indexer dropped it into the term around it while the
+    parser would keep it (`C:\\Users\\bob` indexes `usersbob`). A `"` becomes a
+    space, which is how the indexer separated terms at it.
 
-    A value left empty becomes a space, because `@f:("")` raises `INDEXEMPTY`.
+    A body ending in a backslash makes the parser pair the closing quote with a
+    later one, so a space follows it. A body left empty becomes a space too:
+    `@f:("")` is an error on most fields and matches empty values on the rest.
     """
-    return value.replace("\\", "").replace('"', " ") or " "
+    body = []
+    position = 0
+    while position < len(value):
+        character = value[position]
+        if character == "\\":
+            escaped = value[position + 1 : position + 2]
+            if escaped in _PHRASE_ESCAPABLE:
+                body.append(character + escaped)
+                position += 2
+                continue
+        else:
+            body.append(" " if character == '"' else character)
+        position += 1
+
+    rendered = "".join(body)
+    if not rendered or rendered.endswith("\\"):
+        rendered += " "
+    return rendered
 
 
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index.
 
     Note:
-        ``==`` and ``!=`` match the value as a quoted phrase, with any ``\\``
-        removed and any ``"`` replaced by a space. Text stored with a
-        deliberate escape, such as ``foo\\-bar``, is therefore not matched. A
-        value of nothing but those characters matches no document with ``==``
-        and every document with ``!=``. ``%`` is the pattern operator and
-        interpolates its value untouched.
+        ``==`` and ``!=`` match the value as a literal phrase, read the way
+        the document's own text was indexed: a ``"`` separates terms, and a
+        ``\\`` joins what follows it into the term, so ``C:\\Users\\bob`` and
+        ``foo\\-bar`` each match a document holding that text. A value that
+        leaves no term, such as one of nothing but quotes, matches no document
+        with ``==`` and every document with ``!=``. ``%`` is the pattern
+        operator and interpolates its value untouched.
     """
 
     OPERATORS: dict[FilterOperator, str] = {

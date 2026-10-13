@@ -7,7 +7,7 @@ from redisvl.mcp.config import reserved_score_metadata_field_names
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.mcp.filters import parse_filter
 from redisvl.query import AggregateHybridQuery, HybridQuery, TextQuery, VectorQuery
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import _PHRASE_ESCAPABLE, FilterExpression
 from redisvl.schema import IndexSchema
 
 DEFAULT_SEARCH_DESCRIPTION = "Search records in the configured Redis index."
@@ -402,6 +402,28 @@ def _find_unescaped(
     return None
 
 
+def _phrase_end(rendered: str, position: int) -> int | None:
+    """Return the index of the quote closing the phrase opened at `position`.
+
+    Returns None when the phrase holds anything that could make the parser end
+    it elsewhere: a backslash escaping a character outside `_PHRASE_ESCAPABLE`,
+    a backslash right before the closing quote, or no closing quote at all.
+    These are the shapes `redisvl.query.filter._phrase_value` never renders.
+    """
+    position += 1
+    while position < len(rendered):
+        character = rendered[position]
+        if character == "\\":
+            if rendered[position + 1 : position + 2] not in _PHRASE_ESCAPABLE:
+                return None
+            position += 2
+            continue
+        if character == '"':
+            return None if rendered[position - 1] == "\\" else position
+        position += 1
+    return None
+
+
 def _reject_escapable_filter(caller: FilterExpression) -> None:
     """Refuse a caller filter whose rendering could break out of a locked AND.
 
@@ -413,11 +435,11 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
     unlocked tool relies on those two layers alone.
 
     The quoted-phrase skip below assumes a rendering's quotes arrive in
-    delimiting pairs with no backslash between them, which holds for every
-    value the DSL can render: ``==`` and ``!=`` quote the value after taking
-    out any quote or backslash it carried, and ``Tag`` and ``like`` values
-    arrive with theirs escaped, outside any phrase. A rendering that breaks
-    either assumption is refused, so the failure is loud rather than silent.
+    delimiting pairs, which holds for every value the DSL can render: ``==``
+    and ``!=`` quote the value after `_phrase_value` has made its body safe,
+    and ``Tag`` and ``like`` values arrive with theirs escaped, outside any
+    phrase. A rendering that breaks the assumption is refused, so the failure
+    is loud rather than silent.
     """
     # Braces scope as much as parens do: a tag clause holds its alternatives in
     # braces, so `@category:{sports|health}` is one scoped clause rather than a
@@ -446,12 +468,10 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
             # A quoted phrase is a literal, so nothing inside it is structure and
             # a `|` inside it is a separator rather than a union. Unlike the range
             # span below, the whole phrase can therefore be skipped.
-            #
             # The skip holds only while this scan and the parser agree on where
-            # the phrase ends, which a backslash inside it breaks (see
-            # `redisvl.query.filter._phrase_value`), so refuse one.
-            end = rendered.find('"', position + 1)
-            if end == -1 or rendered.find("\\", position + 1, end) != -1:
+            # the phrase ends, so a phrase whose end is in doubt is refused.
+            end = _phrase_end(rendered, position)
+            if end is None:
                 escaped = True
                 break
             position = end + 1
@@ -517,10 +537,9 @@ def merge_locked_filter(
     The locked expression always applies, so a caller can only narrow within it
     and never widen past it. That rests on two things: the caller's expression
     rendering nested inside the AND, and every value staying inside its own
-    clause. ``Text`` takes out the quotes and backslashes that decide where a
-    phrase ends, ``Tag`` escapes the braces that delimit a tag clause, numeric
-    values are type-checked, and ``like`` patterns are escaped at the filter
-    boundary.
+    clause. ``Text`` renders no phrase whose closing quote a value can move,
+    ``Tag`` escapes the braces that delimit a tag clause, numeric values are
+    type-checked, and ``like`` patterns are escaped at the filter boundary.
     """
     if locked is None:
         return caller
