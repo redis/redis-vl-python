@@ -414,8 +414,8 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
 
     The quoted-phrase skip below assumes a rendering's quotes arrive in
     delimiting pairs with no backslash between them, which holds for every
-    value the DSL can render: ``==`` and ``!=`` quote the value and take any
-    quote or backslash it carried out first, and ``Tag`` and ``like`` values
+    value the DSL can render: ``==`` and ``!=`` quote the value after taking
+    out any quote or backslash it carried, and ``Tag`` and ``like`` values
     arrive with theirs escaped, outside any phrase. A rendering that breaks
     either assumption is refused, so the failure is loud rather than silent.
     """
@@ -447,12 +447,9 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
             # a `|` inside it is a separator rather than a union. Unlike the range
             # span below, the whole phrase can therefore be skipped.
             #
-            # That skip is sound only while this scan and RediSearch agree on
-            # where the phrase ends. A backslash anywhere before the closing
-            # quote breaks the agreement: the parser pairs that quote with a
-            # later one, even when the backslash is itself escaped. `Text`
-            # replaces backslashes in its phrases, so one here means a value
-            # reached the phrase raw.
+            # The skip holds only while this scan and the parser agree on where
+            # the phrase ends, which a backslash inside it breaks (see
+            # `redisvl.query.filter._phrase_value`), so refuse one.
             end = rendered.find('"', position + 1)
             if end == -1 or rendered.find("\\", position + 1, end) != -1:
                 escaped = True
@@ -520,7 +517,7 @@ def merge_locked_filter(
     The locked expression always applies, so a caller can only narrow within it
     and never widen past it. That rests on two things: the caller's expression
     rendering nested inside the AND, and every value staying inside its own
-    clause. ``Text`` removes the quotes and backslashes that decide where a
+    clause. ``Text`` takes out the quotes and backslashes that decide where a
     phrase ends, ``Tag`` escapes the braces that delimit a tag clause, numeric
     values are type-checked, and ``like`` patterns are escaped at the filter
     boundary.

@@ -468,10 +468,11 @@ def test_filters(index, query, sample_datetimes):
     t = Text("description") != 'high stress,"'
     search(query, index, t, 6)
 
-    # Values ending in a backslash, with a quote after each one. Left raw, the
-    # backslash makes the parser pair the first phrase's closing quote with the
-    # second's opening one, and the re-paired query silently matches nothing.
-    t = (Text("job") == "engineer\\") | (Text("job") == "doctor\\")
+    # Backslashes with a phrase after them. Left raw, one makes the parser pair
+    # the first phrase's closing quote with the second's opening one, and the
+    # re-paired query silently matches nothing. The one inside `engi\neer` must
+    # vanish rather than split the term, or that phrase matches nothing either.
+    t = (Text("job") == "engi\\neer\\") | (Text("job") == "doctor\\")
     search(query, index, t, 4)
 
     # Test empty filters

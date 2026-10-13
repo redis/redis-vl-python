@@ -216,13 +216,6 @@ async def test_a_pipe_in_the_claim_is_one_identifier_not_a_union(
             ["acme", "acme"],
             id="or-widening",
         ),
-        # Each phrase ends in a backslash with another phrase after it, the shape
-        # that shifts the parser's quote pairing when the backslash reaches it.
-        pytest.param(
-            {"field": "content", "op": "in", "value": ["policy\\", "window\\"]},
-            ["acme", "acme"],
-            id="backslash-phrases",
-        ),
         pytest.param(
             {"not": {"field": "org_id", "op": "eq", "value": "acme"}},
             [],

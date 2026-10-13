@@ -701,29 +701,31 @@ class Num(FilterField):
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
 
-# Either character can move a phrase's closing quote: a `"` ends the phrase
-# early, and a `\` anywhere before the closing quote makes the parser pair that
-# quote with a later one, even when the backslash is itself escaped.
-#
-# Replaced rather than escaped, because escaping is symmetric: a backslash joins
-# the next character into the term, so `@f:("say \"hi\" now")` asks for a term
-# with a quote in it, and RedisVL writes documents unescaped. On `==` that
-# matches nothing, and on `!=` the unmatchable phrase makes the negation match
-# everything. The cost is a document whose text holds a deliberate escape, such
-# as `foo\-bar`: it indexed the joined term, which a phrase can no longer ask for.
-_PHRASE_UNSAFE = re.compile(r'["\\]')
+def _phrase_value(value: str) -> str:
+    """Return `value` with nothing in it that can move where its phrase ends.
+
+    A `"` closes the phrase early, and a `\\` before the closing quote makes the
+    parser pair that quote with a later one, even when the backslash is itself
+    escaped. Neither can be escaped, since the escape is a backslash, so each
+    goes the way the tokenizer took it at index time: a quote separates terms,
+    and a backslash vanishes into the term around it (`C:\\Users\\bob` indexes
+    `usersbob`).
+
+    A value left empty becomes a space, because `@f:("")` raises `INDEXEMPTY`.
+    """
+    return value.replace("\\", "").replace('"', " ") or " "
 
 
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index.
 
     Note:
-        ``==`` and ``!=`` match the value as a quoted phrase. Any ``"`` or
-        ``\\`` in the value becomes a space first, so the value cannot move
-        where that phrase ends. A value of nothing but those characters
-        therefore becomes an empty phrase, which ``==`` matches no document
-        against. ``%`` is the pattern operator and interpolates its value
-        untouched.
+        ``==`` and ``!=`` match the value as a quoted phrase, with any ``\\``
+        removed and any ``"`` replaced by a space. Text stored with a
+        deliberate escape, such as ``foo\\-bar``, is therefore not matched. A
+        value of nothing but those characters matches no document with ``==``
+        and every document with ``!=``. ``%`` is the pattern operator and
+        interpolates its value untouched.
     """
 
     OPERATORS: dict[FilterOperator, str] = {
@@ -817,10 +819,7 @@ class Text(FilterField):
 
         value = self._value
         if self._operator not in self._RAW_VALUE_OPERATORS:
-            # Substituting a space never empties the value, so the phrase always
-            # holds at least one character and never trips the `INDEXEMPTY`
-            # error that a literal `@field:("")` raises.
-            value = _PHRASE_UNSAFE.sub(" ", value)
+            value = _phrase_value(value)
 
         return self.OPERATOR_MAP[self._operator] % (
             self._field,

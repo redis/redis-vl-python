@@ -6,7 +6,7 @@ from redisvl.query.filter import FilterExpression, Num, Tag, Text
 from redisvl.schema import IndexSchema
 from redisvl.utils.token_escaper import TokenEscaper
 
-# `Text` neutralizes its own eq/ne values (see `_PHRASE_UNSAFE` in
+# `Text` neutralizes its own eq/ne values (see `_phrase_value` in
 # `redisvl.query.filter`), so this boundary must not treat them again -- doubled
 # handling mangles ordinary values. `like` below is the exception, because the
 # library leaves `%` raw by design.

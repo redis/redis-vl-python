@@ -300,15 +300,15 @@ def test_merge_locked_filter_ands_a_multi_value_tag_in_caller_filter():
         # Balanced parens, so only the phrase branch can refuse this: skipping to
         # end-of-string instead would swallow the injected union.
         ("unterminated phrase", '@content:"unterminated | @category:{secret}'),
-        # A backslash before a phrase's closing quote makes RediSearch pair that
-        # quote with a later one, even when the backslash is itself escaped, so
-        # this scan and the parser would disagree about what is phrase and what
-        # is syntax. Both templates, since each renders its own quote.
+        # A backslash inside a phrase is refused wherever it sits. The last row
+        # is escaped, so a scan that trusted the quote after it would read the
+        # union as the inside of the second phrase.
         ("backslash in an eq phrase", '@content:("trailing\\")'),
         ("backslash in a ne phrase", '(-@content:"C:\\Users\\")'),
+        ("backslash mid-phrase", '@content:("a\\b")'),
         (
             "escaped backslash before a phrase quote",
-            '@content:("a\\\\") | @category:{secret} @content:("b")',
+            '(@content:("a\\\\") | @content:(" | @category:{secret} "))',
         ),
     ],
 )
