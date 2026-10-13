@@ -8,6 +8,7 @@ from redisvl.mcp.context import ToolContext
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.server import RedisVLMCPServer
+from redisvl.mcp.tools.code import build_code_tool_spec
 
 
 class FakeClient:
@@ -1283,3 +1284,28 @@ def test_the_tool_surface_fingerprint_covers_code_tools():
     server._resolved_code_tools = server._resolve_code_tools(config)
 
     assert server._tool_surface_fingerprint(config) != without
+
+
+def test_loaded_code_tools_are_resolved_with_registered_ones():
+    server = _code_tool_server()
+    server.custom_tool()(recent_tickets)
+
+    async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
+        """Close a ticket."""
+        return {}
+
+    loaded = [build_code_tool_spec(close_ticket)]
+
+    resolved = server._resolve_code_tools(_config_with(), loaded)
+
+    assert [spec.name for spec, _ in resolved] == ["recent-tickets", "close-ticket"]
+
+
+def test_a_loaded_tool_cannot_reuse_a_registered_tools_name():
+    server = _code_tool_server()
+    server.custom_tool()(recent_tickets)
+
+    with pytest.raises(ValueError, match="'recent-tickets' is already used"):
+        server._resolve_code_tools(
+            _config_with(), [build_code_tool_spec(recent_tickets)]
+        )

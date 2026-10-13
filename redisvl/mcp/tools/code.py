@@ -14,16 +14,25 @@ contract instead of leaking a traceback.
 """
 
 import asyncio
+import importlib
 import inspect
 import typing
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from redisvl.mcp.auth import ensure_read_scope, ensure_tool_scope, ensure_write_scope
 from redisvl.mcp.config import validate_tool_name
 from redisvl.mcp.context import ToolContext
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
+
+# Where `tool` leaves a function's spec for the loader to find. An attribute on
+# the function rather than a module-level registry, so importing a module
+# registers nothing anywhere: two servers in one process, and a test that
+# imports a tool module, stay independent of each other.
+_SPEC_ATTRIBUTE = "__redisvl_mcp_tool__"
+
+_ToolFn = TypeVar("_ToolFn", bound=Callable[..., Any])
 
 _ACCEPTED_KINDS = (
     inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -192,3 +201,75 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
     code_tool.__annotations__ = dict(spec.annotations)
 
     server.tool(name=spec.name, description=spec.description)(code_tool)
+
+
+def tool(
+    *,
+    name: str | None = None,
+    namespace: str | None = None,
+    index: str | None = None,
+    writes: bool = False,
+    scope: str | None = None,
+    description: str | None = None,
+) -> Callable[[_ToolFn], _ToolFn]:
+    """Mark an async function as a code tool for a server to load.
+
+    Takes the same arguments as ``RedisVLMCPServer.custom_tool``. The function
+    is checked here and returned unchanged; it is registered only on a server
+    whose config lists its module under ``server.custom_tool_modules``.
+    """
+
+    def decorator(fn: _ToolFn) -> _ToolFn:
+        spec = build_code_tool_spec(
+            fn,
+            name=name,
+            namespace=namespace,
+            index=index,
+            writes=writes,
+            scope=scope,
+            description=description,
+        )
+        setattr(fn, _SPEC_ATTRIBUTE, spec)
+        return fn
+
+    return decorator
+
+
+def load_code_tools(modules: Iterable[str]) -> list[CodeToolSpec]:
+    """Import each module and return the code tools it defines, in order.
+
+    A module that cannot be imported, or that defines no tools, fails rather
+    than contributing nothing, so a typo in a module name is not silently a
+    server with fewer tools. A tool one module re-exports from another counts
+    once.
+    """
+    specs: list[CodeToolSpec] = []
+    seen: set[int] = set()
+    for module_name in modules:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            raise ValueError(
+                f"server.custom_tool_modules entry '{module_name}' could not be "
+                f"imported: {exc}"
+            ) from exc
+
+        # Functions only, and read from their own __dict__: a module attribute
+        # with a permissive __getattr__ (a lazy module proxy, a mock) would
+        # otherwise answer for any name, or import something just to say no.
+        found = [
+            value
+            for value in vars(module).values()
+            if inspect.isfunction(value)
+            and isinstance(value.__dict__.get(_SPEC_ATTRIBUTE), CodeToolSpec)
+        ]
+        if not found:
+            raise ValueError(
+                f"server.custom_tool_modules entry '{module_name}' defines no code "
+                "tools; mark each one with @tool"
+            )
+        for fn in found:
+            if id(fn) not in seen:
+                seen.add(id(fn))
+                specs.append(fn.__dict__[_SPEC_ATTRIBUTE])
+    return specs

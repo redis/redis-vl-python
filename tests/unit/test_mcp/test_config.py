@@ -1093,3 +1093,57 @@ def test_injection_composes_with_a_static_lock_on_another_field():
     )
     profile = MCPConfig.model_validate(config).custom_tools[0]
     assert [entry.field for entry in profile.lock.inject] == ["tenant_id"]
+
+
+def test_code_tool_modules_are_off_by_default():
+    server = MCPConfig.model_validate(_valid_config()).server
+
+    assert server.custom_tool_modules == []
+    assert server.allow_code_tools is False
+
+
+def test_code_tool_modules_load_once_the_operator_allows_code_tools():
+    config = _valid_config()
+    config["server"].update(
+        {"custom_tool_modules": ["myapp.tools"], "allow_code_tools": True}
+    )
+
+    assert MCPConfig.model_validate(config).server.custom_tool_modules == [
+        "myapp.tools"
+    ]
+
+
+@pytest.mark.parametrize(
+    "server, message",
+    [
+        pytest.param(
+            {"custom_tool_modules": ["myapp.tools"]},
+            "set server.allow_code_tools: true",
+            id="not-allowed",
+        ),
+        pytest.param(
+            {"custom_tool_modules": [" myapp.tools"], "allow_code_tools": True},
+            "is not a module name",
+            id="padded",
+        ),
+        pytest.param(
+            {"custom_tool_modules": [""], "allow_code_tools": True},
+            "is not a module name",
+            id="blank",
+        ),
+        pytest.param(
+            {
+                "custom_tool_modules": ["myapp.tools", "myapp.tools"],
+                "allow_code_tools": True,
+            },
+            "lists 'myapp.tools' more than once",
+            id="duplicate",
+        ),
+    ],
+)
+def test_unusable_code_tool_modules_fail_config_load(server, message):
+    config = _valid_config()
+    config["server"].update(server)
+
+    with pytest.raises(ValueError, match=message):
+        MCPConfig.model_validate(config)

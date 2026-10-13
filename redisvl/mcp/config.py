@@ -254,6 +254,33 @@ class MCPServerConfig(BaseModel):
     builtin_tools: dict[str, Literal["enabled", "disabled"]] = Field(
         default_factory=dict
     )
+    # Importing a module runs its code with the server's privileges, so naming
+    # modules does nothing until the operator opts in separately.
+    custom_tool_modules: list[str] = Field(default_factory=list)
+    allow_code_tools: bool = False
+
+    @model_validator(mode="after")
+    def _validate_custom_tool_modules(self) -> "MCPServerConfig":
+        """Require the opt-in, and a usable module name, for each code module."""
+        if self.custom_tool_modules and not self.allow_code_tools:
+            raise ValueError(
+                "server.custom_tool_modules imports Python code, which runs with "
+                "the server's privileges; set server.allow_code_tools: true to "
+                "allow it"
+            )
+        seen: set[str] = set()
+        for module in self.custom_tool_modules:
+            if not module.strip() or module != module.strip():
+                raise ValueError(
+                    f"server.custom_tool_modules entry {module!r} is not a "
+                    "module name"
+                )
+            if module in seen:
+                raise ValueError(
+                    f"server.custom_tool_modules lists '{module}' more than once"
+                )
+            seen.add(module)
+        return self
 
     @model_validator(mode="after")
     def _validate_builtin_tools(self) -> "MCPServerConfig":
