@@ -701,26 +701,26 @@ class Num(FilterField):
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
 
-# A double quote is the only character that can terminate a quoted phrase, so it
-# is the only one that needs replacing. (A trailing backslash does not terminate
-# one either -- `@f:("x\")` parses as the term `x\`.)
+# Either character can move a phrase's closing quote: a `"` ends the phrase
+# early, and a `\` anywhere before the closing quote makes the parser pair that
+# quote with a later one, even when the backslash is itself escaped.
 #
 # Replaced rather than escaped, because escaping is symmetric: a backslash joins
-# the separator into the term, so `@f:("say \"hi\" now")` asks for a term with a
-# quote in it, and RedisVL writes documents unescaped. On `==` that matches
-# nothing, and on `!=` the unmatchable phrase makes the negation match
-# everything. A space is what the tokenizer left at that position anyway.
-_PHRASE_UNSAFE = re.compile(r'"')
+# the next character into the term, so `@f:("say \"hi\" now")` asks for a term
+# with a quote in it, and RedisVL writes documents unescaped. On `==` that
+# matches nothing, and on `!=` the unmatchable phrase makes the negation match
+# everything. The cost is a document whose text holds a deliberate escape, such
+# as `foo\-bar`: it indexed the joined term, which a phrase can no longer ask for.
+_PHRASE_UNSAFE = re.compile(r'["\\]')
 
 
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index.
 
     Note:
-        ``==`` and ``!=`` match the value as a quoted phrase. Any ``"`` in the
-        value becomes a space first, so the value cannot close that phrase; a
-        quote already separates tokens at index time, so this matches the same
-        documents that escaping it never could. A value of nothing but quotes
+        ``==`` and ``!=`` match the value as a quoted phrase. Any ``"`` or
+        ``\\`` in the value becomes a space first, so the value cannot move
+        where that phrase ends. A value of nothing but those characters
         therefore becomes an empty phrase, which ``==`` matches no document
         against. ``%`` is the pattern operator and interpolates its value
         untouched.

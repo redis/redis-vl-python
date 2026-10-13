@@ -300,6 +300,16 @@ def test_merge_locked_filter_ands_a_multi_value_tag_in_caller_filter():
         # Balanced parens, so only the phrase branch can refuse this: skipping to
         # end-of-string instead would swallow the injected union.
         ("unterminated phrase", '@content:"unterminated | @category:{secret}'),
+        # A backslash before a phrase's closing quote makes RediSearch pair that
+        # quote with a later one, even when the backslash is itself escaped, so
+        # this scan and the parser would disagree about what is phrase and what
+        # is syntax. Both templates, since each renders its own quote.
+        ("backslash in an eq phrase", '@content:("trailing\\")'),
+        ("backslash in a ne phrase", '(-@content:"C:\\Users\\")'),
+        (
+            "escaped backslash before a phrase quote",
+            '@content:("a\\\\") | @category:{secret} @content:("b")',
+        ),
     ],
 )
 def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
@@ -338,9 +348,8 @@ def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
             "unbalanced bracket in a value",
             {"field": "content", "op": "eq", "value": "a[b"},
         ),
-        # Reported by review: a value ending in a backslash sits immediately
-        # before the template's closing quote, and an escape-honouring phrase
-        # scan reads the pair as one and refuses the filter.
+        # The backstop refuses a backslash inside a phrase, so this passes only
+        # because `Text` replaces it before rendering.
         (
             "value ending in a backslash",
             {"field": "content", "op": "eq", "value": "C:\\Users\\"},
@@ -408,12 +417,6 @@ def test_merge_locked_filter_returns_each_side_unchanged_when_the_other_is_absen
         # end. Unbounded it reads this as a union hidden in the range and
         # refuses, and it costs the whole remaining string on every `[`.
         ("pipe after a range span", "(@rating:[4 5] | @category:{sports})"),
-        # RediSearch closes a phrase at `\"` rather than reading it as an escape,
-        # so the phrase scan must not honour the escape either. Honouring it
-        # reads these as unterminated and refuses an ordinary value ending in a
-        # backslash. Both templates, since each renders its own quote.
-        ("trailing backslash on eq", '@content:("trailing\\")'),
-        ("trailing backslash on ne", '(-@content:"C:\\Users\\")'),
     ],
 )
 def test_merge_locked_filter_accepts_a_legitimate_rendering(label, rendered):

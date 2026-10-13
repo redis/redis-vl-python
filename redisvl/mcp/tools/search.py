@@ -413,11 +413,11 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
     unlocked tool relies on those two layers alone.
 
     The quoted-phrase skip below assumes a rendering's quotes arrive in
-    delimiting pairs, which holds for every value the DSL can render: ``==`` and
-    ``!=`` quote the value and take any quote it carried out first, and ``Tag``
-    and ``like`` values arrive with theirs escaped, outside any phrase. If that
-    ever stops holding, the skip finds no closing quote and refuses the filter,
-    so the failure is loud rather than silent.
+    delimiting pairs with no backslash between them, which holds for every
+    value the DSL can render: ``==`` and ``!=`` quote the value and take any
+    quote or backslash it carried out first, and ``Tag`` and ``like`` values
+    arrive with theirs escaped, outside any phrase. A rendering that breaks
+    either assumption is refused, so the failure is loud rather than silent.
     """
     # Braces scope as much as parens do: a tag clause holds its alternatives in
     # braces, so `@category:{sports|health}` is one scoped clause rather than a
@@ -447,16 +447,14 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
             # a `|` inside it is a separator rather than a union. Unlike the range
             # span below, the whole phrase can therefore be skipped.
             #
-            # The scan deliberately does not treat `\` as escaping the closing
-            # quote, because RediSearch does not either: `@f:("x\")` closes the
-            # phrase and yields the term `x\`. Honouring the escape would read
-            # that as unterminated and refuse an ordinary value ending in a
-            # backslash, a Windows path among them. Nothing is given up, since a
-            # value cannot contribute a quote of its own -- `Text` replaces it,
-            # and `Tag` and `like` escape theirs outside any phrase.
+            # That skip is sound only while this scan and RediSearch agree on
+            # where the phrase ends. A backslash anywhere before the closing
+            # quote breaks the agreement: the parser pairs that quote with a
+            # later one, even when the backslash is itself escaped. `Text`
+            # replaces backslashes in its phrases, so one here means a value
+            # reached the phrase raw.
             end = rendered.find('"', position + 1)
-            if end == -1:
-                # Unterminated phrase: the remainder is unparsable.
+            if end == -1 or rendered.find("\\", position + 1, end) != -1:
                 escaped = True
                 break
             position = end + 1
@@ -522,9 +520,10 @@ def merge_locked_filter(
     The locked expression always applies, so a caller can only narrow within it
     and never widen past it. That rests on two things: the caller's expression
     rendering nested inside the AND, and every value staying inside its own
-    clause. ``Text`` removes the quote that delimits a phrase, ``Tag`` escapes
-    the braces that delimit a tag clause, numeric values are type-checked, and
-    ``like`` patterns are escaped at the filter boundary.
+    clause. ``Text`` removes the quotes and backslashes that decide where a
+    phrase ends, ``Tag`` escapes the braces that delimit a tag clause, numeric
+    values are type-checked, and ``like`` patterns are escaped at the filter
+    boundary.
     """
     if locked is None:
         return caller

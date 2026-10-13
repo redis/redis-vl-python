@@ -329,12 +329,13 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
         ("__eq__", '"', '@text_field:(" ")'),
         ("__ne__", '""', '(-@text_field:"  ")'),
         ("__eq__", "   ", '@text_field:("   ")'),
-        # Everything else survives untouched, the backslash included: escaping is
-        # symmetric, so a document written with one indexes the joined term and
-        # only an equally escaped query finds it. Replacing any of these would ask
-        # for a term no document stored -- a silent zero-hit failure. These rows
-        # fail if a single extra character joins the pattern.
-        ("__eq__", "trailing\\", '@text_field:("trailing\\")'),
+        # A backslash before the closing quote moves where the parser ends the
+        # phrase, so it goes the same way as a quote.
+        ("__eq__", "trailing\\", '@text_field:("trailing ")'),
+        ("__ne__", "C:\\Users\\", '(-@text_field:"C: Users ")'),
+        # Everything else survives untouched. Replacing any of it would ask for a
+        # term no document stored -- a silent zero-hit failure. This row fails if
+        # a single extra character joins the pattern.
         (
             "__eq__",
             "e-mail, 50% off (C++) @ user@x.com O'Brien 3.5",
@@ -364,7 +365,8 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
         "eq_quotes_only",
         "ne_quotes_only",
         "eq_whitespace_only",
-        "eq_backslash_untouched",
+        "eq_backslash_neutralized",
+        "ne_backslash_neutralized",
         "eq_punctuation_preserved",
         "like_raw_by_design",
     ],
