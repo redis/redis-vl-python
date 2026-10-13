@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import threading
 import time
 import warnings
@@ -687,6 +688,23 @@ class BaseSearchIndex:
         return any(
             isinstance(field, SVSVectorField) for field in self.schema.fields.values()
         )
+
+    def _log_query_timing(self, query: Any, start: float, results: Any) -> None:
+        """Debug-log the query type, elapsed time and result count of a query.
+
+        Only the query class name is logged, never the query string or its
+        parameters, which may carry user text or vectors.
+        """
+        if logger.isEnabledFor(logging.DEBUG):
+            # A CountQuery resolves to the match count rather than a list.
+            num_results = results if isinstance(results, int) else len(results)
+            logger.debug(
+                "Index %s executed %s in %.2f ms (%d results)",
+                self.schema.index.name,
+                type(query).__name__,
+                (time.perf_counter() - start) * 1000,
+                num_results,
+            )
 
     def _validate_query(self, query: BaseQuery) -> None:
         """Validate a query."""
@@ -2096,14 +2114,17 @@ class SearchIndex(BaseSearchIndex):
             results = index.query(query)
 
         """
+        start = time.perf_counter()
         if isinstance(query, AggregationQuery):
-            return self._aggregate(query)
+            results = self._aggregate(query)
         elif isinstance(query, SQLQuery):
-            return self._sql_query(query)
+            results = self._sql_query(query)
         elif isinstance(query, HybridQuery):
-            return self._hybrid_search(query)
+            results = self._hybrid_search(query)
         else:
-            return self._query(query)
+            results = self._query(query)
+        self._log_query_timing(query, start, results)
+        return results
 
     def paginate(self, query: BaseQuery, page_size: int = 30) -> Generator:
         """Execute a given query against the index and return results in
@@ -3417,14 +3438,17 @@ class AsyncSearchIndex(BaseSearchIndex):
 
             results = await index.query(query)
         """
+        start = time.perf_counter()
         if isinstance(query, AggregationQuery):
-            return await self._aggregate(query)
+            results = await self._aggregate(query)
         elif isinstance(query, SQLQuery):
-            return await self._sql_query(query)
+            results = await self._sql_query(query)
         elif isinstance(query, HybridQuery):
-            return await self._hybrid_search(query)
+            results = await self._hybrid_search(query)
         else:
-            return await self._query(query)
+            results = await self._query(query)
+        self._log_query_timing(query, start, results)
+        return results
 
     async def paginate(self, query: BaseQuery, page_size: int = 30) -> AsyncGenerator:
         """Execute a given query against the index and return results in
