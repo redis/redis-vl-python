@@ -120,7 +120,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          uv sync --all-extras --frozen
+          uv sync --all-extras --group otel-test --frozen
 
           # Must cover every redis-py-version matrix value; unhandled values fail.
           case "$REDIS_PY_VERSION" in
@@ -139,6 +139,62 @@ jobs:
       - name: Run tests
         run: |
           make test
+
+  test-without-otel:
+    # OpenTelemetry is optional (`redisvl[otel]`), but --all-extras installs it
+    # on every other leg: mistralai pulls in the SDK and fastmcp the API. This
+    # leg runs the default suite without it.
+    name: Tests without OpenTelemetry
+    runs-on: ubuntu-latest
+    # Ordered after the HF model cache is primed, not gated on it; see `test`.
+    needs: service-tests
+    if: ${{ !cancelled() }}
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Cache HuggingFace Models
+        uses: actions/cache@v4
+        with:
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies without OpenTelemetry
+        run: |
+          set -euo pipefail
+
+          # Every extra except mistralai and mcp, the two that pull it in.
+          uv sync --frozen \
+            --extra openai --extra cohere --extra voyageai \
+            --extra sentence-transformers --extra langcache --extra vertexai \
+            --extra google-genai --extra bedrock --extra pillow \
+            --extra sql-redis --extra ollama
+          if uv run python -c "import opentelemetry" 2>/dev/null; then
+            echo "::error title=OpenTelemetry installed::the without-OpenTelemetry leg can import opentelemetry"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: |
+          # The MCP server needs fastmcp, which always brings the API with it.
+          make test ARGS="--ignore=tests/unit/test_mcp --ignore=tests/integration/test_mcp"
 
   notebooks:
     name: Notebook Validation
