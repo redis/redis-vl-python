@@ -237,6 +237,30 @@ class BaseCache:
             client = await self._get_async_redis_client()
             await client.expire(key, _ttl)
 
+    def _expire_many(self, keys: list[str]) -> None:
+        """Refresh the default TTL on several keys in one round trip.
+
+        The pipeline is non-transactional so that, on Redis Cluster, the keys
+        may live on different slots.
+        """
+        ttl = self._resolve_ttl()
+        if ttl and keys:
+            client = self._get_redis_client()
+            with client.pipeline(transaction=False) as pipe:
+                for key in keys:
+                    pipe.expire(key, ttl)
+                pipe.execute()
+
+    async def _aexpire_many(self, keys: list[str]) -> None:
+        """Asynchronous :meth:`_expire_many`."""
+        ttl = self._resolve_ttl()
+        if ttl and keys:
+            client = await self._get_async_redis_client()
+            async with client.pipeline(transaction=False) as pipe:
+                for key in keys:
+                    pipe.expire(key, ttl)
+                await pipe.execute()
+
     def clear(self) -> None:
         """Clear the cache of all keys.
 
