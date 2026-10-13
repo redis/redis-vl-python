@@ -57,6 +57,31 @@ def builtin_tool_names() -> frozenset[str]:
     return _BUILTIN_TOOL_NAMES
 
 
+def validate_tool_name(name: str, *, kind: str) -> None:
+    """Raise ``ValueError`` unless ``name`` is usable for a custom tool.
+
+    Shared by every kind of custom tool so that one set of rules decides what a
+    tool may be called. ``kind`` names the source in the message, so an error
+    points at the config section or decorator that produced the name.
+    """
+    if not _TOOL_NAME_PATTERN.match(name):
+        raise ValueError(
+            f"{kind} name '{name}' is invalid; names must start with a "
+            "lowercase letter and contain only lowercase letters, digits, "
+            "hyphens, or underscores (max 64 characters)"
+        )
+    if name in builtin_tool_names():
+        raise ValueError(
+            f"{kind} name '{name}' collides with a built-in tool; "
+            "built-in names are reserved"
+        )
+    if name.startswith(_RESERVED_TOOL_NAME_PREFIXES):
+        raise ValueError(
+            f"{kind} name '{name}' uses a reserved prefix "
+            f"({', '.join(_RESERVED_TOOL_NAME_PREFIXES)})"
+        )
+
+
 class MCPRuntimeConfig(BaseModel):
     """Runtime limits and validated field mappings for MCP requests."""
 
@@ -765,22 +790,7 @@ class MCPCustomToolConfig(BaseModel):
             raise ValueError(
                 f"custom_tools '{self.name}' description must not be blank"
             )
-        if not _TOOL_NAME_PATTERN.match(self.name):
-            raise ValueError(
-                f"custom_tools name '{self.name}' is invalid; names must start with a "
-                "lowercase letter and contain only lowercase letters, digits, "
-                "hyphens, or underscores (max 64 characters)"
-            )
-        if self.name in builtin_tool_names():
-            raise ValueError(
-                f"custom_tools name '{self.name}' collides with a built-in tool; "
-                "built-in names are reserved"
-            )
-        if self.name.startswith(_RESERVED_TOOL_NAME_PREFIXES):
-            raise ValueError(
-                f"custom_tools name '{self.name}' uses a reserved prefix "
-                f"({', '.join(_RESERVED_TOOL_NAME_PREFIXES)})"
-            )
+        validate_tool_name(self.name, kind="custom_tools")
 
         unknown_params = sorted(set(self.params) - _PROFILE_PARAM_NAMES)
         if unknown_params:
