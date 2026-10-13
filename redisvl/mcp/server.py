@@ -1,10 +1,11 @@
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from enum import Enum, auto
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Awaitable
+from typing import Any, Awaitable, TypeVar
 
 from redis import __version__ as redis_py_version
 
@@ -15,6 +16,11 @@ from redisvl.mcp.config import MCPConfig, MCPIndexBindingConfig, load_mcp_config
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.settings import MCPSettings
+from redisvl.mcp.tools.code import (
+    CodeToolSpec,
+    build_code_tool_spec,
+    register_code_tool,
+)
 from redisvl.mcp.tools.list_indexes import register_list_indexes_tool
 from redisvl.mcp.tools.profiles import (
     register_profile_tools,
@@ -31,6 +37,8 @@ from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.schema import IndexSchema
 
 logger = logging.getLogger(__name__)
+
+_ToolFn = TypeVar("_ToolFn", bound=Callable[..., Any])
 
 
 def _describe_scope(scope: frozenset[tuple[str, str]]) -> str:
@@ -89,6 +97,10 @@ class RedisVLMCPServer(FastMCP):
 
     _LifecycleState = _LifecycleState
 
+    # Each code tool paired with the binding it resolved to, settled at startup
+    # once the config is loaded. Empty until then.
+    _resolved_code_tools: tuple[tuple[CodeToolSpec, str], ...] = ()
+
     def __init__(self, settings: MCPSettings):
         """Create a server shell with lazy config and per-binding runtime state."""
         self.mcp_settings = settings
@@ -98,6 +110,7 @@ class RedisVLMCPServer(FastMCP):
         self._tools_registered = False
         self._registered_tool_fingerprint = ""
         self._registered_tools_inject = False
+        self._code_tools: list[CodeToolSpec] = []
         # Set by run_async, the only point in the process that knows it. None
         # means an embedder started the server without naming a transport.
         self._transport: str | None = None
@@ -212,6 +225,50 @@ class RedisVLMCPServer(FastMCP):
                 await self._teardown_runtime()
             finally:
                 await self._mark_stopped()
+
+    def custom_tool(
+        self,
+        *,
+        name: str | None = None,
+        namespace: str | None = None,
+        index: str | None = None,
+        writes: bool = False,
+        scope: str | None = None,
+        description: str | None = None,
+    ) -> Callable[[_ToolFn], _ToolFn]:
+        """Register an async function as a code tool on this server.
+
+        The function takes a :class:`~redisvl.mcp.context.ToolContext` first and
+        the model's arguments after it; its docstring is the tool description
+        unless ``description`` is given. ``index`` pins the binding (required
+        when several are configured), ``writes`` grants the write methods and
+        requires the write scope, and ``scope`` is an extra scope a caller must
+        hold on top of the server-wide one. The function is returned unchanged.
+
+        The function is checked here; whether its binding exists and permits it
+        is checked at startup, where the config is known.
+        """
+
+        def decorator(fn: _ToolFn) -> _ToolFn:
+            if self._tools_registered:
+                raise RuntimeError(
+                    "MCP tools are registered once, at the first startup; "
+                    "register code tools before starting the server"
+                )
+            self._code_tools.append(
+                build_code_tool_spec(
+                    fn,
+                    name=name,
+                    namespace=namespace,
+                    index=index,
+                    writes=writes,
+                    scope=scope,
+                    description=description,
+                )
+            )
+            return fn
+
+        return decorator
 
     def resolve_binding(self, index_id: str | None) -> BindingRuntime:
         """Resolve the runtime for a logical index id, honoring single-index defaults.
@@ -379,7 +436,55 @@ class RedisVLMCPServer(FastMCP):
                 "streamable-http) so the configured auth applies."
             )
 
-    def _verify_no_unscoped_route_to_injected_indexes(self, config: Any) -> None:
+    def _resolve_code_tools(self, config: Any) -> tuple[tuple[CodeToolSpec, str], ...]:
+        """Pair each code tool with its binding, refusing any that cannot hold.
+
+        A code tool is declared in Python, so the rules the config model applies
+        to profiles are applied here instead, against the loaded config.
+        """
+        taken = {profile.name for profile in config.custom_tools}
+        resolved: list[tuple[CodeToolSpec, str]] = []
+        for spec in self._code_tools:
+            if spec.name in taken:
+                raise ValueError(
+                    f"code tool name '{spec.name}' is already used by another "
+                    "custom tool; tool names must be unique"
+                )
+            taken.add(spec.name)
+
+            if spec.index is None:
+                if len(config.indexes) > 1:
+                    raise ValueError(
+                        f"code tool '{spec.name}' must name its index because "
+                        "several are configured: "
+                        f"{', '.join(sorted(config.indexes))}"
+                    )
+                binding_id = next(iter(config.indexes))
+            elif spec.index not in config.indexes:
+                raise ValueError(
+                    f"code tool '{spec.name}' names unknown index '{spec.index}'; "
+                    f"configured: {', '.join(sorted(config.indexes))}"
+                )
+            else:
+                binding_id = spec.index
+
+            # Refused here rather than per call, because the tool's writes were
+            # declared up front: it would fail on every call it exists for.
+            if spec.writes and (
+                self.mcp_settings.read_only or config.indexes[binding_id].read_only
+            ):
+                raise ValueError(
+                    f"code tool '{spec.name}' writes, but index '{binding_id}' is "
+                    "read-only"
+                )
+            resolved.append((spec, binding_id))
+        return tuple(resolved)
+
+    def _verify_no_unscoped_route_to_injected_indexes(
+        self,
+        config: Any,
+        code_tools: tuple[tuple[CodeToolSpec, str], ...] = (),
+    ) -> None:
         """Refuse a tool surface that reaches a tenant-scoped index unscoped.
 
         Injection isolates a tool, but tenant data lives in an index, and every
@@ -395,6 +500,10 @@ class RedisVLMCPServer(FastMCP):
         inject the same entries. Injecting *something* is not enough: a second
         tool scoped by another field, or by the same field from another claim,
         reads across the tenants the first one separates.
+
+        A code tool is a route too, and one the server cannot inspect: it can
+        run any query its handle allows, so nothing proves it applies the scope.
+        It is refused on a scoped index outright.
 
         The index here is the Redis index, not the binding: two bindings with
         the same ``redis_name`` are two routes to one set of documents. The
@@ -444,6 +553,19 @@ class RedisVLMCPServer(FastMCP):
                 f"{', '.join(routes)}"
             )
 
+        unscoped_code_tools = sorted(
+            spec.name
+            for spec, binding_id in code_tools
+            if config.indexes[binding_id].redis_name in injected
+        )
+        if unscoped_code_tools:
+            problems.append(
+                "code tools "
+                f"{', '.join(repr(name) for name in unscoped_code_tools)} reach "
+                "it, and a code tool cannot carry an injected scope (bind it to "
+                "another index)"
+            )
+
         for redis_name in injected:
             by_tool = scopes[redis_name]
             if len(set(by_tool.values())) > 1:
@@ -472,8 +594,7 @@ class RedisVLMCPServer(FastMCP):
             "on a separate server with its own authentication."
         )
 
-    @staticmethod
-    def _tool_surface_fingerprint(config: Any) -> str:
+    def _tool_surface_fingerprint(self, config: Any) -> str:
         """Summarize the config that a registered tool set baked in."""
         if config is None:
             return ""
@@ -481,6 +602,12 @@ class RedisVLMCPServer(FastMCP):
             (
                 sorted(config.server.builtin_tools.items()),
                 [profile.model_dump(mode="json") for profile in config.custom_tools],
+                # The functions themselves cannot change between startups, but
+                # the binding each one resolved to depends on the config.
+                [
+                    (spec.name, binding_id)
+                    for spec, binding_id in self._resolved_code_tools
+                ],
             )
         )
 
@@ -571,6 +698,9 @@ class RedisVLMCPServer(FastMCP):
             register_upsert_tool(self, index_ids=unlisted_index_ids)
             registered.append("upsert-records")
         registered.extend(register_profile_tools(self))
+        for spec, binding_id in self._resolved_code_tools:
+            register_code_tool(self, spec, binding_id)
+            registered.append(spec.name)
 
         self._warn_on_unusable_tool_surface(registered)
         self._registered_tool_fingerprint = self._tool_surface_fingerprint(config)
@@ -747,7 +877,10 @@ class RedisVLMCPServer(FastMCP):
         # Before any binding connects: both depend only on the loaded config,
         # so an unworkable one should not first need a reachable Redis.
         self._verify_injection_has_a_token(self.config.custom_tools)
-        self._verify_no_unscoped_route_to_injected_indexes(self.config)
+        self._resolved_code_tools = self._resolve_code_tools(self.config)
+        self._verify_no_unscoped_route_to_injected_indexes(
+            self.config, self._resolved_code_tools
+        )
         # The semaphore is a single process-wide concurrency ceiling shared by
         # all bindings; take the max across bindings. This means the most
         # permissive binding sets the cap — e.g. five bindings each configured

@@ -158,7 +158,7 @@ The discovery payload is deliberately minimal:
 
 The built-in tools expose the index generically, which leaves the model doing query engineering on every call: pick the index, understand the schema, build a filter, choose return fields. A **profile** moves those decisions into config. It is `search-records` with some arguments pre-filled and frozen and the rest still exposed, published under a name and description of your choosing.
 
-Profiles are pure configuration. You add a `custom_tools` entry to the same YAML the server already loads and restart it; there is no Python to write.
+Profiles are pure configuration. You add a `custom_tools` entry to the same YAML the server already loads and restart it; a profile needs no Python. For logic a profile cannot express, write a [code tool](#code-tools) instead.
 
 ```yaml
 custom_tools:
@@ -243,7 +243,7 @@ Injection is checked at startup wherever the configuration alone can show it wou
 
 - authentication is not enabled, on any transport, including an unauthenticated loopback HTTP bind and any `--allow-unauthenticated` bind;
 - authentication is configured but the server runs over `stdio`, which is never authenticated (checked when the server starts through `rvl mcp` or `run_async`; an embedder that calls `startup()` directly is not, and every call is then refused at request time instead);
-- the Redis index is also reachable without the tenant scope: through `search-records`, through `upsert-records` unless every binding over it is read-only, or through another custom tool on it that does not inject exactly the same entries, since a tool scoped by another field, or by the same field from another claim, reads across the tenants this one separates. Bindings that share a `redis_name` count as one index;
+- the Redis index is also reachable without the tenant scope: through `search-records`, through `upsert-records` unless every binding over it is read-only, through another custom tool on it that does not inject exactly the same entries, since a tool scoped by another field, or by the same field from another claim, reads across the tenants this one separates, or through a [code tool](#code-tools) bound to it, since the server cannot see what a code tool queries. Bindings that share a `redis_name` count as one index;
 - the injected field is absent from the bound index, is not a tag field, or is declared `NOINDEX`;
 - an `inject` list is empty, names one field twice, or names a field that `lock.filter` also constrains;
 - `required` is anything but `true`, or `from` is anything but `claim`.
@@ -266,6 +266,57 @@ The guarantee is narrow: a client presenting a validly signed token cannot make 
 Where tenants share one index, the injected filter is the only isolation boundary. There is no Redis ACL or keyspace separation behind it, so a defect in filter combination or claim validation is a full cross-tenant read. If you need defence in depth, separate tenants at the Redis layer as well.
 
 Listing the tenant claim under `auth.required_claims` is a cheap outer layer: the verifier then rejects a token that lacks the claim before any tool runs. That check confirms only that the claim is present. Its value is still validated by the profile on every call.
+
+## Code Tools
+
+A **code tool** is an async Python function registered as an MCP tool. It is for logic a profile cannot express, such as re-ranking results, counting matches, or combining several queries into one answer. You register it on the server object from your own Python process:
+
+```python
+from redisvl.mcp import MCPSettings, RedisVLMCPServer, ToolContext
+from redisvl.query import CountQuery
+from redisvl.query.filter import Tag
+
+server = RedisVLMCPServer(MCPSettings(config="mcp.yaml"))
+
+
+@server.custom_tool(index="tickets")
+async def count_open_tickets(ctx: ToolContext, product: str) -> dict:
+    """Count open support tickets for a product."""
+    open_for_product = (Tag("status") == "open") & (Tag("product") == product)
+    return {"open": await ctx.index.query(CountQuery(open_for_product))}
+```
+
+The function's first parameter is the context and the rest are the tool's arguments, which the model supplies. The model sees the arguments and their types, and never the context. The docstring is the description the model chooses tools by, so a tool without one is refused. The tool's name is the function's name with hyphens for underscores (`count-open-tickets`), or `name=`; `namespace=` prefixes it. The same naming rules as profiles apply.
+
+`index` pins the binding the tool works on. It may be omitted only when exactly one index is configured, and the model never chooses it.
+
+### What a Code Tool Can Reach
+
+A code tool never receives the server, the real `AsyncSearchIndex`, or a Redis client. It receives a `ToolContext` with:
+
+| Attribute | What it is |
+|---|---|
+| `ctx.index` | A handle on the bound index offering `query`, `batch_query`, `search`, `batch_search`, `aggregate`, `fetch`, `exists` and `info`. A tool declared with `writes=True` also gets `load`, `drop_keys`, `drop_documents` and `expire_keys`. |
+| `ctx.schema` | The bound index's schema. |
+| `ctx.vectorizer` and `ctx.embed(text)` | The binding's vectorizer, if it has one, and a helper that embeds text with it. |
+| `ctx.claims` | A read-only copy of the current request's verified token claims, or `None` when the request has no token. |
+
+Everything else on the index is out of reach: creating, dropping or clearing it, `info` for another index, `paginate`, and the filter-wide bulk writes `update_by_filter` and `drop_by_filter`, which a request timeout could cancel partway through.
+
+The server applies the same rails as for a built-in, without the author asking for them:
+
+- Every `ctx.index` call takes a slot under the server-wide concurrency cap and is bounded by the binding's `runtime.request_timeout_seconds`. The cap is taken per call, so a tool that queries several times never blocks itself.
+- The whole tool call is bounded by the same timeout, so a tool cannot hold a request open indefinitely. A timeout returns a retryable `backend_unavailable` error.
+- A caller needs the server's read scope, or the write scope for a tool declared with `writes=True`. A tool can require an extra scope with `scope=`, which a caller must hold as well, so a code tool can be stricter than the built-ins but never looser.
+- An exception the tool raises becomes a stable MCP error: `ValueError` becomes `invalid_request`, a Redis error a retryable `backend_unavailable`, most other exceptions `internal_error`. Raise `RedisVLMCPError` to choose the code and message yourself.
+
+The handle is a guardrail, not a sandbox. A code tool is your own code, running with the privileges of the process that started the server, and Python can still reach private attributes. What the handle does is make the bounded, policy-checked path the only obvious one.
+
+### What Fails for a Code Tool
+
+The function is checked when it is decorated: it must be async, take a `ToolContext` first, annotate every other parameter, and have a description. Registering a tool after the server has started is refused, because tools register once per process.
+
+The rest is checked at startup, against the loaded config: an `index` that is missing with several indexes configured or that names no binding; a name another custom tool already uses; a tool declared with `writes=True` on a read-only binding or server; and a code tool on a Redis index that a profile scopes with `lock.inject`. A code tool can run any query its handle allows, so nothing would show that it applies the tenant scope. Bind it to another index, or serve it from a separate server.
 
 ## Why Use MCP Instead of Direct RedisVL Calls
 
