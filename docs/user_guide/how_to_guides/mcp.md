@@ -427,9 +427,9 @@ from redisvl.query.filter import Tag
 server = RedisVLMCPServer(MCPSettings(config="/path/to/mcp_config.yaml"))
 
 
-@server.custom_tool(index="tickets")
+@server.code_tool(index="tickets")
 async def open_tickets_for_product(ctx: ToolContext, product: str, limit: int = 5) -> dict:
-    """List the newest open support tickets for a product."""
+    """List open support tickets for a product."""
     query = FilterQuery(
         filter_expression=(Tag("status") == "open") & (Tag("product") == product),
         return_fields=["subject", "created_at"],
@@ -438,14 +438,13 @@ async def open_tickets_for_product(ctx: ToolContext, product: str, limit: int = 
     return {"tickets": await ctx.index.query(query)}
 
 
-@server.custom_tool(index="tickets", writes=True, scope="tickets.triage")
-async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
-    """Mark a support ticket resolved."""
+@server.code_tool(index="tickets", writes=True, scope="tickets.triage")
+async def delete_spam_ticket(ctx: ToolContext, ticket_id: str) -> dict:
+    """Delete a support ticket that triage has marked as spam."""
     ticket = await ctx.index.fetch(ticket_id)
-    if ticket is None:
-        raise ValueError(f"no ticket {ticket_id}")
-    await ctx.index.load([{**ticket, "status": "resolved"}], id_field="id")
-    return {"closed": ticket_id}
+    if ticket is None or ticket.get("status") != "spam":
+        raise ValueError(f"ticket {ticket_id} is not marked as spam")
+    return {"deleted": await ctx.index.drop_documents(ticket_id)}
 
 
 server.run(transport="streamable-http", host="127.0.0.1", port=8000)
@@ -454,12 +453,12 @@ server.run(transport="streamable-http", host="127.0.0.1", port=8000)
 What the client sees:
 
 - `open-tickets-for-product`, taking `product` (required) and `limit`, described by its docstring.
-- `close-ticket`, taking `ticket_id`. A caller needs the server's write scope and `tickets.triage`.
+- `delete-spam-ticket`, taking `ticket_id`. A caller needs the server's write scope and `tickets.triage`, and the tool deletes nothing that is not already marked as spam.
 - No argument for the context or the index, in either tool.
 
 Rules worth knowing:
 
-- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. There is no Redis client and no way to create, drop or clear the index.
+- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool cannot touch another index's keys. There is no Redis client and no way to create, drop or clear the index.
 - **Every call is bounded.** Each `ctx.index` call takes a slot under the concurrency cap and the binding's `request_timeout_seconds`, and the whole tool call is bounded by the same timeout.
 - **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself.
 - **Register before starting.** Tools register once, at the first startup, so a tool registered afterwards is refused.

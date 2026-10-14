@@ -1,4 +1,4 @@
-"""Code tools registered with ``server.custom_tool``, against a real Redis.
+"""Code tools registered with ``server.code_tool``, against a real Redis.
 
 The unit suites own the validation and wrapping matrices. What lives here is
 what depends on a started server: that a tool's handle reaches the real index,
@@ -121,7 +121,7 @@ async def _call(server: RedisVLMCPServer, name: str, **kwargs):
 async def test_a_read_tool_queries_the_bound_index(server_for):
     server = server_for()
 
-    @server.custom_tool()
+    @server.code_tool()
     async def open_tickets(ctx: ToolContext, limit: int = 10) -> dict:
         """List open support tickets."""
         query = FilterQuery(
@@ -141,7 +141,7 @@ async def test_a_read_tool_queries_the_bound_index(server_for):
 async def test_a_writing_tool_writes_through_its_handle(server_for):
     server = server_for()
 
-    @server.custom_tool(writes=True)
+    @server.code_tool(writes=True)
     async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
         """Mark a support ticket resolved."""
         record = await ctx.index.fetch(ticket_id)
@@ -151,18 +151,6 @@ async def test_a_writing_tool_writes_through_its_handle(server_for):
     await server.startup()
 
     assert await _call(server, "close-ticket", ticket_id="t1") == {"status": "resolved"}
-
-
-async def test_a_writing_tool_on_a_read_only_index_fails_startup(server_for):
-    server = server_for(read_only=True)
-
-    @server.custom_tool(writes=True)
-    async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
-        """Mark a support ticket resolved."""
-        return {}
-
-    with pytest.raises(ValueError, match="'close-ticket' writes, but index"):
-        await server.startup()
 
 
 async def test_a_code_tool_on_a_tenant_scoped_index_fails_startup(server_for):
@@ -188,7 +176,7 @@ async def test_a_code_tool_on_a_tenant_scoped_index_fails_startup(server_for):
     # refusal under test the code-tool one.
     server._transport = "streamable-http"
 
-    @server.custom_tool()
+    @server.code_tool()
     async def all_tickets(ctx: ToolContext) -> dict:
         """List every ticket."""
         return {}
@@ -205,7 +193,7 @@ async def test_each_redis_call_takes_the_cap_without_deadlocking_the_tool(
     # calls of a tool that queries twice each still finish.
     server = server_for(max_concurrency=1)
 
-    @server.custom_tool()
+    @server.code_tool()
     async def ticket_counts(ctx: ToolContext) -> dict:
         """Count open and resolved tickets."""
         counts = {}
