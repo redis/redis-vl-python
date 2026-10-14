@@ -437,9 +437,9 @@ class SemanticRouter(BaseModel):
             aggregation_func = reducers.avg
 
         aggregate_query = str(vector_range_query).split(" RETURN")[0]
-        # redis-py emits pipeline steps in call order, so FILTER must come before
-        # SORTBY ... MAX: otherwise the max_k closest routes are kept first and
-        # any that miss their own threshold leave the result short.
+        # FT.AGGREGATE runs its steps in the order given, and redis-py emits them
+        # in call order. FILTER must precede SORTBY ... MAX, or the max_k closest
+        # routes are kept before their thresholds are checked.
         return (
             AggregateRequest(aggregate_query)
             .group_by(
