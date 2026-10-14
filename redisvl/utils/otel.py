@@ -16,18 +16,21 @@ observability; both belong to the application.
 """
 
 import os
-from contextlib import ContextDecorator
+from contextlib import ContextDecorator, contextmanager
 from enum import Enum
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterator
 
+from redisvl.utils.log import get_logger
 from redisvl.version import __version__
+
+logger = get_logger(__name__)
 
 try:
     from opentelemetry import metrics, trace
-    from opentelemetry.trace import SpanKind
+    from opentelemetry.trace import SpanKind, Status, StatusCode
 except ImportError:  # the redisvl[otel] extra is not installed
-    metrics = trace = None  # type: ignore[assignment]
+    metrics = trace = Status = StatusCode = None  # type: ignore[assignment,misc]
 
     class SpanKind(Enum):  # type: ignore[no-redef]
         """Stand-in for ``opentelemetry.trace.SpanKind``."""
@@ -41,7 +44,7 @@ except ImportError:  # the redisvl[otel] extra is not installed
 
 if TYPE_CHECKING:
     from opentelemetry.metrics import Histogram, Meter
-    from opentelemetry.trace import Tracer
+    from opentelemetry.trace import Span, Tracer
 
 INSTRUMENTATION_SCOPE = "redisvl"
 # The semantic-conventions release the standard names below follow. Bump the
@@ -50,20 +53,23 @@ SCHEMA_URL = "https://opentelemetry.io/schemas/1.44.0"
 # Read once, on first use. Same convention as OTEL_SDK_DISABLED: only "true",
 # in any case, disables.
 DISABLED_ENV_VAR = "REDISVL_OTEL_DISABLED"
+# Content capture, as opentelemetry-util-genai reads it: SPAN_ONLY or
+# SPAN_AND_EVENT, in any case, records query text and retrieved documents on
+# spans. Unlike some older GenAI instrumentations, "true" does not, and no
+# stability opt-in is needed. Read once, on first use.
+CAPTURE_CONTENT_ENV_VAR = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
 
+# Metric and attribute names. ``redisvl.*`` names are RedisVL's own; the rest
+# come from the OpenTelemetry semantic conventions, where ``gen_ai.*`` is still
+# in Development and may be renamed upstream.
 SEMANTIC_CACHE_OPERATION_DURATION = "redisvl.semantic_cache.operation.duration"
 SEMANTIC_CACHE_DISTANCE = "redisvl.semantic_cache.distance"
 GEN_AI_CLIENT_OPERATION_DURATION = "gen_ai.client.operation.duration"
-
-# Metric and attribute names. ``redisvl.*`` names are RedisVL's own; the rest come from the
-# OpenTelemetry semantic conventions, where ``gen_ai.*`` is still in
-# Development and may be renamed upstream.
 CACHE_NAME = "redisvl.cache.name"
 CACHE_OPERATION = "redisvl.cache.operation"
 CACHE_RESULT = "redisvl.cache.result"
 CACHE_DISTANCE = "redisvl.cache.distance"
 CACHE_DISTANCE_THRESHOLD = "redisvl.cache.distance_threshold"
-CACHE_NUM_RESULTS = "redisvl.cache.num_results"
 EMBEDDINGS_CACHE_RESULT = "redisvl.embeddings_cache.result"
 ERROR_TYPE = "error.type"
 DB_SYSTEM_NAME = "db.system.name"
@@ -74,6 +80,8 @@ GEN_AI_REQUEST_MODEL = "gen_ai.request.model"
 GEN_AI_EMBEDDINGS_DIMENSION_COUNT = "gen_ai.embeddings.dimension.count"
 GEN_AI_DATA_SOURCE_ID = "gen_ai.data_source.id"
 GEN_AI_RETRIEVAL_TOP_K = "gen_ai.retrieval.top_k"
+GEN_AI_RETRIEVAL_QUERY_TEXT = "gen_ai.retrieval.query.text"
+GEN_AI_RETRIEVAL_DOCUMENTS = "gen_ai.retrieval.documents"
 
 
 # Bucket advice. The GenAI duration buckets start at 10 ms, but a cache lookup
@@ -93,6 +101,12 @@ _HISTOGRAMS = {
         "Vector distance of the nearest SemanticCache candidate per lookup.",
         tuple(i / 100 for i in range(1, 11))
         + (0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0),
+    ),
+    # The GenAI conventions' own advice for this metric.
+    GEN_AI_CLIENT_OPERATION_DURATION: (
+        "s",
+        "Duration of GenAI client operations.",
+        tuple(0.01 * 2**i for i in range(14)),
     ),
 }
 
@@ -184,8 +198,53 @@ def error_type(error: BaseException) -> str:
     return f"{cls.__module__}.{cls.__qualname__}"
 
 
+@contextmanager
+def start_span(
+    name: str,
+    attributes: dict[str, Any],
+    kind: SpanKind = SpanKind.INTERNAL,  # type: ignore[assignment]
+) -> Iterator["Span"]:
+    """Start a RedisVL span as the current span.
+
+    A failure marks the span with an error status and ``error.type``, then
+    re-raises unchanged. The SDK's own exception recording stays off, because
+    it would put the exception's message, which can carry prompt text, on the
+    span.
+    """
+    with get_tracer().start_as_current_span(
+        name,
+        kind=kind,
+        attributes=attributes,
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except Exception as error:
+            _mark_failed(span, error)
+            raise
+
+
+def _mark_failed(span: "Span", error: Exception) -> None:
+    # Never let telemetry replace the exception the caller should see.
+    try:
+        span.set_attribute(ERROR_TYPE, error_type(error))
+        if StatusCode is not None:
+            span.set_status(Status(StatusCode.ERROR))
+    except Exception:
+        logger.debug("Could not record RedisVL telemetry", exc_info=True)
+
+
+@lru_cache(maxsize=None)
+def capture_content() -> bool:
+    """Whether prompts and retrieved documents may be recorded on spans."""
+    mode = os.environ.get(CAPTURE_CONTENT_ENV_VAR, "").strip().upper()
+    return mode in ("SPAN_ONLY", "SPAN_AND_EVENT")
+
+
 def _clear_caches() -> None:
-    """Forget the cached tracer, meter and instruments. For tests."""
+    """Forget the cached tracer, meter, instruments and settings. For tests."""
     get_tracer.cache_clear()
     get_meter.cache_clear()
     histogram.cache_clear()
+    capture_content.cache_clear()

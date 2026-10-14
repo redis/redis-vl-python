@@ -4,18 +4,19 @@ import pytest
 
 from redisvl.extensions.cache.llm import _telemetry
 from redisvl.utils import otel
+from redisvl.utils.vectorize import CustomVectorizer
 
 
 class _Cache:
     name = "cache"
 
-    @_telemetry.timed("check", lookup=True)
+    @_telemetry.operation("check", lookup=True)
     def check(self, error=None):
         if error:
             raise error
         return ["hit"]
 
-    @_telemetry.timed("check", lookup=True)
+    @_telemetry.operation("check", lookup=True)
     async def acheck(self, error=None):
         return self.check(error)
 
@@ -33,4 +34,6 @@ async def test_a_failing_meter_never_reaches_the_caller(monkeypatch):
     with pytest.raises(KeyError) as raised:
         cache.check(error)
     assert raised.value is error
-    _telemetry.record_nearest_distance("cache", [{"vector_distance": "0.1"}], [])
+    assert CustomVectorizer(embed=lambda text: [1.0]).embed("x") == [1.0]
+    with _telemetry.retrieval("cache", 1, 0.1) as span:
+        _telemetry.record_lookup(span, "cache", [{"vector_distance": "0.1"}], [], None)
