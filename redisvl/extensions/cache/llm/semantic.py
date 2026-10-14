@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import ValidationError
 from redis import Redis
 
+from redisvl.extensions.cache.llm import _telemetry
 from redisvl.extensions.cache.llm.base import BaseLLMCache
 from redisvl.extensions.cache.llm.schema import (
     CacheEntry,
@@ -351,6 +352,7 @@ class SemanticCache(BaseLLMCache):
         """
         await super().aclear()
 
+    @_telemetry.timed("drop")
     def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
         """Drop specific entries from the cache by ID or Redis key.
 
@@ -375,6 +377,7 @@ class SemanticCache(BaseLLMCache):
         if keys is not None:
             self._index.drop_keys(keys)
 
+    @_telemetry.timed("drop")
     async def adrop(
         self, ids: list[str] | None = None, keys: list[str] | None = None
     ) -> None:
@@ -429,6 +432,7 @@ class SemanticCache(BaseLLMCache):
         ].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
+    @_telemetry.timed("check", lookup=True)
     def check(
         self,
         prompt: str | None = None,
@@ -506,6 +510,7 @@ class SemanticCache(BaseLLMCache):
             self._within_threshold(candidates, distance_threshold),
             return_fields,
         )
+        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         # Refresh TTL on all found keys
         for key in redis_keys:
@@ -513,6 +518,7 @@ class SemanticCache(BaseLLMCache):
 
         return cache_hits
 
+    @_telemetry.timed("check", lookup=True)
     async def acheck(
         self,
         prompt: str | None = None,
@@ -592,6 +598,7 @@ class SemanticCache(BaseLLMCache):
             self._within_threshold(candidates, distance_threshold),
             return_fields,
         )
+        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         # Refresh TTL on all found keys async
         await asyncio.gather(*[self.aexpire(key) for key in redis_keys])
@@ -698,6 +705,7 @@ class SemanticCache(BaseLLMCache):
 
         return redis_keys, cache_hits
 
+    @_telemetry.timed("store")
     def store(
         self,
         prompt: str,
@@ -766,6 +774,7 @@ class SemanticCache(BaseLLMCache):
         # Return the key where the entry was stored
         return keys[0]
 
+    @_telemetry.timed("store")
     async def astore(
         self,
         prompt: str,
@@ -836,6 +845,7 @@ class SemanticCache(BaseLLMCache):
         # Return the key where the entry was stored
         return keys[0]
 
+    @_telemetry.timed("update")
     def update(self, key: str, **kwargs) -> None:
         """Update specific fields within an existing cache entry. If no fields
         are passed, then only the document TTL is refreshed.
@@ -877,6 +887,7 @@ class SemanticCache(BaseLLMCache):
         # Refresh TTL regardless of whether fields were updated
         self.expire(key)
 
+    @_telemetry.timed("update")
     async def aupdate(self, key: str, **kwargs) -> None:
         """Async update specific fields within an existing cache entry. If no fields
         are passed, then only the document TTL is refreshed.
