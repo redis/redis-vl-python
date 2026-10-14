@@ -196,3 +196,31 @@ async def test_mget_by_keys_refreshes_ttls_in_the_lookup_pipeline(
     assert results == [HIT.model_dump(exclude_none=True), None]
     assert client.transactions == [False]
     assert [pipeline.executed for pipeline in client.pipelines] == [[expected]]
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+@pytest.mark.asyncio
+async def test_single_key_get_and_set_each_cost_one_pipeline(monkeypatch, use_async):
+    """Single-key reads and writes queue their EXPIRE in the same pipeline."""
+    monkeypatch.setattr(
+        EmbeddingsCache, "_make_entry_id", lambda self, content, model_name: content
+    )
+    store = {"embedcache:a": HIT.to_dict()}
+    if use_async:
+        client = FakeAsyncClusterClient(store)
+        cache = make_cache(client, ttl=60)
+        hit = await cache.aget_by_key("embedcache:a")
+        key = await cache.aset(content="b", model_name="m", embedding=[0.1], ttl=5)
+    else:
+        client = FakeSyncClient(store)
+        cache = EmbeddingsCache(name="embedcache", ttl=60, redis_client=client)
+        hit = cache.get_by_key("embedcache:a")
+        key = cache.set(content="b", model_name="m", embedding=[0.1], ttl=5)
+
+    assert hit == HIT.model_dump(exclude_none=True)
+    assert key == "embedcache:b"
+    assert client.transactions == [False, False]
+    assert [pipeline.executed for pipeline in client.pipelines] == [
+        [[("hgetall", "embedcache:a"), ("expire", "embedcache:a", 60)]],
+        [[("hset", "embedcache:b"), ("expire", "embedcache:b", 5)]],
+    ]
