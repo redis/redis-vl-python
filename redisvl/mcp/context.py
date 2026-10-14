@@ -8,6 +8,13 @@ and the binding's request timeout), and write methods exist only on the
 handle given to a tool that declared it writes. A method added to
 ``AsyncSearchIndex`` later is therefore unreachable until it is added here.
 
+Every method stays inside the bound index: searches and aggregations run
+against its name, and records are addressed by document id, which the index
+turns into a key under its own prefix. Nothing accepts a full Redis key or a
+query that names its own target, because either could reach another index's
+documents, including a tenant-scoped one. An index whose prefix overlaps
+another's shares keys with it, which no handle can tell apart.
+
 This is a guardrail, not a sandbox: Python can still reach private attributes.
 It makes the safe path the only obvious one.
 """
@@ -18,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from redisvl.index.index import DEFAULT_BULK_BATCH_SIZE
 from redisvl.mcp.tools.search import _embed_query
+from redisvl.query.sql import SQLQuery
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -26,6 +34,14 @@ if TYPE_CHECKING:
     from redisvl.index import AsyncSearchIndex
     from redisvl.mcp.runtime import BindingRuntime
     from redisvl.schema import IndexSchema
+
+
+def _refuse_sql(query: Any) -> None:
+    if isinstance(query, SQLQuery):
+        raise ValueError(
+            "a code tool cannot run a SQLQuery: it names its own index, so it "
+            "could read beyond the one the tool is bound to"
+        )
 
 
 class IndexHandle:
@@ -45,14 +61,22 @@ class IndexHandle:
             operation_name, awaitable, timeout_seconds=self._timeout_seconds
         )
 
-    async def query(self, query: Any) -> list[dict[str, Any]]:
-        """Run a RedisVL query object and return its processed results."""
+    async def query(self, query: Any) -> Any:
+        """Run a RedisVL query object and return its processed results.
+
+        A ``CountQuery`` returns the match count rather than records. A
+        ``SQLQuery`` is refused: its ``FROM`` clause, not the bound index,
+        decides which index it reads.
+        """
+        _refuse_sql(query)
         return await self._guarded("query", self._index.query(query))
 
     async def batch_query(
         self, queries: list[Any], batch_size: int = 10
     ) -> list[list[dict[str, Any]]]:
         """Run several RedisVL query objects and return each one's results."""
+        for query in queries:
+            _refuse_sql(query)
         return await self._guarded(
             "batch_query", self._index.batch_query(queries, batch_size=batch_size)
         )
@@ -100,30 +124,24 @@ class WritableIndexHandle(IndexHandle):
         self,
         data: Iterable[Any],
         id_field: str | None = None,
-        keys: Iterable[str] | None = None,
         ttl: int | None = None,
         preprocess: Callable | None = None,
         batch_size: int | None = None,
     ) -> list[str]:
-        """Write records to the index and return the keys written."""
+        """Write records to the index and return the keys written.
+
+        Each record's key is its ``id_field`` value under the index prefix, or
+        a generated id when ``id_field`` is not given.
+        """
         return await self._guarded(
             "load",
             self._index.load(
                 data,
                 id_field=id_field,
-                keys=keys,
                 ttl=ttl,
                 preprocess=preprocess,
                 batch_size=batch_size,
             ),
-        )
-
-    async def drop_keys(
-        self, keys: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
-    ) -> int:
-        """Delete records by full Redis key and return how many were removed."""
-        return await self._guarded(
-            "drop_keys", self._index.drop_keys(keys, batch_size=batch_size)
         )
 
     async def drop_documents(
@@ -134,9 +152,16 @@ class WritableIndexHandle(IndexHandle):
             "drop_documents", self._index.drop_documents(ids, batch_size=batch_size)
         )
 
-    async def expire_keys(self, keys: str | list[str], ttl: int) -> int | list[int]:
-        """Set a time-to-live, in seconds, on records by full Redis key."""
-        return await self._guarded("expire_keys", self._index.expire_keys(keys, ttl))
+    async def expire_documents(self, ids: str | list[str], ttl: int) -> int | list[int]:
+        """Set a time-to-live, in seconds, on records by document id."""
+        keys = (
+            self._index.key(ids)
+            if isinstance(ids, str)
+            else [self._index.key(id) for id in ids]
+        )
+        return await self._guarded(
+            "expire_documents", self._index.expire_keys(keys, ttl)
+        )
 
 
 def _freeze(value: Any) -> Any:
@@ -162,9 +187,10 @@ def _current_claims() -> Mapping[str, Any] | None:
 class ToolContext:
     """Everything a code tool may use to reach Redis, and nothing else.
 
-    ``index`` is the bound index's handle. ``schema`` and ``vectorizer`` are
-    the binding's. ``claims`` is a read-only view of the current request's
-    verified token claims, or ``None`` when the request carries no token.
+    ``index`` is the bound index's handle. ``schema`` is a copy of the
+    binding's schema, and ``vectorizer`` is the binding's. ``claims`` is a
+    read-only view of the current request's verified token claims, or ``None``
+    when the request carries no token.
     """
 
     __slots__ = ("_index", "_schema", "_vectorizer", "_claims")
@@ -194,7 +220,10 @@ class ToolContext:
                 runtime.index,
                 timeout_seconds=runtime.binding.runtime.request_timeout_seconds,
             ),
-            schema=runtime.schema,
+            # A copy, because the index holds the same object: a tool that
+            # edited it would retarget every later call on the binding,
+            # built-in tools included.
+            schema=runtime.schema.model_copy(deep=True),
             vectorizer=runtime.vectorizer,
             claims=_current_claims(),
         )
