@@ -5,7 +5,7 @@ import pytest
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.query.filter import Tag
 from redisvl.utils import otel
-from redisvl.utils.vectorize import CustomTextVectorizer
+from redisvl.utils.vectorize import CustomVectorizer
 from tests.conftest import skip_if_no_redis_search
 
 # "near paris" is about 0.02 from "paris" in cosine distance; "rome" and
@@ -23,7 +23,7 @@ def cache(client, redis_url, worker_id):
     skip_if_no_redis_search(client)
     cache = SemanticCache(
         name=f"metrics_cache_{worker_id}",
-        vectorizer=CustomTextVectorizer(
+        vectorizer=CustomVectorizer(
             embed=lambda text: VECTORS.get(text, [0.0, 0.0, 1.0, 0.0])
         ),
         distance_threshold=0.1,
