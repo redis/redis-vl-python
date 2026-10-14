@@ -223,7 +223,7 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
     server.tool(name=spec.name, description=spec.description)(code_tool)
 
 
-def tool(
+def code_tool(
     *,
     name: str | None = None,
     namespace: str | None = None,
@@ -234,9 +234,9 @@ def tool(
 ) -> Callable[[_ToolFn], _ToolFn]:
     """Mark an async function as a code tool for a server to load.
 
-    Takes the same arguments as ``RedisVLMCPServer.custom_tool``. The function
+    Takes the same arguments as ``RedisVLMCPServer.code_tool``. The function
     is checked here and returned unchanged; it is registered only on a server
-    whose config lists its module under ``server.custom_tool_modules``.
+    whose config lists its module under ``server.code_tool_modules``.
     """
 
     def decorator(fn: _ToolFn) -> _ToolFn:
@@ -264,13 +264,13 @@ def load_code_tools(modules: Iterable[str]) -> list[CodeToolSpec]:
     once.
     """
     specs: list[CodeToolSpec] = []
-    seen: set[int] = set()
+    seen: set[Callable[..., Any]] = set()
     for module_name in modules:
         try:
             module = importlib.import_module(module_name)
         except Exception as exc:
             raise ValueError(
-                f"server.custom_tool_modules entry '{module_name}' could not be "
+                f"server.code_tool_modules entry '{module_name}' could not be "
                 f"imported: {exc}"
             ) from exc
 
@@ -285,11 +285,21 @@ def load_code_tools(modules: Iterable[str]) -> list[CodeToolSpec]:
         ]
         if not found:
             raise ValueError(
-                f"server.custom_tool_modules entry '{module_name}' defines no code "
-                "tools; mark each one with @tool"
+                f"server.code_tool_modules entry '{module_name}' defines no code "
+                "tools; mark each one with @code_tool"
             )
         for fn in found:
-            if id(fn) not in seen:
-                seen.add(id(fn))
-                specs.append(fn.__dict__[_SPEC_ATTRIBUTE])
+            spec = fn.__dict__[_SPEC_ATTRIBUTE]
+            if spec.fn is not fn:
+                # functools.wraps copies __dict__, so a decorator applied over
+                # @code_tool carries the marker while the spec still calls the
+                # inner function: the outer decorator would silently never run.
+                raise ValueError(
+                    f"server.code_tool_modules entry '{module_name}': "
+                    f"'{fn.__qualname__}' wraps a code tool in another decorator; "
+                    "apply @code_tool outermost"
+                )
+            if fn not in seen:
+                seen.add(fn)
+                specs.append(spec)
     return specs

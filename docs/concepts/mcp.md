@@ -290,16 +290,16 @@ The function's first parameter is the context and the rest are the tool's argume
 
 `index` pins the binding the tool works on. It may be omitted only when exactly one index is configured, and the model never chooses it.
 
-When the server starts from `rvl mcp`, no code of yours runs unless the config names it. Mark each function with `@tool` from `redisvl.mcp`, which takes the same arguments as `custom_tool`, and list its module in the config:
+When the server starts from `rvl mcp`, no code of yours runs unless the config names it. Mark each function with `@code_tool` from `redisvl.mcp`, which takes the same arguments as `code_tool`, and list its module in the config:
 
 ```yaml
 server:
   redis_url: redis://localhost:6379
   allow_code_tools: true
-  custom_tool_modules: [myapp.support_tools]
+  code_tool_modules: [myapp.support_tools]
 ```
 
-The server imports each module at startup and registers every function in it marked with `@tool`. Importing a module runs its code with the privileges of the process that started the server, so `custom_tool_modules` is refused unless `allow_code_tools` is `true` as well. The setting defaults to `false`, which keeps a config that only uses profiles from running any Python. The modules must be importable by the server process: an installed package, or a directory on `PYTHONPATH`. `rvl` does not add the working directory to the import path.
+The server imports each module at startup and registers every function in it marked with `@code_tool`. Importing a module runs its code with the privileges of the process that started the server, so `code_tool_modules` is refused unless `allow_code_tools` is `true` as well. The setting defaults to `false`, which keeps a config that only uses profiles from running any Python. The modules must be importable by the server process: an installed package, or a directory on `PYTHONPATH`. `rvl` does not add the working directory to the import path.
 
 ### What a Code Tool Can Reach
 
@@ -329,7 +329,7 @@ The handle is a guardrail, not a sandbox. A code tool is your own code, running 
 
 The function is checked when it is decorated: it must be async, take a `ToolContext` first, annotate every other parameter, and have a description. Registering a tool after the server has started is refused, because tools register once per process.
 
-A module listed in `custom_tool_modules` that cannot be imported, or that defines no `@tool` function, fails startup, so a misspelled module name does not quietly produce a server with fewer tools. The rest is checked at startup, against the loaded config: an `index` that is missing with several indexes configured or that names no binding; a name another custom tool already uses; a tool declared with `writes=True` on a read-only binding or server; and a code tool on a Redis index that a profile scopes with `lock.inject`. A code tool can run any query its handle allows, so nothing would show that it applies the tenant scope. Bind it to another index, or serve it from a separate server.
+A module listed in `code_tool_modules` that cannot be imported, or that defines no `@code_tool` function, fails startup, so a misspelled module name does not quietly produce a server with fewer tools. The rest is checked at startup, against the loaded config: an `index` that is missing with several indexes configured or that names no binding; a name another custom tool already uses; a tool declared with `writes=True` on a read-only binding or server; and a code tool on a Redis index that a profile scopes with `lock.inject`. A code tool can run any query its handle allows, so nothing would show that it applies the tenant scope. Bind it to another index, or serve it from a separate server.
 
 ## Why Use MCP Instead of Direct RedisVL Calls
 

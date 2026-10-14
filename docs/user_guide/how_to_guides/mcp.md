@@ -467,16 +467,16 @@ A code tool bound to an index that a profile scopes with `lock.inject` refuses t
 
 ### Code Tools Loaded From Modules
 
-To serve code tools from `rvl mcp`, put them in a module, mark each with `@tool`, and name the module in the config. `@tool` takes the same arguments as `server.custom_tool`:
+To serve code tools from `rvl mcp`, put them in a module, mark each with `@code_tool`, and name the module in the config. `@code_tool` takes the same arguments as `server.code_tool`:
 
 ```python
 # myapp/support_tools.py
-from redisvl.mcp import ToolContext, tool
+from redisvl.mcp import ToolContext, code_tool
 from redisvl.query import CountQuery
 from redisvl.query.filter import Tag
 
 
-@tool(index="tickets", namespace="support")
+@code_tool(index="tickets", namespace="support")
 async def count_open_tickets(ctx: ToolContext, product: str) -> dict:
     """Count open support tickets for a product."""
     open_for_product = (Tag("status") == "open") & (Tag("product") == product)
@@ -487,7 +487,7 @@ async def count_open_tickets(ctx: ToolContext, product: str) -> dict:
 server:
   redis_url: redis://localhost:6379
   allow_code_tools: true
-  custom_tool_modules: [myapp.support_tools]
+  code_tool_modules: [myapp.support_tools]
 
 indexes:
   tickets:
@@ -506,10 +506,10 @@ The client sees `support-count-open-tickets`, taking `product`.
 
 Rules worth knowing:
 
-- **`allow_code_tools: true` is required.** Importing a module runs its code with the server's privileges, so a config that lists `custom_tool_modules` without it fails to load. It defaults to `false`.
-- **The module must be importable.** Install it as a package or put its directory on `PYTHONPATH`; `rvl` does not add the working directory to the import path.
+- **`allow_code_tools: true` is required.** Importing a module runs its code with the server's privileges, so a config that lists `code_tool_modules` without it fails to load. It defaults to `false`.
+- **The module must be importable.** Install it as a package or put its directory on `PYTHONPATH`; `rvl` does not add the working directory to the import path. Under `uvx`, the module and anything it imports must be installed in the environment `uvx` builds, for example with `--with` naming your package.
 - **Only marked functions register.** Helpers in the same module are not published, and a tool imported into a second listed module registers once.
-- **A module that adds nothing fails startup.** One that cannot be imported, or that has no `@tool` function, is reported by name.
+- **A module that adds nothing fails startup.** One that cannot be imported, or that has no `@code_tool` function, is reported by name.
 
 ## Tool Contracts
 
@@ -911,4 +911,4 @@ The error names the tool. Either its `index` is missing while several indexes ar
 
 ### Code Tool Module Fails to Load
 
-A config that lists `server.custom_tool_modules` fails to load unless `server.allow_code_tools` is `true`. With the opt-in set, startup fails when a listed module cannot be imported, either because it is not on the import path or because importing it raised, and when it defines no function marked with `@tool`. The error names the module. Check that the server process can import it, for example with `python -c "import myapp.support_tools"` in the same environment and `PYTHONPATH`.
+A config that lists `server.code_tool_modules` fails to load unless `server.allow_code_tools` is `true`. With the opt-in set, startup fails when a listed module cannot be imported, either because it is not on the import path or because importing it raised, and when it defines no function marked with `@code_tool`. The error names the module. Check that the server process can import it by running `python -c "import myapp.support_tools"` in the same environment and with the same `PYTHONPATH`, from a directory outside the project. Run from inside the project, `python -c` imports from the working directory, which `rvl` does not, so the check could pass while the server fails.

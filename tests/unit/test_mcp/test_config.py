@@ -1098,42 +1098,40 @@ def test_injection_composes_with_a_static_lock_on_another_field():
 def test_code_tool_modules_are_off_by_default():
     server = MCPConfig.model_validate(_valid_config()).server
 
-    assert server.custom_tool_modules == []
+    assert server.code_tool_modules == []
     assert server.allow_code_tools is False
 
 
 def test_code_tool_modules_load_once_the_operator_allows_code_tools():
     config = _valid_config()
     config["server"].update(
-        {"custom_tool_modules": ["myapp.tools"], "allow_code_tools": True}
+        {"code_tool_modules": ["myapp.tools"], "allow_code_tools": True}
     )
 
-    assert MCPConfig.model_validate(config).server.custom_tool_modules == [
-        "myapp.tools"
-    ]
+    assert MCPConfig.model_validate(config).server.code_tool_modules == ["myapp.tools"]
 
 
 @pytest.mark.parametrize(
     "server, message",
     [
         pytest.param(
-            {"custom_tool_modules": ["myapp.tools"]},
+            {"code_tool_modules": ["myapp.tools"]},
             "set server.allow_code_tools: true",
             id="not-allowed",
         ),
         pytest.param(
-            {"custom_tool_modules": [" myapp.tools"], "allow_code_tools": True},
+            {"code_tool_modules": [" myapp.tools"], "allow_code_tools": True},
             "is not a module name",
             id="padded",
         ),
         pytest.param(
-            {"custom_tool_modules": [""], "allow_code_tools": True},
+            {"code_tool_modules": [""], "allow_code_tools": True},
             "is not a module name",
             id="blank",
         ),
         pytest.param(
             {
-                "custom_tool_modules": ["myapp.tools", "myapp.tools"],
+                "code_tool_modules": ["myapp.tools", "myapp.tools"],
                 "allow_code_tools": True,
             },
             "lists 'myapp.tools' more than once",

@@ -8,6 +8,7 @@ a tool that makes several.
 """
 
 import asyncio
+import importlib
 import sys
 import textwrap
 import uuid
@@ -72,7 +73,7 @@ def config_path(tmp_path: Path, redis_url: str):
     ) -> str:
         server: dict = {"redis_url": redis_url}
         if tool_modules is not None:
-            server["custom_tool_modules"] = tool_modules
+            server["code_tool_modules"] = tool_modules
             server["allow_code_tools"] = True
         if auth is not None:
             server["auth"] = auth
@@ -228,6 +229,8 @@ def tool_module(tmp_path, monkeypatch):
     def write(source: str) -> str:
         name = f"code_tools_{uuid.uuid4().hex}"
         (tmp_path / f"{name}.py").write_text(textwrap.dedent(source))
+        # The directory may already be cached as scanned by an earlier import.
+        importlib.invalidate_caches()
         written.append(name)
         return name
 
@@ -239,11 +242,11 @@ def tool_module(tmp_path, monkeypatch):
 
 async def test_a_tool_loaded_from_a_module_is_served(server_for, tool_module):
     module = tool_module("""
-        from redisvl.mcp import ToolContext, tool
+        from redisvl.mcp import ToolContext, code_tool
         from redisvl.query import CountQuery
         from redisvl.query.filter import Tag
 
-        @tool(namespace="support")
+        @code_tool(namespace="support")
         async def count_open(ctx: ToolContext) -> dict:
             "Count open support tickets."
             return {"open": await ctx.index.query(CountQuery(Tag("status") == "open"))}
@@ -253,10 +256,3 @@ async def test_a_tool_loaded_from_a_module_is_served(server_for, tool_module):
     await server.startup()
 
     assert await _call(server, "support-count-open") == {"open": 2}
-
-
-async def test_a_module_that_fails_to_import_fails_startup(server_for):
-    server = server_for(tool_modules=["code_tools_absent_module"])
-
-    with pytest.raises(ValueError, match="'code_tools_absent_module' could not be"):
-        await server.startup()

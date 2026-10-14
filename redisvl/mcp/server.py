@@ -443,8 +443,8 @@ class RedisVLMCPServer(FastMCP):
     ) -> tuple[tuple[CodeToolSpec, str], ...]:
         """Pair each code tool with its binding, refusing any that cannot hold.
 
-        Covers tools registered with :meth:`custom_tool` and those ``loaded``
-        from ``server.custom_tool_modules`` alike. A code tool is declared in
+        Covers tools registered with :meth:`code_tool` and those ``loaded``
+        from ``server.code_tool_modules`` alike. A code tool is declared in
         Python, so the rules the config model applies to profiles are applied
         here instead, against the loaded config.
         """
@@ -895,7 +895,7 @@ class RedisVLMCPServer(FastMCP):
         # Imported here, before any binding connects, so a module that fails to
         # import is reported without first needing a reachable Redis.
         self._resolved_code_tools = self._resolve_code_tools(
-            self.config, load_code_tools(self.config.server.custom_tool_modules)
+            self.config, load_code_tools(self.config.server.code_tool_modules)
         )
         self._verify_no_unscoped_route_to_injected_indexes(
             self.config, self._resolved_code_tools

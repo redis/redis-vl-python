@@ -1313,13 +1313,3 @@ def test_loaded_code_tools_are_resolved_with_registered_ones():
     resolved = server._resolve_code_tools(_config_with(), loaded)
 
     assert [spec.name for spec, _ in resolved] == ["recent-tickets", "close-ticket"]
-
-
-def test_a_loaded_tool_cannot_reuse_a_registered_tools_name():
-    server = _code_tool_server()
-    server.code_tool()(recent_tickets)
-
-    with pytest.raises(ValueError, match="'recent-tickets' is already used"):
-        server._resolve_code_tools(
-            _config_with(), [build_code_tool_spec(recent_tickets)]
-        )

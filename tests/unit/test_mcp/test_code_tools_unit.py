@@ -1,6 +1,7 @@
 """Code tools: what a valid one looks like, and what wraps every call."""
 
 import asyncio
+import importlib
 import sys
 import textwrap
 import uuid
@@ -23,9 +24,9 @@ from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.code import (
     build_code_tool_spec,
+    code_tool,
     load_code_tools,
     register_code_tool,
-    tool,
 )
 
 
@@ -431,7 +432,7 @@ async def test_an_mcp_error_from_the_tool_passes_through_unchanged(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# @tool and the module loader
+# @code_tool and the module loader
 # --------------------------------------------------------------------------
 
 
@@ -444,6 +445,8 @@ def tool_module(tmp_path, monkeypatch):
     def write(source: str) -> str:
         name = f"code_tools_{uuid.uuid4().hex}"
         (tmp_path / f"{name}.py").write_text(textwrap.dedent(source))
+        # The directory may already be cached as scanned by an earlier import.
+        importlib.invalidate_caches()
         written.append(name)
         return name
 
@@ -454,14 +457,14 @@ def tool_module(tmp_path, monkeypatch):
 
 
 _TWO_TOOLS = """
-    from redisvl.mcp import ToolContext, tool
+    from redisvl.mcp import ToolContext, code_tool
 
-    @tool(namespace="support")
+    @code_tool(namespace="support")
     async def open_tickets(ctx: ToolContext, query: str) -> dict:
         '''List open tickets.'''
         return {}
 
-    @tool(writes=True)
+    @code_tool(writes=True)
     async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
         '''Close a ticket.'''
         return {}
@@ -477,7 +480,7 @@ def test_tool_marks_the_function_and_returns_it_unchanged():
         """Triage tickets."""
         return {}
 
-    marked = tool(scope="tickets.triage")(triage)
+    marked = code_tool(scope="tickets.triage")(triage)
 
     assert marked is triage
     assert triage.__redisvl_mcp_tool__.scope == "tickets.triage"
@@ -489,7 +492,7 @@ def test_tool_checks_the_function_where_it_is_declared():
         return {}
 
     with pytest.raises(TypeError, match="must be an async function"):
-        tool()(sync_tool)
+        code_tool()(sync_tool)
 
 
 def test_the_loader_returns_a_modules_tools_in_definition_order(tool_module):
@@ -510,18 +513,40 @@ def test_a_re_exported_tool_counts_once(tool_module):
     assert [spec.name for spec in specs] == ["support-open-tickets", "close-ticket"]
 
 
-def test_a_permissive_module_attribute_is_not_mistaken_for_a_tool(tool_module):
-    # A lazy proxy or a mock answers every attribute lookup, the marker
-    # included; only functions carrying their own marker count.
+def test_only_a_function_carrying_its_own_marker_counts(tool_module):
+    # A class or other object can hold a real spec in its __dict__; only a
+    # function the loader can register stands for a tool.
     name = tool_module(_TWO_TOOLS + """
-    class Permissive:
-        def __getattr__(self, attribute):
-            return True
+    class Holder:
+        pass
 
-    anything = Permissive()
+    Holder.__redisvl_mcp_tool__ = open_tickets.__redisvl_mcp_tool__
     """)
 
     assert len(load_code_tools([name])) == 2
+
+
+def test_a_decorator_over_code_tool_is_refused_rather_than_skipped(tool_module):
+    name = tool_module("""
+    import functools
+
+    from redisvl.mcp import ToolContext, code_tool
+
+    def logged(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            return await fn(*args, **kwargs)
+        return wrapper
+
+    @logged
+    @code_tool()
+    async def open_tickets(ctx: ToolContext, query: str) -> dict:
+        "List open tickets."
+        return {}
+    """)
+
+    with pytest.raises(ValueError, match="apply @code_tool outermost"):
+        load_code_tools([name])
 
 
 @pytest.mark.parametrize(
