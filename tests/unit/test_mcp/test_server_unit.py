@@ -148,9 +148,15 @@ async def test_teardown_continues_when_a_binding_fails_to_close(monkeypatch):
     assert server._tools_registered is True
 
 
-def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[str]:
+def _register_tools_with(
+    monkeypatch, bindings: dict, *, config=None, code_tools=()
+) -> list[str]:
     """Run _register_tools against the given bindings, returning registered names."""
     registered: list[str] = []
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_code_tool",
+        lambda server, spec, binding_id: registered.append(spec.name),
+    )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_list_indexes_tool",
         lambda server: registered.append("list-indexes"),
@@ -187,6 +193,7 @@ def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[st
     server.tool = object()
     server.config = config
     server.mcp_settings = SimpleNamespace(read_only=False)
+    server._resolved_code_tools = tuple(code_tools)
 
     server._register_tools()
     return registered
@@ -1047,7 +1054,7 @@ def test_tools_injecting_the_same_scope_share_an_index():
 
 
 # --------------------------------------------------------------------------
-# Code tools registered with server.custom_tool
+# Code tools registered with server.code_tool
 # --------------------------------------------------------------------------
 
 
@@ -1092,7 +1099,7 @@ def _two_index_config(*, custom_tools=None, **knowledge_overrides) -> MCPConfig:
 def test_custom_tool_records_the_tool_and_returns_the_function():
     server = _code_tool_server()
 
-    decorated = server.custom_tool(namespace="support")(recent_tickets)
+    decorated = server.code_tool(namespace="support")(recent_tickets)
 
     assert decorated is recent_tickets
     assert [spec.name for spec in server._code_tools] == ["support-recent-tickets"]
@@ -1106,7 +1113,7 @@ def test_custom_tool_checks_the_function_where_it_is_declared():
         return {}
 
     with pytest.raises(TypeError, match="must be an async function"):
-        server.custom_tool()(sync_tool)
+        server.code_tool()(sync_tool)
     assert server._code_tools == []
 
 
@@ -1115,12 +1122,12 @@ def test_custom_tool_after_registration_is_refused():
     server._tools_registered = True
 
     with pytest.raises(RuntimeError, match="register code tools before starting"):
-        server.custom_tool()(recent_tickets)
+        server.code_tool()(recent_tickets)
 
 
 def test_a_code_tool_on_a_single_index_server_binds_to_it():
     server = _code_tool_server()
-    server.custom_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
 
     ((spec, binding_id),) = server._resolve_code_tools(_config_with())
 
@@ -1129,7 +1136,7 @@ def test_a_code_tool_on_a_single_index_server_binds_to_it():
 
 def test_a_code_tool_binds_to_the_index_it_names():
     server = _code_tool_server()
-    server.custom_tool(index="tickets")(recent_tickets)
+    server.code_tool(index="tickets")(recent_tickets)
 
     ((_, binding_id),) = server._resolve_code_tools(_two_index_config())
 
@@ -1169,7 +1176,7 @@ def test_a_code_tool_binds_to_the_index_it_names():
 )
 def test_a_code_tool_its_config_cannot_hold_fails_startup(options, config, expected):
     server = _code_tool_server()
-    server.custom_tool(**options)(recent_tickets)
+    server.code_tool(**options)(recent_tickets)
 
     with pytest.raises(ValueError, match=expected):
         server._resolve_code_tools(config)
@@ -1177,8 +1184,8 @@ def test_a_code_tool_its_config_cannot_hold_fails_startup(options, config, expec
 
 def test_two_code_tools_cannot_share_a_name():
     server = _code_tool_server()
-    server.custom_tool()(recent_tickets)
-    server.custom_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
 
     with pytest.raises(ValueError, match="'recent-tickets' is already used"):
         server._resolve_code_tools(_config_with())
@@ -1186,22 +1193,22 @@ def test_two_code_tools_cannot_share_a_name():
 
 def test_a_writing_code_tool_is_refused_on_a_read_only_server():
     server = _code_tool_server(read_only=True)
-    server.custom_tool(writes=True)(recent_tickets)
+    server.code_tool(writes=True)(recent_tickets)
 
-    with pytest.raises(ValueError, match="is read-only"):
+    with pytest.raises(ValueError, match="writes, but the server runs read-only"):
         server._resolve_code_tools(_config_with())
 
 
-def test_a_reading_code_tool_may_use_a_read_only_index():
+def test_a_reading_code_tool_may_run_on_a_read_only_server():
     server = _code_tool_server(read_only=True)
-    server.custom_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
 
     assert len(server._resolve_code_tools(_config_with())) == 1
 
 
 def _code_tool_route_check(*, index, indexes):
     server = _code_tool_server()
-    server.custom_tool(index=index)(recent_tickets)
+    server.code_tool(index=index)(recent_tickets)
     config = MCPConfig.model_validate(
         {
             "server": {
@@ -1254,41 +1261,48 @@ def test_a_code_tool_on_another_index_is_no_route():
 
 
 def test_register_tools_registers_code_tools_after_profiles(monkeypatch):
-    calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        "redisvl.mcp.server.register_code_tool",
-        lambda server, spec, binding_id: calls.append((spec.name, binding_id)),
-    )
     server = _code_tool_server()
-    server.custom_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
     config = _config_with(
         custom_tools=[{"name": "resolved-search", "description": "Search."}]
     )
-    resolved = server._resolve_code_tools(config)
-    monkeypatch.setattr(RedisVLMCPServer, "_resolved_code_tools", resolved)
 
     registered = _register_tools_with(
-        monkeypatch, {"knowledge": _binding_runtime("knowledge")}, config=config
+        monkeypatch,
+        {"knowledge": _binding_runtime("knowledge")},
+        config=config,
+        code_tools=server._resolve_code_tools(config),
     )
 
-    assert registered[-1] == "resolved-search"
-    assert calls == [("recent-tickets", "knowledge")]
+    assert registered[-2:] == ["resolved-search", "recent-tickets"]
 
 
-def test_the_tool_surface_fingerprint_covers_code_tools():
-    server = _code_tool_server()
-    config = _config_with()
-    without = server._tool_surface_fingerprint(config)
+def _restart_with(*, registered_on, restarted_on):
+    """Register a code tool on one binding, then restart pairing it with another."""
+    spec = build_code_tool_spec(recent_tickets)
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._tools_registered = True
+    server._registered_code_tools = ((spec, registered_on),)
+    server._resolved_code_tools = ((spec, restarted_on),)
+    server._registered_tool_fingerprint = server._tool_surface_fingerprint(None)
+    server._registered_tools_inject = False
+    server.tool = object()
+    server.config = None
+    server._register_tools()
 
-    server.custom_tool()(recent_tickets)
-    server._resolved_code_tools = server._resolve_code_tools(config)
 
-    assert server._tool_surface_fingerprint(config) != without
+def test_a_restart_that_moves_a_code_tool_is_fatal():
+    with pytest.raises(RuntimeError, match="code tools, or the indexes they are"):
+        _restart_with(registered_on="knowledge", restarted_on="tickets")
+
+
+def test_a_restart_with_the_same_code_tools_proceeds():
+    _restart_with(registered_on="knowledge", restarted_on="knowledge")
 
 
 def test_loaded_code_tools_are_resolved_with_registered_ones():
     server = _code_tool_server()
-    server.custom_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
 
     async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
         """Close a ticket."""
@@ -1303,7 +1317,7 @@ def test_loaded_code_tools_are_resolved_with_registered_ones():
 
 def test_a_loaded_tool_cannot_reuse_a_registered_tools_name():
     server = _code_tool_server()
-    server.custom_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
 
     with pytest.raises(ValueError, match="'recent-tickets' is already used"):
         server._resolve_code_tools(

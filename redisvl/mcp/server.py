@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from enum import Enum, auto
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Awaitable, TypeVar
+from typing import Any, Awaitable
 
 from redis import __version__ as redis_py_version
 
@@ -18,6 +18,7 @@ from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.code import (
     CodeToolSpec,
+    _ToolFn,
     build_code_tool_spec,
     load_code_tools,
     register_code_tool,
@@ -38,8 +39,6 @@ from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.schema import IndexSchema
 
 logger = logging.getLogger(__name__)
-
-_ToolFn = TypeVar("_ToolFn", bound=Callable[..., Any])
 
 
 def _describe_scope(scope: frozenset[tuple[str, str]]) -> str:
@@ -98,9 +97,11 @@ class RedisVLMCPServer(FastMCP):
 
     _LifecycleState = _LifecycleState
 
-    # Each code tool paired with the binding it resolved to, settled at startup
-    # once the config is loaded. Empty until then.
+    # Each code tool paired with the binding it resolved to, settled at every
+    # startup once the config is loaded, and the pairing the tools were
+    # registered with at the first. Empty until then.
     _resolved_code_tools: tuple[tuple[CodeToolSpec, str], ...] = ()
+    _registered_code_tools: tuple[tuple[CodeToolSpec, str], ...] = ()
 
     def __init__(self, settings: MCPSettings):
         """Create a server shell with lazy config and per-binding runtime state."""
@@ -227,7 +228,7 @@ class RedisVLMCPServer(FastMCP):
             finally:
                 await self._mark_stopped()
 
-    def custom_tool(
+    def code_tool(
         self,
         *,
         name: str | None = None,
@@ -475,9 +476,11 @@ class RedisVLMCPServer(FastMCP):
 
             # Refused here rather than per call, because the tool's writes were
             # declared up front: it would fail on every call it exists for.
-            if spec.writes and (
-                self.mcp_settings.read_only or config.indexes[binding_id].read_only
-            ):
+            if spec.writes and self.mcp_settings.read_only:
+                raise ValueError(
+                    f"code tool '{spec.name}' writes, but the server runs read-only"
+                )
+            if spec.writes and config.indexes[binding_id].read_only:
                 raise ValueError(
                     f"code tool '{spec.name}' writes, but index '{binding_id}' is "
                     "read-only"
@@ -599,7 +602,8 @@ class RedisVLMCPServer(FastMCP):
             "on a separate server with its own authentication."
         )
 
-    def _tool_surface_fingerprint(self, config: Any) -> str:
+    @staticmethod
+    def _tool_surface_fingerprint(config: Any) -> str:
         """Summarize the config that a registered tool set baked in."""
         if config is None:
             return ""
@@ -607,12 +611,6 @@ class RedisVLMCPServer(FastMCP):
             (
                 sorted(config.server.builtin_tools.items()),
                 [profile.model_dump(mode="json") for profile in config.custom_tools],
-                # The functions themselves cannot change between startups, but
-                # the binding each one resolved to depends on the config.
-                [
-                    (spec.name, binding_id)
-                    for spec, binding_id in self._resolved_code_tools
-                ],
             )
         )
 
@@ -629,6 +627,17 @@ class RedisVLMCPServer(FastMCP):
             # The dangerous direction is an operator disabling a tool or tightening
             # a lock and believing the restart applied it.
             if self._tools_registered:
+                # A code tool runs operator code against whatever binding it
+                # was registered on, so a restart that would pair it with a
+                # different one, or drop it, is never just a log line.
+                if self._resolved_code_tools != self._registered_code_tools:
+                    raise RuntimeError(
+                        "MCP code tools, or the indexes they are bound to, "
+                        "changed since tools were registered. Tools register "
+                        "once per process, so the previously registered code "
+                        "tools would stay in effect. Restart the process to "
+                        "apply the new configuration."
+                    )
                 config = getattr(self, "config", None)
                 current = self._tool_surface_fingerprint(config)
                 if current != self._registered_tool_fingerprint:
@@ -709,6 +718,7 @@ class RedisVLMCPServer(FastMCP):
 
         self._warn_on_unusable_tool_surface(registered)
         self._registered_tool_fingerprint = self._tool_surface_fingerprint(config)
+        self._registered_code_tools = self._resolved_code_tools
         self._registered_tools_inject = _config_injects(config)
         self._tools_registered = True
 

@@ -105,7 +105,7 @@ For configuration and the gateway boundary, see {doc}`/user_guide/how_to_guides/
 
 ## Tool Surface
 
-RedisVL MCP exposes up to three built-in tools, plus any configured [custom tool profiles](#custom-tool-profiles):
+RedisVL MCP exposes up to three built-in tools, plus any configured [custom tool profiles](#custom-tool-profiles) and [code tools](#code-tools):
 
 - `list-indexes` enumerates the configured logical indexes for discovery
 - `search-records` searches a selected index using that index's server-owned search mode
@@ -276,10 +276,10 @@ from redisvl.mcp import MCPSettings, RedisVLMCPServer, ToolContext
 from redisvl.query import CountQuery
 from redisvl.query.filter import Tag
 
-server = RedisVLMCPServer(MCPSettings(config="mcp.yaml"))
+server = RedisVLMCPServer(MCPSettings(config="/path/to/mcp_config.yaml"))
 
 
-@server.custom_tool(index="tickets")
+@server.code_tool(index="tickets")
 async def count_open_tickets(ctx: ToolContext, product: str) -> dict:
     """Count open support tickets for a product."""
     open_for_product = (Tag("status") == "open") & (Tag("product") == product)
@@ -307,10 +307,12 @@ A code tool never receives the server, the real `AsyncSearchIndex`, or a Redis c
 
 | Attribute | What it is |
 |---|---|
-| `ctx.index` | A handle on the bound index offering `query`, `batch_query`, `search`, `batch_search`, `aggregate`, `fetch`, `exists` and `info`. A tool declared with `writes=True` also gets `load`, `drop_keys`, `drop_documents` and `expire_keys`. |
+| `ctx.index` | A handle on the bound index offering `query`, `batch_query`, `search`, `batch_search`, `aggregate`, `fetch`, `exists` and `info`. A tool declared with `writes=True` also gets `load`, `drop_documents` and `expire_documents`. |
 | `ctx.schema` | The bound index's schema. |
 | `ctx.vectorizer` and `ctx.embed(text)` | The binding's vectorizer, if it has one, and a helper that embeds text with it. |
 | `ctx.claims` | A read-only copy of the current request's verified token claims, or `None` when the request has no token. |
+
+Every call stays inside the bound index. Searches and aggregations run against its name, and records are addressed by document id, which the index turns into a key under its own prefix. So nothing on the handle takes a full Redis key, and `query` refuses a `SQLQuery`, whose `FROM` clause names its own index. Either could otherwise reach another index's documents, including a tenant-scoped one. An index whose key prefix overlaps another's shares keys with it, which the handle cannot tell apart.
 
 Everything else on the index is out of reach: creating, dropping or clearing it, `info` for another index, `paginate`, and the filter-wide bulk writes `update_by_filter` and `drop_by_filter`, which a request timeout could cancel partway through.
 

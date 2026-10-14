@@ -12,6 +12,7 @@ from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.context import IndexHandle, ToolContext, WritableIndexHandle
 from redisvl.mcp.runtime import BindingRuntime
+from redisvl.query.sql import SQLQuery
 
 READS = {
     "query",
@@ -23,15 +24,22 @@ READS = {
     "exists",
     "info",
 }
-WRITES = {"load", "drop_keys", "drop_documents", "expire_keys"}
+WRITES = {"load", "drop_documents", "expire_documents"}
 TIMEOUT = 7.0
 
 
 class RecordingIndex:
     """Answers any method with a record of how it was called."""
 
+    def __init__(self):
+        self.awaited: list[str] = []
+
+    def key(self, id):
+        return f"doc:{id}"
+
     def __getattr__(self, name):
         async def method(*args, **kwargs):
+            self.awaited.append(name)
             return (name, args, kwargs)
 
         return method
@@ -100,61 +108,79 @@ def test_the_writable_handle_adds_exactly_the_bounded_writes():
 
 QUERY = object()
 
+# (handle method, its arguments, the index method it reaches, what it forwards)
 CALLS = [
-    ("query", (QUERY,), {}, ((QUERY,), {})),
-    ("batch_query", ([QUERY],), {"batch_size": 3}, (([QUERY],), {"batch_size": 3})),
-    ("search", ("*",), {"query_params": {}}, (("*",), {"query_params": {}})),
-    ("batch_search", ([QUERY],), {}, (([QUERY],), {"batch_size": 10})),
-    ("aggregate", (QUERY,), {}, ((QUERY,), {})),
-    ("fetch", ("a1",), {}, (("a1",), {})),
-    ("exists", (), {}, ((), {})),
-    ("info", (), {}, ((), {})),
+    ("query", (QUERY,), {}, "query", ((QUERY,), {})),
+    (
+        "batch_query",
+        ([QUERY],),
+        {"batch_size": 3},
+        "batch_query",
+        (([QUERY],), {"batch_size": 3}),
+    ),
+    (
+        "search",
+        ("*",),
+        {"query_params": {}},
+        "search",
+        (("*",), {"query_params": {}}),
+    ),
+    ("batch_search", ([QUERY],), {}, "batch_search", (([QUERY],), {"batch_size": 10})),
+    ("aggregate", (QUERY,), {}, "aggregate", ((QUERY,), {})),
+    ("fetch", ("a1",), {}, "fetch", (("a1",), {})),
+    ("exists", (), {}, "exists", ((), {})),
+    ("info", (), {}, "info", ((), {})),
     (
         "load",
         ([{"id": "a1"}],),
         {"id_field": "id"},
+        "load",
         (
             ([{"id": "a1"}],),
-            {
-                "id_field": "id",
-                "keys": None,
-                "ttl": None,
-                "preprocess": None,
-                "batch_size": None,
-            },
+            {"id_field": "id", "ttl": None, "preprocess": None, "batch_size": None},
         ),
     ),
-    ("drop_keys", ("doc:a1",), {}, (("doc:a1",), {"batch_size": 500})),
-    ("drop_documents", (["a1"],), {}, ((["a1"],), {"batch_size": 500})),
-    ("expire_keys", ("doc:a1", 60), {}, (("doc:a1", 60), {})),
+    (
+        "drop_documents",
+        (["a1"],),
+        {},
+        "drop_documents",
+        ((["a1"],), {"batch_size": 500}),
+    ),
+    # Addressed by id, so the key is built under the index's own prefix.
+    (
+        "expire_documents",
+        (["a1", "a2"], 60),
+        {},
+        "expire_keys",
+        ((["doc:a1", "doc:a2"], 60), {}),
+    ),
+    ("expire_documents", ("a1", 60), {}, "expire_keys", (("doc:a1", 60), {})),
 ]
+CALL_IDS = [f"{call[0]}-{n}" for n, call in enumerate(CALLS)]
 
 
-@pytest.mark.parametrize(
-    "method, args, kwargs, forwarded", CALLS, ids=[call[0] for call in CALLS]
-)
+@pytest.mark.parametrize("method, args, kwargs, target, forwarded", CALLS, ids=CALL_IDS)
 async def test_every_call_reaches_the_index_through_the_guard(
-    method, args, kwargs, forwarded
+    method, args, kwargs, target, forwarded
 ):
     server = FakeServer()
     handle = WritableIndexHandle(server, RecordingIndex(), timeout_seconds=TIMEOUT)
 
     result = await getattr(handle, method)(*args, **kwargs)
 
-    assert result == (method, *forwarded)
+    assert result == (target, *forwarded)
     assert server.guarded == [(method, TIMEOUT)]
 
 
-@pytest.mark.parametrize(
-    "method, args, kwargs, forwarded", CALLS, ids=[call[0] for call in CALLS]
-)
+@pytest.mark.parametrize("method, args, kwargs, target, forwarded", CALLS, ids=CALL_IDS)
 def test_every_forwarded_call_fits_the_real_index_signature(
-    method, args, kwargs, forwarded
+    method, args, kwargs, target, forwarded
 ):
     # The recording index accepts anything, so check what the handle forwards
     # against the method it stands in for.
     forwarded_args, forwarded_kwargs = forwarded
-    signature = inspect.signature(getattr(AsyncSearchIndex, method))
+    signature = inspect.signature(getattr(AsyncSearchIndex, target))
 
     signature.bind(None, *forwarded_args, **forwarded_kwargs)
 
@@ -169,10 +195,23 @@ async def test_a_guard_refusal_reaches_the_tool_without_touching_the_index():
             awaitable.close()
             raise RuntimeError("MCP server is not running")
 
-    handle = IndexHandle(StoppedServer(), RecordingIndex(), timeout_seconds=TIMEOUT)
+    index = RecordingIndex()
+    handle = IndexHandle(StoppedServer(), index, timeout_seconds=TIMEOUT)
 
     with pytest.raises(RuntimeError, match="not running"):
         await handle.fetch("a1")
+    assert index.awaited == []
+
+
+@pytest.mark.parametrize("method", ["query", "batch_query"])
+async def test_a_sql_query_is_refused_because_it_names_its_own_index(method):
+    sql = SQLQuery("SELECT * FROM tenant_docs")
+    index = RecordingIndex()
+    handle = IndexHandle(FakeServer(), index, timeout_seconds=TIMEOUT)
+
+    with pytest.raises(ValueError, match="cannot run a SQLQuery"):
+        await getattr(handle, method)(sql if method == "query" else [QUERY, sql])
+    assert index.awaited == []
 
 
 async def test_info_cannot_name_another_index():
@@ -211,7 +250,18 @@ async def test_the_context_bounds_calls_by_the_bindings_timeout(monkeypatch):
     await ctx.index.exists()
 
     assert server.guarded == [("exists", TIMEOUT)]
-    assert ctx.schema is runtime.schema
+
+
+def test_the_context_schema_is_a_copy_a_tool_cannot_retarget_the_index_with(
+    monkeypatch,
+):
+    _as_caller(monkeypatch, None)
+    runtime = _runtime()
+
+    ctx = ToolContext.for_request(FakeServer(), runtime, writes=False)
+    ctx.schema.index.name = "tenant-index"
+
+    assert runtime.schema.index.name == "docs-index"
 
 
 def test_the_context_is_read_only(monkeypatch):
@@ -222,6 +272,8 @@ def test_the_context_is_read_only(monkeypatch):
         ctx.index = WritableIndexHandle(
             FakeServer(), RecordingIndex(), timeout_seconds=1
         )
+    with pytest.raises(AttributeError):
+        ctx.anything = object()
 
 
 def test_a_tokenless_request_has_no_claims(monkeypatch):
@@ -230,6 +282,14 @@ def test_a_tokenless_request_has_no_claims(monkeypatch):
     assert (
         ToolContext.for_request(FakeServer(), _runtime(), writes=False).claims is None
     )
+
+
+def test_a_token_without_claims_still_reads_as_a_token(monkeypatch):
+    _as_caller(monkeypatch, SimpleNamespace(claims=None))
+
+    claims = ToolContext.for_request(FakeServer(), _runtime(), writes=False).claims
+
+    assert claims is not None and dict(claims) == {}
 
 
 def test_claims_are_a_read_only_copy_all_the_way_down(monkeypatch):

@@ -73,9 +73,20 @@ def _tool_signature(
         ) from exc
 
     parameters = list(inspect.signature(fn).parameters.values())
-    if not parameters or hints.get(parameters[0].name) is not ToolContext:
+    # Positional, because the wrapper passes the context positionally; a
+    # keyword-only one would be accepted here and fail on every call.
+    if (
+        not parameters
+        or hints.get(parameters[0].name) is not ToolContext
+        or parameters[0].kind
+        not in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ):
         raise TypeError(
-            f"code tool {where} must take a ToolContext as its first parameter"
+            f"code tool {where} must take a ToolContext as its first, positional "
+            "parameter"
         )
 
     exposed = []
@@ -146,7 +157,7 @@ def build_code_tool_spec(
     resolved_name = name if name is not None else fn.__name__.replace("_", "-")
     if namespace is not None:
         resolved_name = f"{namespace}-{resolved_name}"
-    validate_tool_name(resolved_name, kind="code tool")
+    validate_tool_name(resolved_name, kind=f"code tool {where}")
 
     if scope is not None and not scope.strip():
         raise ValueError(f"code tool {where} scope must not be blank")
@@ -167,9 +178,9 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
     """Register one code tool against ``binding_id``."""
 
     async def code_tool(**kwargs: Any) -> Any:
-        # Before the try block, so a refusal reaches the caller as FORBIDDEN
-        # rather than being remapped. The tool's own scope is required on top
-        # of the server-wide one, so it can only make a tool stricter.
+        # Before anything else, so a caller without the scope never reaches the
+        # binding or the function. The tool's own scope is required on top of
+        # the server-wide one, so it can only make a tool stricter.
         if spec.writes:
             ensure_write_scope(server)
         else:
@@ -178,6 +189,15 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
 
         try:
             runtime = server.resolve_binding(binding_id)
+            if spec.writes and runtime.effective_read_only:
+                # Startup refuses this pairing, but the binding is re-read on
+                # every start while tools register once, so a restart against
+                # a config that made the index read-only lands here.
+                raise RedisVLMCPError(
+                    f"index '{binding_id}' is read-only",
+                    code=MCPErrorCode.FORBIDDEN,
+                    retryable=False,
+                )
             ctx = ToolContext.for_request(server, runtime, writes=spec.writes)
             timeout = runtime.binding.runtime.request_timeout_seconds
             try:
