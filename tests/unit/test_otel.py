@@ -50,6 +50,15 @@ def test_off_switch_silences_redisvl_despite_a_configured_sdk(otel_sdk, monkeypa
     assert "probe.disabled" not in _metric_scopes(reader)
 
 
+def test_error_type_qualifies_all_but_builtin_exceptions():
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    assert otel.error_type(ConnectionError()) == "ConnectionError"
+    assert otel.error_type(RedisConnectionError()) == (
+        "redis.exceptions.ConnectionError"
+    )
+
+
 def test_without_an_sdk_redisvl_configures_nothing_and_costs_microseconds():
     """With the API alone, RedisVL must leave the global providers as the API's
     proxies, never initialise redis-py's observability, and record nothing.
