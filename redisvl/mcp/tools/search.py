@@ -437,7 +437,7 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
     The quoted-phrase skip below assumes a rendering's quotes arrive in
     delimiting pairs, which holds for every value the DSL can render: ``==``
     and ``!=`` quote the value after `_phrase_value` has made its body safe,
-    and ``Tag`` and ``like`` values arrive with theirs escaped, outside any
+    and ``Tag`` and ``like`` values arrive with their quotes escaped, outside any
     phrase. A rendering that breaks the assumption is refused, so the failure
     is loud rather than silent.
     """
@@ -468,8 +468,7 @@ def _reject_escapable_filter(caller: FilterExpression) -> None:
             # A quoted phrase is a literal, so nothing inside it is structure and
             # a `|` inside it is a separator rather than a union. Unlike the range
             # span below, the whole phrase can therefore be skipped.
-            # The skip holds only while this scan and the parser agree on where
-            # the phrase ends, so a phrase whose end is in doubt is refused.
+            # Refuse a phrase whose end is in doubt.
             end = _phrase_end(rendered, position)
             if end is None:
                 escaped = True

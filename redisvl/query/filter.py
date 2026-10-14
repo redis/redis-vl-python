@@ -704,38 +704,59 @@ class Num(FilterField):
 # The characters a backslash may escape inside a quoted phrase: the term
 # separators, whose escape the query parser and the indexer both read as joining
 # the character into the term, and the backslash itself. The quote is left out
-# because escaping one is what moves a phrase's end, and the tab because its
-# escape matches nothing that was indexed.
+# because escaping one is what moves a phrase's end, and the tab because the
+# indexer drops an escaped tab. The MCP filter backstop accepts a phrase only if
+# its escapes come from this set, so the two must change together.
 _PHRASE_ESCAPABLE = frozenset(" !#$%&'()*+,-./:;<=>?@[\\]^`{|}~")
+
+# Control characters, which the indexer drops from a term. The tab separates
+# terms instead, so it is left alone unless escaped.
+_PHRASE_DROPPED = frozenset(map(chr, [*range(0x09), *range(0x0A, 0x20), 0x7F]))
+
+# What the indexer drops together with the backslash escaping it.
+_PHRASE_UNESCAPED = _PHRASE_DROPPED | {"\t"}
 
 
 def _phrase_value(value: str) -> str:
     """Return `value` as the body of a quoted phrase that ends where it appears to.
 
     Each character goes the way the indexer took it, so the phrase asks for the
-    terms the document stored. A backslash before a character in
-    `_PHRASE_ESCAPABLE` stays, since the parser joins that pair into the term
-    just as the indexer did (`foo\\-bar` indexes `foo-bar`). Any other backslash
-    is dropped, since the indexer dropped it into the term around it while the
-    parser would keep it (`C:\\Users\\bob` indexes `usersbob`). A `"` becomes a
-    space, which is how the indexer separated terms at it.
+    terms the document stored:
+
+    - A backslash before a character in `_PHRASE_ESCAPABLE` stays, since the
+      parser joins that pair into the term as the indexer did (`foo\\-bar`
+      indexes `foo-bar`).
+    - A control character goes, with any backslash before it, and so does an
+      escaped tab.
+    - Any other backslash goes, as the indexer dropped it where the parser
+      would keep it (`C:\\Users\\bob` indexes `usersbob`).
+    - A `"` or a bare `$` becomes a space: the indexer separated terms at each,
+      and the parser would end the phrase at one and read a parameter at the
+      other.
+
+    Two kinds of stored text stay out of reach. An escaped quote cannot be
+    carried, and the parser reads a run of escaped backslashes as one.
 
     A body ending in a backslash makes the parser pair the closing quote with a
-    later one, so a space follows it. A body left empty becomes a space too:
-    `@f:("")` is an error on most fields and matches empty values on the rest.
+    later one, so a space follows it. So does an empty body, since `@f:("")`
+    errors on a field without `INDEXEMPTY` and matches empty values on one with
+    it. (The membership tests rely on an empty slice being in neither set.)
     """
     body = []
     position = 0
     while position < len(value):
         character = value[position]
         if character == "\\":
-            escaped = value[position + 1 : position + 2]
-            if escaped in _PHRASE_ESCAPABLE:
-                body.append(character + escaped)
+            following = value[position + 1 : position + 2]
+            if following in _PHRASE_ESCAPABLE:
+                body.append(character + following)
+            if following in _PHRASE_ESCAPABLE or following in _PHRASE_UNESCAPED:
                 position += 2
                 continue
-        else:
-            body.append(" " if character == '"' else character)
+        elif character in '"$':
+            body.append(" ")
+        elif character not in _PHRASE_DROPPED:
+            body.append(character)
         position += 1
 
     rendered = "".join(body)
@@ -751,10 +772,12 @@ class Text(FilterField):
         ``==`` and ``!=`` match the value as a literal phrase, read the way
         the document's own text was indexed: a ``"`` separates terms, and a
         ``\\`` joins what follows it into the term, so ``C:\\Users\\bob`` and
-        ``foo\\-bar`` each match a document holding that text. A value that
-        leaves no term, such as one of nothing but quotes, matches no document
-        with ``==`` and every document with ``!=``. ``%`` is the pattern
-        operator and interpolates its value untouched.
+        ``foo\\-bar`` each match a document holding that text. Stored text
+        with an escaped quote (``\\"``) or a run of escaped backslashes cannot
+        be matched this way. A value that leaves no term, such as one of
+        nothing but quotes, matches no document with ``==`` and every
+        document with ``!=``. ``%`` is the pattern operator and interpolates
+        its value untouched.
     """
 
     OPERATORS: dict[FilterOperator, str] = {

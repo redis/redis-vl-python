@@ -508,6 +508,50 @@ def test_filters(index, query, sample_datetimes):
     search(query, index, ts, 3)
 
 
+@pytest.fixture
+def phrase_index(client, worker_id):
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": f"phrase_index_{worker_id}",
+                "prefix": f"phrase_{worker_id}",
+                "storage_type": "hash",
+            },
+            "fields": [{"name": "body", "type": "text"}],
+        },
+        redis_client=client,
+    )
+    index.create(overwrite=True, drop=True)
+    yield index
+    index.delete(drop=True)
+
+
+@pytest.mark.parametrize(
+    "stored, neighbour",
+    [
+        # An escaped separator, which the indexer joins into one term.
+        ("foo\\-bar", "foo bar"),
+        # Escaped letters, whose backslashes the indexer drops.
+        ("C:\\Users\\bob", "C: Users bob"),
+        # A control character, which the indexer drops.
+        ("hello world\nnext", "hello world next"),
+        # A bare `$`, which the parser would read as a parameter.
+        ("price $100", "price100"),
+    ],
+)
+def test_text_phrase_matches_the_document_holding_it(phrase_index, stored, neighbour):
+    # The neighbour holds the terms a phrase gets if it misreads the one
+    # character that differs, so a misread finds it instead of the original.
+    phrase_index.load([{"body": stored}, {"body": neighbour}])
+
+    def bodies(expression):
+        query = FilterQuery(expression, return_fields=["body"])
+        return [doc["body"] for doc in phrase_index.query(query)]
+
+    assert bodies(Text("body") == stored) == [stored]
+    assert bodies(Text("body") != stored) == [neighbour]
+
+
 def test_manual_string_filters(index, query):
     # Simple Tag Filter
     t = "@credit_score:{high}"

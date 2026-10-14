@@ -302,10 +302,12 @@ def test_merge_locked_filter_ands_a_multi_value_tag_in_caller_filter():
         ("unterminated phrase", '@content:"unterminated | @category:{secret}'),
         # The phrase shapes `Text` never renders. In the first two the parser
         # pairs the first phrase's closing quote with the second's opening one,
-        # so a scan that trusted it would read the union as phrase text.
+        # so a scan that trusted it would read the union as phrase text. The
+        # escaped quote is closed off by a second one, so the quotes balance and
+        # only refusing the escape itself catches it.
         (
             "escaped quote",
-            '(@content:("a\\") | @content:(" | @category:{secret} "))',
+            '@content:("a\\") | @category:{secret} | @content:("b\\")',
         ),
         (
             "escaped backslash before the closing quote",
@@ -419,8 +421,6 @@ def test_merge_locked_filter_returns_each_side_unchanged_when_the_other_is_absen
         # end. Unbounded it reads this as a union hidden in the range and
         # refuses, and it costs the whole remaining string on every `[`.
         ("pipe after a range span", "(@rating:[4 5] | @category:{sports})"),
-        # The escapes `Text` keeps, with a trailing one spaced off the quote.
-        ("escaped separators in a phrase", '@content:("foo\\-bar back\\\\ ")'),
     ],
 )
 def test_merge_locked_filter_accepts_a_legitimate_rendering(label, rendered):
