@@ -728,6 +728,60 @@ def test_batch_with_ttl(cache_with_ttl, sample_embedding_data):
     assert all(exist_results)
 
 
+def _refuse_per_key_expire(monkeypatch, cache):
+    """Fail the test if a batch lookup refreshes TTLs one round trip at a time."""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("TTL refreshed outside the lookup pipeline")
+
+    monkeypatch.setattr(cache, "expire", refuse)
+    monkeypatch.setattr(cache, "aexpire", refuse)
+
+
+def _batch_items(sample_embedding_data):
+    return [
+        {
+            "content": sample["content"],
+            "model_name": sample["model_name"],
+            "embedding": sample["embedding"],
+        }
+        for sample in sample_embedding_data
+    ]
+
+
+def test_mget_by_keys_refreshes_every_hit_ttl(
+    cache_with_ttl, sample_embedding_data, monkeypatch
+):
+    """Every hit gets the default TTL back; a miss is not created."""
+    keys = cache_with_ttl.mset(_batch_items(sample_embedding_data), ttl=1000)
+    missing = cache_with_ttl._make_key("missing")
+    _refuse_per_key_expire(monkeypatch, cache_with_ttl)
+
+    results = cache_with_ttl.mget_by_keys(keys + [missing])
+
+    assert [result is not None for result in results] == [True, True, True, False]
+    client = cache_with_ttl._get_redis_client()
+    assert all(0 < client.ttl(key) <= 2 for key in keys)
+    assert client.exists(missing) == 0
+
+
+@pytest.mark.asyncio
+async def test_amget_by_keys_refreshes_every_hit_ttl(
+    cache_with_ttl, sample_embedding_data, monkeypatch
+):
+    """Every hit gets the default TTL back; a miss is not created."""
+    keys = await cache_with_ttl.amset(_batch_items(sample_embedding_data), ttl=1000)
+    missing = cache_with_ttl._make_key("missing")
+    _refuse_per_key_expire(monkeypatch, cache_with_ttl)
+
+    results = await cache_with_ttl.amget_by_keys(keys + [missing])
+
+    assert [result is not None for result in results] == [True, True, True, False]
+    client = await cache_with_ttl._get_async_redis_client()
+    assert all([0 < await client.ttl(key) <= 2 for key in keys])
+    assert await client.exists(missing) == 0
+
+
 def test_large_batch_operations(cache):
     """Test operations with larger batches to ensure scalability."""
     # Create a larger batch of items

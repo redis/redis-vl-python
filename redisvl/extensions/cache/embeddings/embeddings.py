@@ -233,21 +233,22 @@ class EmbeddingsCache(BaseCache):
                 EmbeddingsCache._warning_shown = True
 
         client = self._get_redis_client()
+        _ttl = self._resolve_ttl()
 
+        # Not transactional, so on a Redis Cluster the keys may span slots.
         with client.pipeline(transaction=False) as pipeline:
-            # Queue all hgetall operations
+            # Queue each lookup with its TTL refresh so the whole batch costs
+            # one round trip. EXPIRE on a missing key is a no-op.
             for key in keys:
                 pipeline.hgetall(key)
+                if _ttl:
+                    pipeline.expire(key, _ttl)
             results = pipeline.execute()
 
-        # Process results
-        processed_results = []
-        for i, result in enumerate(results):
-            if result:  # If cache hit, refresh TTL separately
-                self.expire(keys[i])
-            processed_results.append(self._process_cache_data(result))
-
-        return processed_results
+        # With a TTL the replies alternate HGETALL, EXPIRE; keep the lookups.
+        if _ttl:
+            results = results[::2]
+        return [self._process_cache_data(result) for result in results]
 
     def mget(
         self, contents: Iterable[bytes | str], model_name: str
@@ -660,22 +661,23 @@ class EmbeddingsCache(BaseCache):
             return []
 
         client = await self._get_async_redis_client()
+        _ttl = self._resolve_ttl()
 
-        # Use pipeline only for retrieval
+        # Not transactional, so on a Redis Cluster the keys may span slots.
         async with client.pipeline(transaction=False) as pipeline:
-            # Queue all hgetall operations
+            # Queue each lookup with its TTL refresh so the whole batch costs
+            # one round trip. EXPIRE on a missing key is a no-op. Queueing is
+            # synchronous: awaiting a cluster pipeline clears its queue.
             for key in keys:
                 pipeline.hgetall(key)
+                if _ttl:
+                    pipeline.expire(key, _ttl)
             results = await pipeline.execute()
 
-        # Process results and refresh TTLs separately
-        processed_results = []
-        for i, result in enumerate(results):
-            if result:  # If cache hit, refresh TTL
-                await self.aexpire(keys[i])
-            processed_results.append(self._process_cache_data(result))
-
-        return processed_results
+        # With a TTL the replies alternate HGETALL, EXPIRE; keep the lookups.
+        if _ttl:
+            results = results[::2]
+        return [self._process_cache_data(result) for result in results]
 
     async def amget(
         self, contents: Iterable[bytes | str], model_name: str
