@@ -437,21 +437,19 @@ class SemanticRouter(BaseModel):
             aggregation_func = reducers.avg
 
         aggregate_query = str(vector_range_query).split(" RETURN")[0]
-        aggregate_request = (
+        # redis-py emits pipeline steps in call order, so FILTER must come before
+        # SORTBY ... MAX: otherwise the max_k closest routes are kept first and
+        # any that miss their own threshold leave the result short.
+        return (
             AggregateRequest(aggregate_query)
             .group_by(
                 "@route_name",  # type: ignore
                 aggregation_func("vector_distance").alias("distance"),
             )
+            .filter(self._distance_threshold_filter())
             .sort_by("@distance", max=max_k)  # type: ignore
             .dialect(2)
         )
-
-        filter = self._distance_threshold_filter()
-
-        aggregate_request.filter(filter)
-
-        return aggregate_request
 
     def _get_route_matches(
         self,
