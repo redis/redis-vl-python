@@ -1,13 +1,14 @@
-"""Unit tests for how EmbeddingsCache drives async Redis pipelines.
+"""Unit tests for how EmbeddingsCache batches commands into Redis pipelines.
 
-Queueing a command on a redis-py async pipeline is synchronous and returns the
-pipeline itself, so a queued command must never be awaited. On
-``redis.asyncio.cluster.ClusterPipeline`` awaiting it calls ``initialize()``,
-which clears the queued commands -- batched writes then vanish without an error.
+Each batch method must send all of its commands, TTL refreshes included, in one
+non-transactional execute(). On the async side a queued command must never be
+awaited: queueing is synchronous and returns the pipeline, and awaiting a
+``redis.asyncio.cluster.ClusterPipeline`` calls ``initialize()``, which clears
+the queue -- batched commands then vanish without an error.
 
-The fake below reproduces exactly those two behaviours, so these tests fail if
-an ``await`` is ever reintroduced. They need no Redis, so unlike the cluster
-tests in ``tests/integration/test_redis_cluster_support.py`` they run by default.
+The fakes record what each execute() receives and reproduce that queue-clearing.
+They need no Redis, so unlike the cluster tests in
+``tests/integration/test_redis_cluster_support.py`` these run by default.
 """
 
 import pytest
@@ -24,8 +25,8 @@ class FakeAsyncClusterPipeline:
 
     def __init__(self, store=None):
         self.store = store or {}
-        self.queued: list[tuple[str, str]] = []
-        self.executed: list[list[tuple[str, str]]] = []
+        self.queued: list[tuple] = []
+        self.executed: list[list[tuple]] = []
 
     def __await__(self):
         async def initialize():
@@ -45,7 +46,7 @@ class FakeAsyncClusterPipeline:
         return self
 
     def expire(self, key, ttl):
-        self.queued.append(("expire", key))
+        self.queued.append(("expire", key, ttl))
         return self
 
     def exists(self, key):
@@ -60,7 +61,7 @@ class FakeAsyncClusterPipeline:
         self.executed.append(list(self.queued))
         results = [
             self.store.get(key, {}) if command == "hgetall" else 1
-            for command, key in self.queued
+            for command, key, *_ in self.queued
         ]
         self.queued.clear()
         return results
@@ -83,7 +84,7 @@ class FakeSyncPipeline(FakeAsyncClusterPipeline):
 
 
 class FakeAsyncClusterClient:
-    """Minimal async client that hands out FakeAsyncClusterPipeline instances."""
+    """Minimal client that hands out recording pipelines of ``pipeline_class``."""
 
     pipeline_class = FakeAsyncClusterPipeline
 
@@ -92,6 +93,7 @@ class FakeAsyncClusterClient:
         self.pipelines: list[FakeAsyncClusterPipeline] = []
         self.transactions: list[bool] = []
 
+    # redis-py's default, so a missing transaction=False is caught.
     def pipeline(self, transaction=True):
         self.transactions.append(transaction)
         pipeline = self.pipeline_class(self.store)
@@ -115,9 +117,9 @@ def make_cache(client, ttl=None):
             60,
             [
                 ("hset", "embedcache:a"),
-                ("expire", "embedcache:a"),
+                ("expire", "embedcache:a", 60),
                 ("hset", "embedcache:b"),
-                ("expire", "embedcache:b"),
+                ("expire", "embedcache:b", 60),
             ],
         ),
     ],
@@ -163,9 +165,9 @@ HIT = CacheEntry(entry_id="a", content="a", model_name="m", embedding=[0.1])
             60,
             [
                 ("hgetall", "embedcache:a"),
-                ("expire", "embedcache:a"),
+                ("expire", "embedcache:a", 60),
                 ("hgetall", "embedcache:b"),
-                ("expire", "embedcache:b"),
+                ("expire", "embedcache:b", 60),
             ],
         ),
     ],

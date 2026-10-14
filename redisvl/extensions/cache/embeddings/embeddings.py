@@ -237,15 +237,14 @@ class EmbeddingsCache(BaseCache):
 
         # Not transactional, so on a Redis Cluster the keys may span slots.
         with client.pipeline(transaction=False) as pipeline:
-            # Queue each lookup with its TTL refresh so the whole batch costs
-            # one round trip. EXPIRE on a missing key is a no-op.
+            # Refresh each TTL in the same pipeline; EXPIRE on a missing key is a no-op.
             for key in keys:
                 pipeline.hgetall(key)
                 if _ttl:
                     pipeline.expire(key, _ttl)
             results = pipeline.execute()
 
-        # With a TTL the replies alternate HGETALL, EXPIRE; keep the lookups.
+        # Replies alternate HGETALL, EXPIRE; keep the lookups.
         if _ttl:
             results = results[::2]
         return [self._process_cache_data(result) for result in results]
@@ -665,16 +664,14 @@ class EmbeddingsCache(BaseCache):
 
         # Not transactional, so on a Redis Cluster the keys may span slots.
         async with client.pipeline(transaction=False) as pipeline:
-            # Queue each lookup with its TTL refresh so the whole batch costs
-            # one round trip. EXPIRE on a missing key is a no-op. Queueing is
-            # synchronous: awaiting a cluster pipeline clears its queue.
+            # Refresh each TTL in the same pipeline; EXPIRE on a missing key is a no-op.
             for key in keys:
                 pipeline.hgetall(key)
                 if _ttl:
                     pipeline.expire(key, _ttl)
             results = await pipeline.execute()
 
-        # With a TTL the replies alternate HGETALL, EXPIRE; keep the lookups.
+        # Replies alternate HGETALL, EXPIRE; keep the lookups.
         if _ttl:
             results = results[::2]
         return [self._process_cache_data(result) for result in results]
