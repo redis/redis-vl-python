@@ -18,12 +18,14 @@ import inspect
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from redisvl.mcp.auth import ensure_read_scope, ensure_tool_scope, ensure_write_scope
 from redisvl.mcp.config import validate_tool_name
 from redisvl.mcp.context import ToolContext
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
+
+_ToolFn = TypeVar("_ToolFn", bound=Callable[..., Any])
 
 _ACCEPTED_KINDS = (
     inspect.Parameter.POSITIONAL_OR_KEYWORD,
