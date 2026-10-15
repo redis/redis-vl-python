@@ -17,10 +17,11 @@ Review comments:
 - <source>: <point> — <disposition>.
 
 Verified: <command> (<result>); <command> (<result>).
+Docs consulted: <redis.io URL>; <redis.io URL>.
 Not checked: <what wasn't exercised, and why>.
 ```
 
-Leave out the "Review comments" list until there are comments to respond to.
+Leave out the "Review comments" list until there are comments to respond to, and the "Docs consulted" line when the Redis behaviour lens didn't run.
 
 ## Rules
 

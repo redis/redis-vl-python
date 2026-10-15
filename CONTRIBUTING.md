@@ -290,7 +290,7 @@ Maintainer PRs, and any PR written with a coding agent, carry a **Review record*
 
 #### Writing one
 
-Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review picks the angles the diff needs (correctness always, and security, design, tests or docs when the change calls for them), checks each finding against the code, fixes what holds up, and writes the record under the `## Review record` heading of the PR template. Run it again after any substantive push.
+Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review picks the angles the diff needs (correctness always, and security, design, tests, docs or Redis behaviour when the change calls for them), checks each finding against the code, fixes what holds up, and writes the record under the `## Review record` heading of the PR template. Run it again after any substantive push.
 
 A record states:
 
@@ -298,7 +298,7 @@ A record states:
 - which review angles ran, which were skipped, and why;
 - what was fixed, with file and line;
 - what was rejected, and why;
-- the commands that were run, with their results;
+- the commands that were run, with their results, and any Redis documentation pages relied on;
 - what was **not** checked, for example cluster behaviour or provider APIs.
 
 #### Reading one

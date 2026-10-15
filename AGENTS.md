@@ -139,12 +139,16 @@ The procedure lives in `.agents/skills/pre-pr-review/SKILL.md`, in the Agent Ski
 In short, the review:
 
 1. Reads the full diff against `main`, plus the callers of anything public that changed.
-2. Picks which of five lenses the diff needs (correctness always; security, design, tests and docs when the diff calls for them) and records why.
+2. Picks which of six lenses the diff needs (correctness always; security, design, tests, docs and Redis behaviour when the diff calls for them) and records why.
 3. Runs one pass per lens, then a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure.
 4. Fixes the surviving findings, in scope, and re-runs the checks those fixes touched.
 5. Writes the Review record into the PR description, replacing any earlier one.
 
 Re-run it after any substantive push. A record that names an older commit than the PR's head is stale.
+
+## Redis documentation
+
+Check Redis behaviour against the official documentation, not memory. Redis hosts a public, read-only MCP server for its docs at `https://redis.io/mcp`, with no API key or sign-up; setup for each client is at `https://marketing.redis.io/docs-mcp/`. Its `search` and `fetch` tools are the quick way to confirm command syntax, defaults and version-specific behaviour while you work, and the pre-PR review's Redis behaviour lens uses them. Send it questions about Redis, not code or credentials.
 
 ## Responding to review
 

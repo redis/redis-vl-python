@@ -1,7 +1,7 @@
 ---
 name: pre-pr-review
 description: Review a RedisVL branch before its PR is marked ready, fix what the review finds, and write a Review record into the PR description for the human approver. Use before opening or marking a PR ready, after a substantive push, or when responding to Bugbot or reviewer comments on a PR.
-compatibility: Works with any coding agent. Needs git, make and pytest; gh is optional and only used to read and update the PR.
+compatibility: Works with any coding agent. Needs git, make and pytest. Optional - gh, to read and update the PR; the public Redis Docs MCP at https://redis.io/mcp, for the Redis behaviour lens.
 ---
 
 # Pre-PR review
@@ -28,6 +28,7 @@ Pick the lenses this diff needs, and write down the reason for each one you run 
 | Design | `references/design.md` | Feature PRs over about 300 lines; new or changed public API or MCP surface; work on deprecated APIs; new vectorizer, reranker or provider modules |
 | Tests | `references/tests.md` | Tests are added or changed, or the change sits in an area CI can't exercise (cluster, live provider APIs) |
 | Docs | `references/docs.md` | `docs/`, notebooks, docstrings or comments change, or public behaviour changes |
+| Redis behaviour | `references/redis.md` | The diff changes how Redis commands or queries are built, relies on a server default, limit or reply shape, or states how Redis behaves. Checks claims against the official docs, ideally through the Redis Docs MCP |
 
 If you're unsure whether a lens applies, run it. A lens you skip is a gap the approver should know about, so the record lists it.
 
