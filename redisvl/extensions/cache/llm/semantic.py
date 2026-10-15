@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 
 from pydantic import ValidationError
@@ -508,8 +507,7 @@ class SemanticCache(BaseLLMCache):
         )
 
         # Refresh TTL on all found keys
-        for key in redis_keys:
-            self.expire(key)
+        self._expire_many(redis_keys)
 
         return cache_hits
 
@@ -593,8 +591,8 @@ class SemanticCache(BaseLLMCache):
             return_fields,
         )
 
-        # Refresh TTL on all found keys async
-        await asyncio.gather(*[self.aexpire(key) for key in redis_keys])
+        # Refresh TTL on all found keys
+        await self._aexpire_many(redis_keys)
 
         return cache_hits
 
