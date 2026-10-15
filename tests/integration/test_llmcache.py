@@ -402,6 +402,34 @@ async def test_async_ttl_refresh(cache_with_ttl, vectorizer):
     assert len(check_result) == 1
 
 
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_check_refreshes_ttl_of_every_hit(
+    cache_with_ttl, vectorizer, client, monkeypatch, use_async
+):
+    """One pipelined refresh resets each hit's per-entry TTL to the cache default."""
+    vector = vectorizer.embed("This is a test prompt.")
+    keys = {
+        cache_with_ttl.store(prompt, "response", vector=vector, ttl=100)
+        for prompt in ("first prompt", "second prompt")
+    }
+
+    # A per-key refresh would go through expire/aexpire; the pipeline does not.
+    def per_key_refresh(*args, **kwargs):
+        raise AssertionError("TTL refreshed one key at a time")
+
+    monkeypatch.setattr(cache_with_ttl, "expire", per_key_refresh)
+    monkeypatch.setattr(cache_with_ttl, "aexpire", per_key_refresh)
+
+    if use_async:
+        async with cache_with_ttl:
+            hits = await cache_with_ttl.acheck(vector=vector, num_results=2)
+    else:
+        hits = cache_with_ttl.check(vector=vector, num_results=2)
+
+    assert {hit["key"] for hit in hits} == keys
+    assert all(0 < client.ttl(key) <= 2 for key in keys)
+
+
 # Test manual expiration of single document
 def test_drop_document(cache, vectorizer):
     prompt = "This is a test prompt."
