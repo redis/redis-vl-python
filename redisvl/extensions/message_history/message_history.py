@@ -143,7 +143,11 @@ class MessageHistory(BaseMessageHistory):
 
     @property
     def messages(self) -> list[str] | list[dict[str, str]]:
-        """Returns the full message history."""
+        """Returns every message in the current session, oldest first.
+
+        The result is not bounded. For a bounded read of the latest messages,
+        use ``get_recent(top_k=...)``.
+        """
         # TODO raw or as_text?
         # TODO refactor this method to use get_recent and support other session tags?
         return_fields = [
@@ -159,7 +163,7 @@ class MessageHistory(BaseMessageHistory):
         query = FilterQuery(
             filter_expression=self._default_session_filter,
             return_fields=return_fields,
-            num_results=1000,
+            num_results=self.count(),
         )
         query.sort_by(TIMESTAMP_FIELD_NAME, asc=True)
         messages = self._index.query(query)
