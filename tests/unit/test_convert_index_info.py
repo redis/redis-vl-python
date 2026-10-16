@@ -274,6 +274,9 @@ def test_convert_index_info_resp2_unified_vector_flags():
 
     result = convert_index_info_to_schema(index_info)
 
+    # INDEXMISSING is deliberately not recovered as ``index_missing``: a vector
+    # field can't be recreated with it yet, so restoring it here would turn a
+    # quiet loss into a failure on ``create()``.
     assert result["fields"] == [
         {
             "name": "emb",
@@ -305,3 +308,56 @@ def test_convert_index_info_warns_on_unparseable_vector_field(caplog):
 
     assert result["fields"] == []
     assert "'emb'" in caplog.text and "'test_index'" in caplog.text
+
+
+def test_convert_index_info_resp2_unified_flags_skip_unknown_tokens():
+    """An unknown bare token in ``flags`` does not shift the key/value pairs."""
+    index_info = {
+        "index_name": "test_index",
+        "index_definition": {"key_type": "HASH", "prefixes": ["doc"]},
+        "attributes": [
+            {
+                "identifier": "emb",
+                "attribute": "emb",
+                "type": "VECTOR",
+                "flags": [
+                    "algorithm",
+                    "FLAT",
+                    "data_type",
+                    "FLOAT32",
+                    "dim",
+                    4,
+                    "NEWMOD",
+                    "distance_metric",
+                    "IP",
+                ],
+            }
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"][0]["attrs"]["distance_metric"] == "ip"
+    assert result["fields"][0]["attrs"]["dims"] == 4
+
+
+def test_convert_index_info_skips_vector_field_with_unparseable_dims(caplog):
+    """A non-numeric ``dim`` skips the field with a warning instead of raising."""
+    index_info = {
+        "index_name": "test_index",
+        "index_definition": {"key_type": "HASH", "prefixes": ["doc"]},
+        "attributes": [
+            {
+                "identifier": "emb",
+                "attribute": "emb",
+                "type": "VECTOR",
+                "flags": ["algorithm", "FLAT", "dim", "FUTUREMOD"],
+            }
+        ],
+    }
+
+    with caplog.at_level("WARNING"):
+        result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"] == []
+    assert "'emb'" in caplog.text
