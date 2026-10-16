@@ -104,6 +104,7 @@ def test_semantic_cache_repr_with_ttl(patched_semantic_cache):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.requires_hf
 def test_semantic_router_repr():
     from redisvl.extensions.router.schema import Route
     from redisvl.extensions.router.semantic import SemanticRouter
@@ -118,6 +119,7 @@ def test_semantic_router_repr():
     assert repr(router) == "SemanticRouter(name='my-router', routes=2)"
 
 
+@pytest.mark.requires_hf
 def test_semantic_router_repr_single_route():
     from redisvl.extensions.router.schema import Route
     from redisvl.extensions.router.semantic import SemanticRouter
