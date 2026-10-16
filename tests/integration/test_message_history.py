@@ -749,6 +749,7 @@ def test_different_vector_dtypes(client, redis_url, redis_test_name):
                 sess.delete()
 
 
+@pytest.mark.requires_hf
 def test_bad_dtype_connecting_to_exiting_history(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
@@ -814,6 +815,7 @@ def test_invalid_vectorizer(client, redis_url, redis_test_name):
         )
 
 
+@pytest.mark.requires_hf
 def test_passes_through_dtype_to_default_vectorizer(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     # The default is float32, so we should see float64 if we pass it in.
@@ -834,6 +836,7 @@ def test_passes_through_dtype_to_default_vectorizer(client, redis_url, redis_tes
                 cache.delete()
 
 
+@pytest.mark.requires_hf
 def test_deprecated_dtype_argument(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     history = None
