@@ -330,7 +330,13 @@ class SemanticMessageHistory(BaseMessageHistory):
 
         # if we don't find semantic matches fallback to returning recent context
         if not messages and fall_back:
-            return self.get_recent(as_text=as_text, top_k=top_k, raw=raw, role=role)
+            return self.get_recent(
+                as_text=as_text,
+                top_k=top_k,
+                raw=raw,
+                session_tag=session_tag,
+                role=role,
+            )
         if raw:
             return messages
         return self._format_context(messages, as_text)
