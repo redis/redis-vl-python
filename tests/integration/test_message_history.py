@@ -700,6 +700,7 @@ def test_semantic_count(semantic_history):
     assert semantic_history.count() == 0
 
 
+@pytest.mark.requires_hf
 def test_different_vector_dtypes(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     sessions = []
