@@ -81,6 +81,12 @@ uv sync --all-extras
 
 This will create a virtual environment and install all necessary dependencies for development.
 
+On Python 3.15, PyTorch has no wheels on PyPI yet, so leave out the extras that need it. Tests marked `requires_hf` skip when sentence-transformers is not installed.
+
+```bash
+uv sync --all-extras --no-extra sentence-transformers --no-extra all
+```
+
 ### Changing Dependencies
 
 `uv.lock` is checked in, and CI verifies it matches `pyproject.toml`. If you add, remove, or re-bound a dependency, re-lock and commit the result:
