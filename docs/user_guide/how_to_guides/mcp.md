@@ -407,13 +407,63 @@ What the client sees for `search-customer-kb`:
 - A description whose field hints list `content` but not `org_id`.
 - Results from its own tenant only. A `filter` naming `org_id` ANDs with the injected value, so naming another tenant returns nothing. Results still carry `org_id`, always with the caller's own value, unless you lock `return_fields` to leave it out.
 
-The server refuses to start while anything else can reach the same Redis index without the tenant scope: `search-records`, `upsert-records` unless every binding over the index is `read_only`, or another custom tool on that index whose `lock.inject` differs, including one with none. Bindings that share a `redis_name` are the same index, so a vector tool and a fulltext tool over one set of documents must inject the same scope. Each of those routes would hand every caller a way round the profile, and a write could retag another tenant's document as the writer's own. Ingest documents outside the server, stamping `org_id` exactly as the identity provider emits it.
+The server refuses to start while anything else can reach the same Redis index without the tenant scope: `search-records`, `upsert-records` unless every binding over the index is `read_only`, another custom tool on that index whose `lock.inject` differs, including one with none, or any code tool bound to it. Bindings that share a `redis_name` are the same index, so a vector tool and a fulltext tool over one set of documents must inject the same scope. Each of those routes would hand every caller a way round the profile, and a write could retag another tenant's document as the writer's own. Ingest documents outside the server, stamping `org_id` exactly as the identity provider emits it.
 
 A tool meant to read across tenants, such as an internal support search, belongs on a separate server with its own authentication. Every tool on one server sits behind the same read scope, so any tenant could call it.
 
 Listing the tenant claim under `required_claims` makes the verifier reject a token without it before any tool runs. That checks presence only: the profile still validates the value on every call, and refuses a missing, empty, list-valued or otherwise unusable claim with a `forbidden` error before any query runs.
 
 The server refuses to start an injecting profile without authentication, over `stdio`, or on a field the index does not hold as an indexed tag. The `stdio` check applies when the server starts through `rvl mcp` or `run_async`. For what the guarantee covers and what it rests on, read the threat model in {doc}`/concepts/mcp`.
+
+### Code Tools Registered From Python
+
+When a tool needs logic a profile cannot express, write it as an async function and register it on the server before you run it. This suits a server you start from your own Python process:
+
+```python
+from redisvl.mcp import MCPSettings, RedisVLMCPServer, ToolContext
+from redisvl.query import FilterQuery
+from redisvl.query.filter import Tag
+
+server = RedisVLMCPServer(MCPSettings(config="/path/to/mcp_config.yaml"))
+
+
+@server.code_tool(index="tickets")
+async def open_tickets_for_product(ctx: ToolContext, product: str, limit: int = 5) -> dict:
+    """List open support tickets for a product."""
+    query = FilterQuery(
+        filter_expression=(Tag("status") == "open") & (Tag("product") == product),
+        return_fields=["subject", "created_at"],
+        num_results=limit,
+    )
+    return {"tickets": await ctx.index.query(query)}
+
+
+@server.code_tool(index="tickets", writes=True, scope="tickets.triage")
+async def delete_spam_ticket(ctx: ToolContext, ticket_id: str) -> dict:
+    """Delete a support ticket that triage has marked as spam."""
+    ticket = await ctx.index.fetch(ticket_id)
+    if ticket is None or ticket.get("status") != "spam":
+        raise ValueError(f"ticket {ticket_id} is not marked as spam")
+    return {"deleted": await ctx.index.drop_documents(ticket_id)}
+
+
+server.run(transport="streamable-http", host="127.0.0.1", port=8000)
+```
+
+What the client sees:
+
+- `open-tickets-for-product`, taking `product` (required) and `limit`, described by its docstring.
+- `delete-spam-ticket`, taking `ticket_id`. A caller needs the server's write scope and `tickets.triage`, and the tool deletes nothing that is not already marked as spam.
+- No argument for the context or the index, in either tool.
+
+Rules worth knowing:
+
+- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool cannot touch another index's keys. There is no Redis client and no way to create, drop or clear the index.
+- **Every call is bounded.** Each `ctx.index` call takes a slot under the concurrency cap and the binding's `request_timeout_seconds`, and the whole tool call is bounded by the same timeout.
+- **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself.
+- **Register before starting.** Tools register once, at the first startup, so a tool registered afterwards is refused.
+
+A code tool bound to an index that a profile scopes with `lock.inject` refuses to start, because nothing shows that it applies the tenant scope. For the full contract, read the code tools section in {doc}`/concepts/mcp`.
 
 ## Tool Contracts
 
@@ -803,8 +853,12 @@ A profile with `lock.inject` refuses to start when authentication is not enabled
 
 ### Claim Injection Refuses an Unscoped Route
 
-A profile with `lock.inject` refuses to start while its Redis index is also reachable through `search-records`, through `upsert-records` on any writable binding over it, or through another custom tool on it whose `lock.inject` differs, including one with none. Bindings that share a `redis_name` are the same index. The error names the Redis index and the bindings over it, each route it found, and each tool's injected scope. Disable the built-ins under `server.builtin_tools`, mark every binding over the index `read_only`, and give every custom tool on the index the same `lock.inject`. Move a tool meant to read across tenants to a separate server with its own authentication.
+A profile with `lock.inject` refuses to start while its Redis index is also reachable through `search-records`, through `upsert-records` on any writable binding over it, through another custom tool on it whose `lock.inject` differs, including one with none, or through a code tool bound to it. Bindings that share a `redis_name` are the same index. The error names the Redis index and the bindings over it, each route it found, and each tool's injected scope. Disable the built-ins under `server.builtin_tools`, mark every binding over the index `read_only`, and give every custom tool on the index the same `lock.inject`. Bind a code tool to another index. Move a tool meant to read across tenants to a separate server with its own authentication.
 
 ### Claim Injection Fails Every Request With `forbidden`
 
 The token is verified but its claim is unusable: missing, empty, padded with whitespace, not a single string, or containing a control character or backtick. The error names the claim and the tool. A misspelled `claim` name in the config is the usual cause, since a JWT claim name such as `https://acme.example/org` must match exactly.
+
+### Code Tool Fails at Startup
+
+The error names the tool. Either its `index` is missing while several indexes are configured or names no configured binding, or another custom tool already uses its name, or it is registered with `writes=True` on a binding or server that is read-only. A code tool registered after the server has started is refused with a `RuntimeError`; register every tool before calling `run`, `run_async` or `startup`.
