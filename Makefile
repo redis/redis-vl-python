@@ -6,7 +6,7 @@ ARGS ?=
 
 install: ## Install the project and all dependencies
 	@echo "🚀 Installing project dependencies with uv"
-	uv sync --all-extras
+	uv sync --all-extras --group otel-test
 
 redis-start: ## Start Redis in Docker
 	@echo "🐳 Starting Redis"
