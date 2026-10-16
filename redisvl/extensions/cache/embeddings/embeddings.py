@@ -189,16 +189,7 @@ class EmbeddingsCache(BaseCache):
                 )
                 EmbeddingsCache._warning_shown = True
 
-        client = self._get_redis_client()
-
-        # Get all fields
-        data = client.hgetall(key)
-
-        # Refresh TTL if data exists
-        if data:
-            self.expire(key)
-
-        return self._process_cache_data(data)  # type: ignore
+        return self.mget_by_keys([key])[0]
 
     def mget_by_keys(self, keys: list[str]) -> list[dict[str, Any] | None]:
         """Get multiple embeddings by their Redis keys.
@@ -233,21 +224,21 @@ class EmbeddingsCache(BaseCache):
                 EmbeddingsCache._warning_shown = True
 
         client = self._get_redis_client()
+        _ttl = self._resolve_ttl()
 
+        # Not transactional, so on a Redis Cluster the keys may span slots.
         with client.pipeline(transaction=False) as pipeline:
-            # Queue all hgetall operations
+            # Refresh each TTL in the same pipeline; EXPIRE on a missing key is a no-op.
             for key in keys:
                 pipeline.hgetall(key)
+                if _ttl:
+                    pipeline.expire(key, _ttl)
             results = pipeline.execute()
 
-        # Process results
-        processed_results = []
-        for i, result in enumerate(results):
-            if result:  # If cache hit, refresh TTL separately
-                self.expire(keys[i])
-            processed_results.append(self._process_cache_data(result))
-
-        return processed_results
+        # Replies alternate HGETALL, EXPIRE; keep the lookups.
+        if _ttl:
+            results = results[::2]
+        return [self._process_cache_data(result) for result in results]
 
     def mget(
         self, contents: Iterable[bytes | str], model_name: str
@@ -310,11 +301,6 @@ class EmbeddingsCache(BaseCache):
                 metadata={"source": "user_query"}
             )
         """
-        # Prepare data
-        key, cache_entry = self._prepare_entry_data(
-            content, model_name, embedding, metadata
-        )
-
         if self._should_warn_for_async_only():
             if not EmbeddingsCache._warning_shown:
                 logger.warning(
@@ -323,14 +309,13 @@ class EmbeddingsCache(BaseCache):
                 )
                 EmbeddingsCache._warning_shown = True
 
-        # Store in Redis
-        client = self._get_redis_client()
-        client.hset(name=key, mapping=cache_entry)  # type: ignore[arg-type]
-
-        # Set TTL if specified
-        self.expire(key, ttl)
-
-        return key
+        item = {
+            "content": content,
+            "model_name": model_name,
+            "embedding": embedding,
+            "metadata": metadata,
+        }
+        return self.mset([item], ttl=ttl)[0]
 
     def mset(
         self,
@@ -624,16 +609,7 @@ class EmbeddingsCache(BaseCache):
 
             embedding_data = await cache.aget_by_key("embedcache:1234567890abcdef")
         """
-        client = await self._get_async_redis_client()
-
-        # Get all fields
-        data = await client.hgetall(key)  # type: ignore
-
-        # Refresh TTL if data exists
-        if data:
-            await self.aexpire(key)
-
-        return self._process_cache_data(data)
+        return (await self.amget_by_keys([key]))[0]
 
     async def amget_by_keys(self, keys: list[str]) -> list[dict[str, Any] | None]:
         """Async get multiple embeddings by their Redis keys.
@@ -660,22 +636,21 @@ class EmbeddingsCache(BaseCache):
             return []
 
         client = await self._get_async_redis_client()
+        _ttl = self._resolve_ttl()
 
-        # Use pipeline only for retrieval
+        # Not transactional, so on a Redis Cluster the keys may span slots.
         async with client.pipeline(transaction=False) as pipeline:
-            # Queue all hgetall operations
+            # Refresh each TTL in the same pipeline; EXPIRE on a missing key is a no-op.
             for key in keys:
                 pipeline.hgetall(key)
+                if _ttl:
+                    pipeline.expire(key, _ttl)
             results = await pipeline.execute()
 
-        # Process results and refresh TTLs separately
-        processed_results = []
-        for i, result in enumerate(results):
-            if result:  # If cache hit, refresh TTL
-                await self.aexpire(keys[i])
-            processed_results.append(self._process_cache_data(result))
-
-        return processed_results
+        # Replies alternate HGETALL, EXPIRE; keep the lookups.
+        if _ttl:
+            results = results[::2]
+        return [self._process_cache_data(result) for result in results]
 
     async def amget(
         self, contents: Iterable[bytes | str], model_name: str
@@ -740,19 +715,13 @@ class EmbeddingsCache(BaseCache):
                 metadata={"source": "user_query"}
             )
         """
-        # Prepare data
-        key, cache_entry = self._prepare_entry_data(
-            content, model_name, embedding, metadata
-        )
-
-        # Store in Redis
-        client = await self._get_async_redis_client()
-        await client.hset(name=key, mapping=cache_entry)  # type: ignore
-
-        # Set TTL if specified
-        await self.aexpire(key, ttl)
-
-        return key
+        item = {
+            "content": content,
+            "model_name": model_name,
+            "embedding": embedding,
+            "metadata": metadata,
+        }
+        return (await self.amset([item], ttl=ttl))[0]
 
     async def amset(
         self,
