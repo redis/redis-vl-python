@@ -624,12 +624,50 @@ async def test_acheck_with_zero_distance_threshold(cache):
     assert (await cache.acheck("what's the capital of france?")) != []
 
 
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_check_threshold_is_inclusive(cache, vectorizer, use_async):
+    """A candidate at the threshold, as Redis reports its distance, hits; one
+    just beyond it does not."""
+    prompts = [
+        "what is the capital of france?",
+        "what's the capital of france?",
+        "how do I bake sourdough bread?",
+    ]
+    for prompt in prompts:
+        cache.store(prompt, "response", vector=vectorizer.embed(prompt))
+    query = vectorizer.embed(prompts[0])
+
+    async def check(distance_threshold):
+        kwargs = dict(
+            vector=query, num_results=3, distance_threshold=distance_threshold
+        )
+        return await cache.acheck(**kwargs) if use_async else cache.check(**kwargs)
+
+    everything = await check(2)
+    distances = [hit["vector_distance"] for hit in everything]
+    assert len(distances) == 3 and distances == sorted(distances)
+
+    at_threshold = await check(distances[1])
+    assert [hit["key"] for hit in at_threshold] == [
+        hit["key"] for hit in everything[:2]
+    ]
+
+    beyond_threshold = await check(distances[1] - 1e-6)
+    assert [hit["key"] for hit in beyond_threshold] == [everything[0]["key"]]
+
+
 def test_check_invalid_input(cache):
     with pytest.raises(ValueError):
         cache.check()
 
     with pytest.raises(TypeError):
         cache.check(prompt="test", return_fields="bad value")
+
+    with pytest.raises(ValueError):
+        cache.check(prompt="test", distance_threshold=-0.1)
+
+    with pytest.raises(TypeError):
+        cache.check(prompt="test", distance_threshold="0.1")
 
 
 @pytest.mark.asyncio
@@ -639,6 +677,12 @@ async def test_async_check_invalid_input(cache):
 
     with pytest.raises(TypeError):
         await cache.acheck(prompt="test", return_fields="bad value")
+
+    with pytest.raises(ValueError):
+        await cache.acheck(prompt="test", distance_threshold=-0.1)
+
+    with pytest.raises(TypeError):
+        await cache.acheck(prompt="test", distance_threshold="0.1")
 
 
 def test_bad_connection_info(vectorizer, worker_id):
