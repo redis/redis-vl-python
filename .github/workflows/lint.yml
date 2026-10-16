@@ -7,7 +7,7 @@ on:
       - main
 
 env:
-  UV_VERSION: "0.12.3"
+  UV_VERSION: "0.13.1"
 
 jobs:
   lock:
@@ -43,6 +43,7 @@ jobs:
           - "3.12"
           - "3.13"
           - "3.14"
+          - "3.15"
 
     steps:
     - name: Check out repository
@@ -64,8 +65,18 @@ jobs:
           uv.lock
 
     - name: Install dependencies
+      env:
+        MATRIX_PYTHON: ${{ matrix.python-version }}
       run: |
-        uv sync --all-extras --frozen
+        set -euo pipefail
+
+        # torch has no cp315 wheels on PyPI yet, so sentence-transformers
+        # (and `all`, which includes it) cannot install on 3.15.
+        extras=(--all-extras)
+        if [ "$MATRIX_PYTHON" = "3.15" ]; then
+          extras+=(--no-extra sentence-transformers --no-extra all)
+        fi
+        uv sync "${extras[@]}" --frozen
 
     - name: check-sort-import
       run: |
