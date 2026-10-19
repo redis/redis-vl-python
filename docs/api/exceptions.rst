@@ -168,7 +168,8 @@ Telling "the index is missing" apart from other failures
 Redis Search reports an absent index as an ordinary error reply rather than a distinct
 type, and the wording has changed between versions -- older releases say ``Unknown index
 name``, Redis 8.6 and earlier say ``<name>: no such index``, and Redis 8.8 introduced
-``SEARCH_INDEX_NOT_FOUND Index not found: <name>``. There is no error code to branch on,
+``SEARCH_INDEX_NOT_FOUND Index not found: <name>``. Valkey Search says
+``Index with name '<name>' not found in database <n>``. There is no error code to branch on,
 so code that needs to distinguish "missing" from "something went wrong" has to match the
 message.
 

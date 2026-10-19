@@ -28,12 +28,14 @@ INDEX_NAME = "my_index"
 
 # Every wording Redis Search has used for an absent index. 8.8 replaced the
 # older prose with an error code, so a match on any single one of these would
-# break exists() on some supported server.
+# break exists() on some supported server. Valkey Search words it differently
+# again, with the index name between "Index" and "not found".
 MISSING_INDEX_MESSAGES = [
     "Unknown index name",
     f"{INDEX_NAME}: no such index",
     f"SEARCH_INDEX_NOT_FOUND Index not found: {INDEX_NAME}",
     "Index not found",
+    f"Index with name '{INDEX_NAME}' not found in database 0",
 ]
 
 # Failures that must never be read as "the index is absent": reporting False
