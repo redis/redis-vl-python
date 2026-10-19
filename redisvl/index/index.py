@@ -1394,18 +1394,33 @@ class SearchIndex(BaseSearchIndex):
         Cluster, keys are unlinked individually so a chunk that spans hash
         slots does not raise ``CROSSSLOT``.
 
+        NOTE: Cluster users must only call this method with keys that share a
+        single hash tag, matching ``drop_documents``.
+
         Args:
             keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
             batch_size (int): Number of keys to unlink per round-trip.
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Raises:
+            ValueError: On Redis Cluster, if the keys do not all share a hash
+                tag (keeps behavior aligned with ``drop_documents``).
         """
         if not isinstance(keys, list):
             return self._redis_client.unlink(keys)  # type: ignore
 
         if not keys:
             return 0
+
+        # Match drop_documents: require a shared hash tag before multi-key
+        # unlink work on cluster so keys= and ids= paths fail the same way.
+        if isinstance(self._redis_client, RedisCluster):
+            if not _keys_share_hash_tag(keys):
+                raise ValueError(
+                    "All keys must share a hash tag when using Redis Cluster."
+                )
 
         total = 0
         for i in range(0, len(keys), batch_size):
@@ -2801,12 +2816,19 @@ class AsyncSearchIndex(BaseSearchIndex):
         Cluster, keys are unlinked individually so a chunk that spans hash
         slots does not raise ``CROSSSLOT``.
 
+        NOTE: Cluster users must only call this method with keys that share a
+        single hash tag, matching ``drop_documents``.
+
         Args:
             keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
             batch_size (int): Number of keys to unlink per round-trip.
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Raises:
+            ValueError: On Redis Cluster, if the keys do not all share a hash
+                tag (keeps behavior aligned with ``drop_documents``).
         """
         client = await self._get_client()
 
@@ -2815,6 +2837,14 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         if not keys:
             return 0
+
+        # Match drop_documents: require a shared hash tag before multi-key
+        # unlink work on cluster so keys= and ids= paths fail the same way.
+        if isinstance(client, AsyncRedisCluster):
+            if not _keys_share_hash_tag(keys):
+                raise ValueError(
+                    "All keys must share a hash tag when using Redis Cluster."
+                )
 
         total = 0
         for i in range(0, len(keys), batch_size):
