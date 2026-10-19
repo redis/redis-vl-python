@@ -256,7 +256,7 @@ class TestRouterConfigErrorHandling:
 
 
 class TestClusterCompatibilityValidation:
-    """Test cluster compatibility validation for drop_documents."""
+    """Test cluster compatibility validation for drop_documents and drop_keys."""
 
     @patch("redisvl.redis.connection.RedisConnectionFactory.validate_sync_redis")
     def test_drop_documents_cluster_validation_success(self, mock_validate):
@@ -333,6 +333,77 @@ class TestClusterCompatibilityValidation:
         result = index.drop_documents(ids)
         assert result == 2
         mock_client.delete.assert_called_once()
+
+    @patch("redisvl.redis.connection.RedisConnectionFactory.validate_sync_redis")
+    def test_drop_keys_cluster_validation_success(self, mock_validate):
+        """Test that keys with the same hash tag work in cluster."""
+        from redisvl.index import SearchIndex
+        from redisvl.schema import IndexSchema
+
+        schema = Mock(spec=IndexSchema)
+        schema.index = Mock()
+        schema.index.prefix = "test"
+        schema.index.key_separator = ":"
+        schema.index.storage_type = StorageType.HASH
+
+        mock_cluster_client = Mock(spec=RedisCluster)
+        mock_cluster_client.unlink.return_value = 1
+
+        index = SearchIndex(schema=schema, redis_client=mock_cluster_client)
+
+        keys = ["prefix:{user123}:key1", "prefix:{user123}:key2"]
+
+        result = index.drop_keys(keys)
+        assert result == 2
+        assert mock_cluster_client.unlink.call_count == 2
+
+    @patch("redisvl.redis.connection.RedisConnectionFactory.validate_sync_redis")
+    def test_drop_keys_cluster_validation_failure(self, mock_validate):
+        """Test that keys with different hash tags fail in cluster."""
+        from redisvl.index import SearchIndex
+        from redisvl.schema import IndexSchema
+
+        schema = Mock(spec=IndexSchema)
+        schema.index = Mock()
+        schema.index.prefix = "test"
+        schema.index.key_separator = ":"
+        schema.index.storage_type = StorageType.HASH
+
+        mock_cluster_client = Mock(spec=RedisCluster)
+
+        index = SearchIndex(schema=schema, redis_client=mock_cluster_client)
+
+        keys = ["prefix:{user123}:key1", "prefix:{user456}:key2"]
+
+        with pytest.raises(ValueError) as exc_info:
+            index.drop_keys(keys)
+
+        error_msg = str(exc_info.value)
+        assert "All keys must share a hash tag when using Redis Cluster" in error_msg
+        mock_cluster_client.unlink.assert_not_called()
+
+    @patch("redisvl.redis.connection.RedisConnectionFactory.validate_sync_redis")
+    def test_drop_keys_non_cluster_no_validation(self, mock_validate):
+        """Test that non-cluster clients skip hash tag validation for drop_keys."""
+        from redisvl.index import SearchIndex
+        from redisvl.schema import IndexSchema
+
+        schema = Mock(spec=IndexSchema)
+        schema.index = Mock()
+        schema.index.prefix = "test"
+        schema.index.key_separator = ":"
+        schema.index.storage_type = StorageType.HASH
+
+        mock_client = Mock(spec=Redis)
+        mock_client.unlink.return_value = 2
+
+        index = SearchIndex(schema=schema, redis_client=mock_client)
+
+        keys = ["prefix:{user123}:key1", "prefix:{user456}:key2"]
+
+        result = index.drop_keys(keys)
+        assert result == 2
+        mock_client.unlink.assert_called_once()
 
 
 class TestAsyncErrorHandling:
@@ -425,6 +496,36 @@ class TestAsyncErrorHandling:
 
         error_msg = str(exc_info.value)
         assert "All keys must share a hash tag when using Redis Cluster" in error_msg
+
+    @patch("redisvl.redis.connection.RedisConnectionFactory.validate_async_redis")
+    @pytest.mark.asyncio
+    async def test_async_drop_keys_cluster_validation(self, mock_validate):
+        """Test async drop_keys cluster validation matches drop_documents."""
+        from unittest.mock import AsyncMock
+
+        from redisvl.index import AsyncSearchIndex
+        from redisvl.schema import IndexSchema
+
+        schema = Mock(spec=IndexSchema)
+        schema.index = Mock()
+        schema.index.prefix = "test"
+        schema.index.key_separator = ":"
+        schema.index.storage_type = StorageType.HASH
+
+        mock_cluster_client = Mock()
+        mock_cluster_client.__class__ = AsyncRedisCluster
+        mock_cluster_client.unlink = AsyncMock(return_value=1)
+
+        index = AsyncSearchIndex(schema=schema, redis_client=mock_cluster_client)
+
+        keys = ["prefix:{user123}:key1", "prefix:{user456}:key2"]
+
+        with pytest.raises(ValueError) as exc_info:
+            await index.drop_keys(keys)
+
+        error_msg = str(exc_info.value)
+        assert "All keys must share a hash tag when using Redis Cluster" in error_msg
+        mock_cluster_client.unlink.assert_not_called()
 
 
 class TestClusterOperationsErrorHandling:
