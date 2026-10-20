@@ -214,11 +214,21 @@ async def test_a_sql_query_is_refused_because_it_names_its_own_index(method):
     assert index.awaited == []
 
 
-async def test_info_cannot_name_another_index():
-    handle = IndexHandle(FakeServer(), RecordingIndex(), timeout_seconds=TIMEOUT)
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda handle: handle.info("other-index"),
+        lambda handle: handle.load([{"id": "1"}], keys=["other:1"]),
+    ],
+    ids=["info-names-an-index", "load-takes-full-keys"],
+)
+async def test_a_handle_never_takes_another_target(call):
+    handle = WritableIndexHandle(
+        FakeServer(), RecordingIndex(), timeout_seconds=TIMEOUT
+    )
 
     with pytest.raises(TypeError):
-        await handle.info("other-index")
+        await call(handle)
 
 
 def test_a_handle_offers_no_client_and_takes_no_new_attributes():
