@@ -301,7 +301,7 @@ A code tool never receives the server, the real `AsyncSearchIndex`, or a Redis c
 | `ctx.vectorizer` and `ctx.embed(text)` | The binding's vectorizer, if it has one, and a helper that embeds text with it. |
 | `ctx.claims` | A read-only copy of the current request's verified token claims, or `None` when the request has no token. |
 
-Every call stays inside the bound index. Searches and aggregations run against its name, and records are addressed by document id, which the index turns into a key under its own prefix. So nothing on the handle takes a full Redis key, and `query` refuses a `SQLQuery`, whose `FROM` clause names its own index. Either could otherwise reach another index's documents, including a tenant-scoped one. An index whose key prefix overlaps another's shares keys with it, which the handle cannot tell apart.
+Every call stays inside the bound index. Searches and aggregations run against its name, and records are addressed by document id, which the index turns into a key under its own prefix. So nothing on the handle takes a full Redis key, and `query` refuses a `SQLQuery`, whose `FROM` clause names its own index. Either could otherwise reach another index's documents, including a tenant-scoped one. An index whose key prefix overlaps another's shares keys with it, which the handle cannot tell apart, and an index with an empty prefix covers every key, so its document ids are full Redis keys.
 
 Everything else on the index is out of reach: creating, dropping or clearing it, `info` for another index, `paginate`, and the filter-wide bulk writes `update_by_filter` and `drop_by_filter`, which a request timeout could cancel partway through.
 
@@ -309,7 +309,7 @@ The server applies the same rails as for a built-in, without the author asking f
 
 - Every `ctx.index` call takes a slot under the server-wide concurrency cap and is bounded by the binding's `runtime.request_timeout_seconds`. The cap is taken per call, so a tool that queries several times never blocks itself.
 - The whole tool call is bounded by the same timeout, so a tool cannot hold a request open indefinitely. A timeout returns a retryable `backend_unavailable` error.
-- A caller needs the server's read scope, or the write scope for a tool declared with `writes=True`. A tool can require an extra scope with `scope=`, which a caller must hold as well, so a code tool can be stricter than the built-ins but never looser.
+- A caller needs the server's read scope, or the write scope for a tool declared with `writes=True`. A tool can require an extra scope with `scope=`, which a caller must hold as well, so a code tool can be stricter than the built-ins but never looser. Like every scope, it is enforced only when the server has authentication configured.
 - An exception the tool raises becomes a stable MCP error: `ValueError` becomes `invalid_request`, a Redis error a retryable `backend_unavailable`, most other exceptions `internal_error`. Raise `RedisVLMCPError` to choose the code and message yourself.
 
 The handle is a guardrail, not a sandbox. A code tool is your own code, running with the privileges of the process that started the server, and Python can still reach private attributes. What the handle does is make the bounded, policy-checked path the only obvious one.
