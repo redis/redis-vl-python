@@ -232,11 +232,11 @@ class VertexAIVectorizer(BaseVectorizer):
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
-        except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the VertexAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for Vertex AI model "
+                f"'{self.model}': {e}"
+            ) from e
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
