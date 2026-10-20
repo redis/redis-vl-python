@@ -9,7 +9,7 @@ from redisvl.utils.vectorize import CustomVectorizer
 from tests.conftest import skip_if_no_redis_search
 
 # "near paris" is about 0.02 from "paris" in cosine distance; "rome" and
-# "bread" are 1.0 from both, and from each other.
+# "bread" are 1.0 from "paris", and from each other.
 VECTORS = {
     "paris": [1.0, 0.0, 0.0, 0.0],
     "near paris": [0.98, 0.2, 0.0, 0.0],
