@@ -62,8 +62,8 @@ def operation(
     """Trace and time a sync or async SemanticCache method.
 
     A lookup also records whether it hit, judged from the hits it returns. A
-    failure records ``error.type`` instead and re-raises unchanged. A call that never completes, such as a cancelled task, records
-    no duration.
+    failure records ``error.type`` instead and re-raises unchanged. A call that
+    never completes, such as a cancelled task, records no duration.
     """
     span_name = f"semantic_cache.{name}"
 

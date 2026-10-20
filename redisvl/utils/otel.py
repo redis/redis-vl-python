@@ -86,9 +86,8 @@ GEN_AI_RETRIEVAL_DOCUMENTS = "gen_ai.retrieval.documents"
 
 # Bucket advice. The GenAI duration buckets start at 10 ms, but a cache lookup
 # on local Redis takes about 250 us excluding embedding, so these start at
-# 100 us. Distance buckets are
-# dense where cosine thresholds usually sit and coarse up to the maximum of 2.
-# Applications can override both with SDK views.
+# 100 us. Distance buckets are dense where cosine thresholds usually sit and
+# coarse up to the maximum of 2. Applications can override both with SDK views.
 _HISTOGRAMS = {
     SEMANTIC_CACHE_OPERATION_DURATION: (
         "s",

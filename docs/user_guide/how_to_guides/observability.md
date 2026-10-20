@@ -9,7 +9,7 @@ myst:
 
 RedisVL can report what `SemanticCache` does through [OpenTelemetry](https://opentelemetry.io/): a trace for every lookup that separates embedding time from search time, a hit rate, and the distance of the nearest match on every lookup, hits and misses alike. That last signal is what you need to tune `distance_threshold`.
 
-RedisVL depends only on the OpenTelemetry API. Your application owns the SDK and the exporters, and RedisVL emits nothing until you configure them. With no SDK configured, the instrumentation costs a few microseconds per lookup: one span with two metric records measured about 2 µs on an Apple M4 Pro.
+RedisVL depends only on the OpenTelemetry API. Your application owns the SDK and the exporters, and RedisVL emits nothing until you configure them. With no SDK configured, the instrumentation adds about 11 µs to a lookup that embeds, measured on an Apple M4 Pro.
 
 See [Cache LLM Responses](../03_llmcache.ipynb) for how to use the cache itself.
 
@@ -74,10 +74,10 @@ semantic_cache.check     INTERNAL
 | `semantic_cache.*` | `redisvl.cache.name` | The cache name |
 | | `redisvl.cache.result` | `hit` or `miss`, on `check` only |
 | `embeddings {model}` | `gen_ai.operation.name` | `embeddings` |
-| | `gen_ai.provider.name` | For example `openai`, `azure.ai.openai`, `cohere`, `mistral_ai`, `gcp.vertex_ai`, `gcp.gen_ai` or `aws.bedrock`; other vectorizers report their type, such as `hf` |
+| | `gen_ai.provider.name` | For example `openai`, `azure.ai.openai`, `cohere`, `mistral_ai`, `gcp.vertex_ai`, `gcp.gemini` or `aws.bedrock`; other vectorizers report their type, such as `hf` |
 | | `gen_ai.request.model` | The vectorizer's model |
 | | `gen_ai.embeddings.dimension.count` | The vectorizer's dimensions, when known |
-| | `redisvl.embeddings_cache.result` | `hit`, `miss`, or `partial` for a batch; only when the vectorizer has an `EmbeddingsCache` |
+| | `redisvl.embeddings_cache.result` | `hit`, `miss`, or `partial` for a batch; only when the vectorizer has an `EmbeddingsCache` and the call doesn't pass `skip_cache=True` |
 | `retrieval {index}` | `gen_ai.operation.name` | `retrieval` |
 | | `gen_ai.data_source.id`, `db.collection.name` | The index name |
 | | `gen_ai.retrieval.top_k` | `num_results` |
@@ -93,7 +93,7 @@ A failed operation sets an error status and `error.type` on every RedisVL span i
 |---|---|---|---|
 | `redisvl.semantic_cache.operation.duration` | `s` | `redisvl.cache.name`, `redisvl.cache.operation`, `redisvl.cache.result` (on `check`), `error.type` (on failure) | Every `check`, `store`, `update` and `drop`, sync or async |
 | `redisvl.semantic_cache.distance` | `1` | `redisvl.cache.name`, `redisvl.cache.result` | Every lookup that found at least one candidate |
-| `gen_ai.client.operation.duration` | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `error.type` (on failure) | Every embedding call that reaches the provider, but not an embeddings-cache hit |
+| `gen_ai.client.operation.duration` | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `error.type` (on failure) | Every embedding call that reaches the provider, but not an embeddings-cache hit. One `embed_many` call records one point, covering all its batches |
 
 There is no counter: the duration histogram's count is the number of operations. Cache-operation buckets start at 100 µs, because a lookup against local Redis takes about 250 µs before embedding, while embedding-duration buckets follow the GenAI conventions' advice, from 10 ms. Distance buckets are 0.01 wide up to 0.1, then coarser up to 2, the maximum cosine distance. To change any of them, use an SDK [View](https://opentelemetry.io/docs/languages/python/instrumentation/#metrics).
 
