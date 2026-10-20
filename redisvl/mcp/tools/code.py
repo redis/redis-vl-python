@@ -20,6 +20,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from pydantic import TypeAdapter
+
 from redisvl.mcp.auth import ensure_read_scope, ensure_tool_scope, ensure_write_scope
 from redisvl.mcp.config import validate_tool_name
 from redisvl.mcp.context import ToolContext
@@ -97,6 +99,15 @@ def _tool_signature(
                 "annotation; it is what the tool's input schema is built from"
             )
         annotation = hints[parameter.name]
+        try:
+            # Built here so a type the input schema cannot express fails at
+            # declaration, not at startup after every binding has connected.
+            TypeAdapter(annotation).json_schema()
+        except Exception as exc:
+            raise TypeError(
+                f"code tool {where} parameter '{parameter.name}' has a type "
+                f"that no input schema can describe: {exc}"
+            ) from exc
         # Keyword-only, because the wrapper is always called with keyword
         # arguments decoded from the model's JSON.
         exposed.append(
@@ -183,9 +194,9 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
         try:
             runtime = server.resolve_binding(binding_id)
             if spec.writes and runtime.effective_read_only:
-                # Startup refuses this pairing, but the binding is re-read on
-                # every start while tools register once, so a restart against
-                # a config that made the index read-only lands here.
+                # Startup already refuses this pairing; checked again per call,
+                # as upsert_records does, so a write never depends on that
+                # check alone.
                 raise RedisVLMCPError(
                     f"index '{binding_id}' is read-only",
                     code=MCPErrorCode.FORBIDDEN,
