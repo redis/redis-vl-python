@@ -284,34 +284,36 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
-### Review Record
+### Reviewer Brief
 
-Maintainer PRs, and any PR written with a coding agent, carry a **Review record**: a short section at the end of the PR description that says what review the change went through before a human looked at it. Outside contributors are welcome to add one but don't have to.
+Maintainer PRs, and any PR written with a coding agent, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Outside contributors are welcome to add one but don't have to.
 
 #### Writing one
 
-Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review picks the angles the diff needs (correctness always, and security, design, tests, docs or Redis behaviour when the change calls for them), checks each finding against the code, fixes what holds up, and writes the record under the `## Review record` heading of the PR template. Run it again after any substantive push.
+Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review looks at the change from six angles (correctness, security, design, tests, docs and Redis behaviour), checks each finding against the code, fixes what holds up, and then writes the brief under the `## Reviewer Brief` heading of the PR template. Run it again after any substantive push.
 
-A record states:
+A brief tells the reviewer:
 
-- the commit it reviewed, and the agent and model that ran it;
-- which review angles ran, which were skipped, and why;
-- what was fixed, with file and line;
-- what was rejected, and why;
-- the commands that were run, with their results, and any Redis documentation pages relied on;
-- what was **not** checked, for example cluster behaviour or provider APIs.
+- where to start reading, and why;
+- what they need to decide;
+- where the change could still fail, with file and line;
+- what wasn't verified, for example cluster behaviour or provider APIs;
+- any evidence CI doesn't show, such as a regression test confirmed to fail without the fix;
+- which commit was reviewed, by which agent and model.
+
+It deliberately leaves out what the review fixed. You see the change as it is now, so problems that no longer exist would only cost you time.
 
 #### Reading one
 
-The record is the author's claim about their own review. It isn't an approval and it isn't proof, so use it to decide where to look rather than as a reason not to look. A quick way to review a PR that has one:
+The brief is the author's account of their own review. It isn't an approval and it isn't proof. Use it to decide where to look first, not as a reason to look less. A quick way to review a PR that has one:
 
 1. Read the summary Bugbot adds to the PR description for what the change does and how risky it is.
-2. Check that the record's commit matches the PR's head commit. If later commits aren't covered, ask the author to re-run the review.
-3. Read the record. A record with no rejected findings and nothing under "Not checked" deserves more scrutiny, not less.
-4. Look at any open Bugbot or reviewer threads. Each should have a reply giving its outcome (fixed, already fixed, invalid with evidence, duplicate, or needs a decision).
-5. Spot-check one fixed finding in the diff, and decide whether anything under "Not checked" matters for this change.
+2. Check that the commit in the brief's footer matches the PR's head commit, or that a "Since the last brief" line covers the later commits. If it doesn't, ask the author to re-run the review.
+3. Start reading where the brief says, then look at each spot under "Where it could fail".
+4. Settle the items under "Decisions for you", and decide whether anything under "Not verified" matters for this change.
+5. Check that every open Bugbot or reviewer thread has a reply giving its outcome.
 
-If the record, Bugbot and the spot-checks agree, approve. If they disagree, the disagreement shows you where to review in depth.
+If the brief, Bugbot and what you see in the diff agree, approve. Where they disagree is where to review in depth.
 
 ### PR Labels
 
@@ -340,7 +342,7 @@ Before submitting your PR, ensure:
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear and descriptive
 - [ ] PR description explains what changes were made and why
-- [ ] For maintainer or agent-assisted PRs, the Review record names the PR's head commit
+- [ ] For maintainer or agent-assisted PRs, the Reviewer Brief covers the PR's head commit
 - [ ] Appropriate `auto:*` label is applied to indicate the change type
 
 ## Getting Help

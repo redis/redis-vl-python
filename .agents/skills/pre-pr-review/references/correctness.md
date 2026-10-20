@@ -16,7 +16,7 @@ Find changes that make the code behave wrongly for some input, state or environm
 - **Dependency floors.** Check every call into an optional dependency against the oldest version `pyproject.toml` allows. A new attribute or keyword that only exists in a later release crashes users on the floor version. This is the most common high-severity finding in this repository.
 - **Redis replies.** The code has to handle RESP2 and RESP3 reply shapes, and both hash and JSON storage.
 - **Result limits.** Default result counts (`num_results`, `LIMIT`, `MAXSEARCHRESULTS`) silently truncate. Check any read that is meant to return everything.
-- **Cluster mode.** Multi-key operations, `SCAN` and pipelines behave differently on a cluster, and partial failures are possible. CI never runs cluster tests, so reason about these cases from the code. If you can't settle one that way, put it under "Not checked" in the record.
+- **Cluster mode.** Multi-key operations, `SCAN` and pipelines behave differently on a cluster, and partial failures are possible. CI never runs cluster tests, so reason about these cases from the code. If you can't settle one that way, put it under "Not verified" in the Reviewer Brief.
 - **Client ownership.** Who creates, owns and closes a Redis client, and what happens on reconnect, especially for async clients reused across event loops.
 
 ## Depth

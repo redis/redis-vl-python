@@ -1,0 +1,41 @@
+{
+  "skill_name": "pre-pr-review",
+  "notes": "Fill in any <placeholder> with a current PR before running, since PR state changes. Run each prompt with and without the skill, from a checkout of the PR's head commit. Compare the Reviewer Briefs against the expectations. Never let an eval run push, edit a PR description or post comments: use update_brief.py --dry-run.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm about to mark PR 777 (the OpenTelemetry spans one) ready for review. Run the pre-PR review on it and give me the Reviewer Brief, but don't touch the PR.",
+      "expected_output": "A brief that a reviewer who never saw the review can act on.",
+      "expectations": [
+        "\"Start here\" names one file or function from the diff and says why it matters.",
+        "No section lists bugs that were fixed during the review, finding counts or lens names outside the footer.",
+        "\"Where it could fail\" has at most three items, each with a file and line, or a clearly named behaviour, and a concrete way it could go wrong.",
+        "\"Not verified\" names live provider APIs or cluster mode.",
+        "\"Beyond CI\" contains only checks CI does not run, or is omitted.",
+        "The footer names the reviewed commit, the agent and model, and the lenses that ran.",
+        "The visible brief is under about 200 words."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Quick one: I fixed a typo in a docstring in redisvl/query/filter.py and a broken link in docs/user_guide/how_to_guides/observability.md. Do the pre-PR review thing and write the brief.",
+      "expected_output": "A very short brief that scales to the change.",
+      "expectations": [
+        "The brief is under about 60 words.",
+        "\"Decisions for you\" says None, and nothing is invented to fill \"Where it could fail\".",
+        "The review does not raise findings about code the change did not touch."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Bugbot left comments on PR <number of an open PR with unresolved Bugbot threads>. Go through them using the repo's review process and tell me what you'd reply to each. Don't post anything.",
+      "expected_output": "Each open point verified against the code and given exactly one outcome.",
+      "expectations": [
+        "The agent lists the open feedback with scripts/open_feedback.py or an equivalent that respects resolved and outdated threads.",
+        "Each point gets exactly one of: fixed in <sha>, already fixed, invalid with evidence, duplicate, needs a decision.",
+        "Points that are already resolved on the PR are not re-litigated.",
+        "Nothing is posted to the PR."
+      ]
+    }
+  ]
+}
