@@ -10,6 +10,6 @@
 
 <!-- Only if users need to know: what changed from their point of view, and what breaks. Delete this section otherwise. -->
 
-## Review record
+## Reviewer Brief
 
-<!-- Maintainers and agent-assisted PRs: run the pre-PR review described in AGENTS.md and paste its record here. It names the reviewed commit, the lenses run, what was fixed and rejected, the checks run, and what was not checked. Other contributors may delete this section. -->
+<!-- Maintainers and agent-assisted PRs: run the pre-PR review described in AGENTS.md and put its Reviewer Brief here. It tells the reviewer where to start, what to decide, where the change could fail, and what wasn't verified. Other contributors may delete this section. -->

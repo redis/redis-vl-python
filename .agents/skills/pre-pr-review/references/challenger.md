@@ -18,6 +18,6 @@ For each finding:
 | 4–6 | Plausible but unproven: it depends on inputs or states you couldn't confirm can occur |
 | 1–3 | Wrong, already handled, out of scope, or a style preference |
 
-Keep findings that score 7 or more and have a file, a line and a concrete failure or cost. Reject the rest. Each rejection gets a one-line reason, because the reasons go into the Review record and show the approver that the review discriminated.
+Keep findings that score 7 or more and have a file, a line and a concrete failure or cost. Reject the rest, each with a one-line reason in your scratch notes. A rejection only reaches the Reviewer Brief if a reasonable reviewer might side with the finding; then it goes under "Decisions for you".
 
 The challenger may also add a finding it noticed while checking. A finding it adds gets the same scoring, done in a fresh pass.
