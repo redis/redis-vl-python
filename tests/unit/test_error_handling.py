@@ -190,7 +190,8 @@ class TestConnectionKwargsValidation:
             await cache._get_async_redis_client()
 
         error_msg = str(exc_info.value)
-        assert "argument after ** must be a mapping" in error_msg
+        # CPython 3.15 reworded this from "argument after **" to "Value after **".
+        assert "after ** must be a mapping" in error_msg
 
     @pytest.mark.asyncio
     async def test_connection_kwargs_valid_dict(self):

@@ -107,23 +107,34 @@ def test_semantic_cache_repr_with_ttl(patched_semantic_cache):
 def test_semantic_router_repr():
     from redisvl.extensions.router.schema import Route
     from redisvl.extensions.router.semantic import SemanticRouter
+    from redisvl.utils.vectorize import CustomVectorizer
 
     routes = [
         Route(name="greeting", references=["hello", "hi"]),
         Route(name="farewell", references=["bye", "goodbye"]),
     ]
-    # model_construct bypasses __init__ (and therefore Redis/vectorizer setup)
-    # while still setting the Pydantic fields that __repr__ reads.
-    router = SemanticRouter.model_construct(name="my-router", routes=routes)
+    # model_construct bypasses __init__ (and therefore Redis setup) while still
+    # setting the Pydantic fields that __repr__ reads. The stub vectorizer stops
+    # the field's HFTextVectorizer default from needing sentence-transformers.
+    router = SemanticRouter.model_construct(
+        name="my-router",
+        routes=routes,
+        vectorizer=CustomVectorizer(lambda text: [0.1, 0.2, 0.3]),
+    )
     assert repr(router) == "SemanticRouter(name='my-router', routes=2)"
 
 
 def test_semantic_router_repr_single_route():
     from redisvl.extensions.router.schema import Route
     from redisvl.extensions.router.semantic import SemanticRouter
+    from redisvl.utils.vectorize import CustomVectorizer
 
     routes = [Route(name="support", references=["help", "issue"])]
-    router = SemanticRouter.model_construct(name="support-router", routes=routes)
+    router = SemanticRouter.model_construct(
+        name="support-router",
+        routes=routes,
+        vectorizer=CustomVectorizer(lambda text: [0.1, 0.2, 0.3]),
+    )
     assert repr(router) == "SemanticRouter(name='support-router', routes=1)"
 
 

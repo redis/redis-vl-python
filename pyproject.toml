@@ -4,7 +4,7 @@ name = "redisvl"
 version = "0.28.0"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.10,<3.16"
 readme = "README.md"
 license = "MIT"
 keywords = [
@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
@@ -45,6 +46,10 @@ mcp = [
     # Supporting that revision is its own piece of work.
     "fastmcp>=2.0.0,<4",
     "pydantic-settings>=2.0,<3",
+    # fastmcp pulls in beartype transitively. Releases before 0.23 import
+    # typing.no_type_check_decorator, which Python 3.15 removed, so fastmcp
+    # fails to import and the MCP server falls back to its stub.
+    "beartype>=0.23.1",
 ]
 mistralai = ["mistralai>=1.0.0,<2"]
 openai = ["openai>=1.1.0"]
@@ -115,7 +120,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "black>=25.1.0,<27",
+    "black>=26.5.0,<27",
     "isort>=5.6.4,<6",
     "pylint>=3.1.0,<4",
     "pytest>=8.1.1,<9",
@@ -151,7 +156,7 @@ default-groups = [
 ]
 
 [tool.black]
-target-version = ['py310', 'py311', 'py312', 'py313', 'py314']
+target-version = ['py310', 'py311', 'py312', 'py313', 'py314', 'py315']
 exclude = '''
 (
   | \.egg
@@ -171,6 +176,14 @@ exclude = '''
 [tool.pytest.ini_options]
 log_cli = true
 asyncio_mode = "auto"
+# pytest-asyncio 0.23 calls asyncio APIs that Python 3.14+ deprecates, once
+# per collected object. On 3.15 that is millions of warnings per run, which
+# slows the suite roughly tenfold. Scoped to pytest_asyncio so the same
+# deprecations raised from redisvl still surface. Drop this once the
+# pytest-asyncio<0.24 pin is lifted.
+filterwarnings = [
+    "ignore:'asyncio\\.(iscoroutinefunction|get_event_loop_policy|set_event_loop_policy)' is deprecated:DeprecationWarning:pytest_asyncio",
+]
 
 [tool.mypy]
 warn_unused_configs = true

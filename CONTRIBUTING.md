@@ -31,7 +31,7 @@ Here's how to get started with your code contribution:
 
 ### Prerequisites
 
-- **Python**: RedisVL supports Python 3.9 and above
+- **Python**: RedisVL supports Python 3.10 through 3.15
 - **Docker**: Required for running Redis and integration tests
 - **UV**: Modern Python package manager for fast dependency management
 
@@ -80,6 +80,12 @@ uv sync --all-extras
 ```
 
 This will create a virtual environment and install all necessary dependencies for development.
+
+On Python 3.15, PyTorch has no wheels on PyPI yet, so leave out the extras that need it. Tests marked `requires_hf` skip when sentence-transformers is not installed.
+
+```bash
+uv sync --all-extras --no-extra sentence-transformers --no-extra all
+```
 
 ### Changing Dependencies
 
