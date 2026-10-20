@@ -23,11 +23,11 @@ _PROVIDERS = {
     "cohere": "cohere",
     "mistral": "mistral_ai",
     "vertexai": "gcp.vertex_ai",
-    # The generic Google value, since this vectorizer serves both the Vertex AI
-    # and Gemini Developer API backends.
     "google_genai": "gcp.gen_ai",
     "bedrock": "aws.bedrock",
 }
+# GoogleGenAIVectorizer serves both Google backends; name the one it resolved.
+_GOOGLE_BACKENDS = {"vertex": "gcp.vertex_ai", "gemini": "gcp.gemini"}
 
 
 class _Embeddings:
@@ -47,29 +47,35 @@ class _Embeddings:
 
     @contextmanager
     def provider_call(self) -> Iterator[None]:
-        """Time a call to the embedding provider."""
+        """Time a call to the embedding provider. A call that never completes,
+        such as a cancelled task, records nothing."""
         start = perf_counter()
-        attributes = self._attributes
         try:
             yield
         except Exception as error:
-            attributes = {**attributes, otel.ERROR_TYPE: otel.error_type(error)}
+            error_type = otel.error_type(error)
+            self._record(start, {**self._attributes, otel.ERROR_TYPE: error_type})
             raise
-        finally:
-            try:
-                otel.histogram(otel.GEN_AI_CLIENT_OPERATION_DURATION).record(
-                    perf_counter() - start, attributes
-                )
-            except Exception:
-                logger.debug("Could not record RedisVL telemetry", exc_info=True)
+        self._record(start, self._attributes)
+
+    def _record(self, start: float, attributes: dict[str, Any]) -> None:
+        try:
+            otel.histogram(otel.GEN_AI_CLIENT_OPERATION_DURATION).record(
+                perf_counter() - start, attributes
+            )
+        except Exception:
+            logger.debug("Could not record RedisVL telemetry", exc_info=True)
 
 
 @contextmanager
 def embeddings(vectorizer: Any) -> Iterator[_Embeddings]:
     """Trace one embed call as an ``embeddings {model}`` client span."""
+    provider = _PROVIDERS.get(vectorizer.type, vectorizer.type)
+    if vectorizer.type == "google_genai":
+        provider = _GOOGLE_BACKENDS.get(getattr(vectorizer, "backend", ""), provider)
     metric_attributes = {
         otel.GEN_AI_OPERATION_NAME: "embeddings",
-        otel.GEN_AI_PROVIDER_NAME: _PROVIDERS.get(vectorizer.type, vectorizer.type),
+        otel.GEN_AI_PROVIDER_NAME: provider,
         otel.GEN_AI_REQUEST_MODEL: vectorizer.model,
     }
     span_attributes = dict(metric_attributes)
