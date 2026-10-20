@@ -8,12 +8,17 @@ import struct
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.asyncio.client import Redis as AsyncRedis
+from redis.client import Redis
 
 from redisvl.migration import AsyncMigrationExecutor, MigrationExecutor
+from redisvl.migration import async_executor as async_executor_module
+from redisvl.migration import executor as executor_module
 from redisvl.migration.models import (
     DiffClassification,
     KeyspaceSnapshot,
     MigrationPlan,
+    MigrationValidation,
     SourceSnapshot,
     ValidationPolicy,
 )
@@ -100,6 +105,85 @@ def test_async_executor_with_validator():
     custom_validator = AsyncMigrationValidator()
     executor = AsyncMigrationExecutor(validator=custom_validator)
     assert executor.validator is custom_validator
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize(
+    "progress, expected_count",
+    [("0", 2), (0.0, 2), (1.0, None), (None, None)],
+    ids=["resp2-zero", "resp3-zero", "complete", "null-progress"],
+)
+@pytest.mark.asyncio
+async def test_schema_only_migration_counts_unindexed_keys(
+    monkeypatch, tmp_path, is_async, progress, expected_count
+):
+    plan = _make_basic_plan()
+    plan.source.stats_snapshot = {
+        "num_docs": 0,
+        "hash_indexing_failures": 0,
+        "percent_indexed": progress,
+    }
+    executor = AsyncMigrationExecutor() if is_async else MigrationExecutor()
+    module = async_executor_module if is_async else executor_module
+    index_class = module.AsyncSearchIndex if is_async else module.SearchIndex
+    mock_call = AsyncMock if is_async else MagicMock
+
+    client = MagicMock()
+    client.info = mock_call(return_value={"aof_enabled": 0})
+    client.ft.return_value.info = mock_call(
+        return_value={
+            **plan.source.stats_snapshot,
+            "index_definition": {"prefixes": ["test:"]},
+        }
+    )
+    client.scan = mock_call(return_value=(0, [b"test:1", b"test:2"]))
+    redis_class = AsyncRedis if is_async else Redis
+    client.scan_iter = redis_class.scan_iter.__get__(client)
+    source_index = MagicMock()
+    source_index._redis_client = client
+    source_index._get_client = AsyncMock(return_value=client)
+    source_index.delete = mock_call()
+    target_index = MagicMock()
+    target_index.create = mock_call()
+    monkeypatch.setattr(
+        index_class, "from_existing", mock_call(return_value=source_index)
+    )
+    monkeypatch.setattr(index_class, "from_dict", MagicMock(return_value=target_index))
+    matches = mock_call(side_effect=[True, False])
+    wait = mock_call(return_value=({"num_docs": 2}, 0.01))
+    if is_async:
+        monkeypatch.setattr(executor, "_async_current_source_matches_snapshot", matches)
+        monkeypatch.setattr(executor, "_async_wait_for_index_ready", wait)
+    else:
+        monkeypatch.setattr(module, "current_source_matches_snapshot", matches)
+        monkeypatch.setattr(module, "wait_for_index_ready", wait)
+    validate = mock_call(
+        return_value=(
+            MigrationValidation(
+                schema_match=True, doc_count_match=True, key_sample_exists=True
+            ),
+            {"num_docs": 2},
+            0.01,
+        )
+    )
+    monkeypatch.setattr(executor.validator, "validate", validate)
+
+    report = executor.apply(
+        plan, redis_client=client, backup_dir=str(tmp_path / "backups")
+    )
+    if is_async:
+        report = await report
+
+    assert report.result == "succeeded", report.validation.errors
+    # A schema-only change must count the source keys before dropping an
+    # unfinished index; num_docs == 0 is not the number of stored documents.
+    assert validate.call_args.kwargs["expected_source_count"] == expected_count
+    if expected_count is None:
+        client.scan.assert_not_called()
+    else:
+        client.scan.assert_called_once_with(
+            cursor="0", match="test:*", count=1000, _type=None
+        )
 
 
 @pytest.mark.asyncio
