@@ -244,6 +244,23 @@ class TestSemanticRouterReconcilesFailedUnlinks:
         assert router.get("greeting").references == ["hi there"]
         assert _persisted_routes(client)[0]["references"] == ["hi there"]
 
+    def test_delete_route_references_drops_a_reference_whose_hash_is_already_gone(
+        self,
+    ):
+        """With the hash gone, the reference is recovered from the router's config.
+
+        Keeping it would leave a reference that no later call can find: it has no
+        index entry for a reference-id lookup and no key for a route scan.
+        """
+        router, client = _router()
+        key = SemanticRouter._route_ref_key(router._index, "greeting", hashify("hello"))
+        client.hgetall.side_effect = lambda k: {}
+        client.unlink.side_effect = lambda *keys: 0
+
+        assert router.delete_route_references(keys=[key]) == 0
+        assert router.get("greeting").references == ["hi there"]
+        assert _persisted_routes(client)[0]["references"] == ["hi there"]
+
     def test_delete_route_references_persists_when_the_hash_is_already_gone(self):
         """A vanished hash yields no reference to reconcile -- and must not raise.
 

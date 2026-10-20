@@ -1051,6 +1051,18 @@ class SemanticRouter(BaseModel):
             for key in convert_bytes(list(keys))
         }
 
+        # A hash already gone (removed by another client, say) has nothing to read,
+        # so its reference is recovered from the config instead. Left in place, it
+        # could never be deleted: no index entry and no key would point to it.
+        configured_by_key = {
+            self._route_ref_key(self._index, route.name, hashify(reference)): (
+                route.name,
+                reference,
+            )
+            for route in self.routes
+            for reference in route.references
+        }
+
         deleted, failed_keys = self._index._drop_keys(list(stored_by_key))
         failed = set(failed_keys)
 
@@ -1060,8 +1072,12 @@ class SemanticRouter(BaseModel):
         for key, stored in stored_by_key.items():
             if key in failed:
                 continue
-            route = self.get(stored.get("route_name", ""))
-            reference = stored.get("reference")
+            if not stored and key in configured_by_key:
+                ref_route_name, reference = configured_by_key[key]
+            else:
+                ref_route_name = stored.get("route_name", "")
+                reference = stored.get("reference")
+            route = self.get(ref_route_name)
             if route is None or reference not in route.references:
                 logger.warning(
                     f"Deleted route reference {key!r} but found no matching "
