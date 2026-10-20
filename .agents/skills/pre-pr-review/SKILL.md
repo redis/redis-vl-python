@@ -6,7 +6,7 @@ compatibility: Works with any coding agent. Needs git, make, pytest and Python 3
 
 # Pre-PR review
 
-A human approves every merge to `main`. This review runs before they see the PR, so the problems it catches never reach them. Its output, the Reviewer Brief, gives them a head start: where to begin reading, what they need to decide, where the change could still fail, and what nobody has checked.
+A human approves every merge to `main`. This review runs before they see the PR, so the problems it catches never reach them. Its output, the Reviewer Brief, gives them a head start: where to begin reading, where the change could still fail, and what nobody has checked.
 
 The approver can only rely on the brief if it's accurate, so report only what you can tie to the code, and never claim a check you didn't run.
 
@@ -55,12 +55,18 @@ Run a second challenge round only if the first round's fixes changed the code ma
 
 ## 5. Fix and re-check
 
-- Fix the kept findings that are within the PR's scope, at the root cause. A real problem outside scope becomes a "Decisions for you" item rather than an unrequested change.
+- Fix the kept findings that are within the PR's scope, at the root cause. A real problem outside scope goes to the author as a question, not into the diff.
 - Add the narrowest regression test that fails without the fix, or note why none applies. A test you've seen fail without the fix is strong evidence for the brief's "Beyond CI" line.
 - Re-run whatever the fixes touched: `make format`, `make check-types`, and the affected tests (`make test ARGS="tests/unit/test_x.py"`, or `pytest` on the specific file).
 - Commit the fixes locally. The author pushes.
 
-## 6. Write the Reviewer Brief
+## 6. Settle open questions with the author
+
+A PR should reach the reviewer with no open questions. Before the PR is opened or marked ready, take everything the review couldn't settle to the author and get an answer: findings outside the PR's scope, rejections you're unsure about, and trade-offs. You work for the author, and the reviewer shouldn't have to answer questions the author never saw.
+
+Once the author has decided, record a deliberate trade-off that a reviewer might question in the PR's Notes section, as a decision with its reason. Notes say what was decided and why; they don't ask the reviewer anything.
+
+## 7. Write the Reviewer Brief
 
 Write the brief following `references/reviewer-brief.md`. The reviewer sees the change as it is now, so the brief points at the current code, not at the problems you fixed.
 
@@ -87,8 +93,8 @@ When Bugbot or a person comments on the PR:
    - `already fixed`
    - `invalid`, with the evidence
    - `duplicate of <item>`
-   - `needs a decision`, for the author or a maintainer to settle
+   - `needs a decision`: ask the author, and reply once they've decided
 4. **Check the fix before saying so.** Re-read the exact location in the fixed tree, and search for other instances of the same pattern, before you reply "fixed".
-5. **Reply on each thread with its outcome, and bring the brief up to date.** Fixes that change behaviour need a fresh review of the new commits and a rewritten brief, because the reviewer will rely on it. Trivial fixes need only a "Since the last brief" line. Anything that needs a decision goes under "Decisions for you".
+5. **Reply on each thread with its outcome, and bring the brief up to date.** Fixes that change behaviour need a fresh review of the new commits and a rewritten brief, because the reviewer will rely on it. Trivial fixes need only a "Since the last brief" line. Anything that needs a decision goes to the author.
 
 Ask the author before posting replies on the PR, unless they've already said you can.

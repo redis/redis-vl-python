@@ -132,7 +132,7 @@ redisvl/
 
 ## Before you mark a PR ready
 
-Run the pre-PR review and put its Reviewer Brief in the PR description. A human approves every merge to `main`. The review catches problems before they reach that person, and the brief gives them a head start: where to begin reading, what they need to decide, where the change could still fail, and what nobody has checked.
+Run the pre-PR review and put its Reviewer Brief in the PR description. A human approves every merge to `main`. The review catches problems before they reach that person, and the brief gives them a head start: where to begin reading, where the change could still fail, and what nobody has checked. Settle any open questions with the author before the PR is opened or marked ready, so the PR reaches the reviewer with none.
 
 The procedure lives in `.agents/skills/pre-pr-review/SKILL.md`, in the Agent Skills format. If your agent doesn't discover skills there by itself, open `SKILL.md` and follow it as written. It's plain Markdown, and every file it refers to is under `.agents/skills/pre-pr-review/`.
 

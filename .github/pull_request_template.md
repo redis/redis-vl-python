@@ -12,4 +12,4 @@
 
 ## Reviewer Brief
 
-<!-- Maintainers and agent-assisted PRs: run the pre-PR review described in AGENTS.md and put its Reviewer Brief here. It tells the reviewer where to start, what to decide, where the change could fail, and what wasn't verified. Other contributors may delete this section. -->
+<!-- Maintainers and agent-assisted PRs: run the pre-PR review described in AGENTS.md and put its Reviewer Brief here. It tells the reviewer where to start, where the change could fail, and what wasn't verified. Other contributors may delete this section. -->

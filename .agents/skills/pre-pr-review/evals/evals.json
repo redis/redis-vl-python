@@ -8,7 +8,7 @@
       "expected_output": "A brief that a reviewer who never saw the review can act on.",
       "expectations": [
         "\"Start here\" names one file or function from the diff and says why it matters.",
-        "No section lists bugs that were fixed during the review, finding counts or lens names outside the footer.",
+        "No section lists bugs that were fixed during the review, finding counts, open questions or lens names outside the footer.",
         "\"Where it could fail\" has at most three items, each with a file and line, or a clearly named behaviour, and a concrete way it could go wrong.",
         "\"Not verified\" names live provider APIs or cluster mode.",
         "\"Beyond CI\" contains only checks CI does not run, or is omitted.",
@@ -22,7 +22,7 @@
       "expected_output": "A very short brief that scales to the change.",
       "expectations": [
         "The brief is under about 60 words.",
-        "\"Decisions for you\" says None, and nothing is invented to fill \"Where it could fail\".",
+        "Nothing is invented to fill \"Where it could fail\".",
         "The review does not raise findings about code the change did not touch."
       ]
     },

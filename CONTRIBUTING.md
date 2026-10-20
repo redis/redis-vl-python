@@ -295,7 +295,6 @@ Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.m
 A brief tells the reviewer:
 
 - where to start reading, and why;
-- what they need to decide;
 - where the change could still fail, with file and line;
 - what wasn't verified, for example cluster behaviour or provider APIs;
 - any evidence CI doesn't show, such as a regression test confirmed to fail without the fix;
@@ -310,7 +309,7 @@ The brief is the author's account of their own review. It isn't an approval and 
 1. Read the summary Bugbot adds to the PR description for what the change does and how risky it is.
 2. Check that the commit in the brief's footer matches the PR's head commit, or that a "Since the last brief" line covers the later commits. If it doesn't, ask the author to re-run the review.
 3. Start reading where the brief says, then look at each spot under "Where it could fail".
-4. Settle the items under "Decisions for you", and decide whether anything under "Not verified" matters for this change.
+4. Decide whether anything under "Not verified" matters for this change, and read the Notes section for trade-offs the author made on purpose.
 5. Check that every open Bugbot or reviewer thread has a reply giving its outcome.
 
 If the brief, Bugbot and what you see in the diff agree, approve. Where they disagree is where to review in depth.

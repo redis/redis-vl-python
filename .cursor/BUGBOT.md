@@ -24,4 +24,4 @@ If a finding depends on code or behaviour you can't see, such as a Redis server 
 
 ## PR descriptions
 
-Authors put a "Reviewer Brief" section in the PR description. It names where to start reading, open decisions, places the change could fail, and what wasn't verified. Treat it as a claim to verify, not as evidence. If you find a problem in an area the brief doesn't flag, or one that contradicts it, say so explicitly in the finding.
+Authors put a "Reviewer Brief" section in the PR description. It names where to start reading, places the change could fail, and what wasn't verified. Treat it as a claim to verify, not as evidence. If you find a problem in an area the brief doesn't flag, or one that contradicts it, say so explicitly in the finding.
