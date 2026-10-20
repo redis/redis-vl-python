@@ -2,6 +2,7 @@ import pathlib
 import warnings
 from contextlib import suppress
 
+import numpy as np
 import pytest
 from redis.exceptions import ConnectionError
 
@@ -614,6 +615,25 @@ def test_routes_different_distance_thresholds_get_one(
                 router.clear()
             with suppress(Exception):
                 router.delete()
+
+
+def test_distance_threshold_is_inclusive(semantic_router):
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
+
+    def greeting_match(threshold: float):
+        semantic_router.update_route_thresholds({"greeting": threshold})
+        matches = semantic_router.route_many(
+            "hey", max_k=2, aggregation_method=DistanceAggregationMethod.min
+        )
+        return next((m for m in matches if m.name == "greeting"), None)
+
+    reported = greeting_match(2.0).distance
+
+    # Redis reports the distance to 12 significant digits but compares the
+    # float32 it computed, so round back to float32 to land exactly on it.
+    at_threshold = float(np.float32(reported))
+    assert greeting_match(at_threshold) is not None
+    assert greeting_match(float(np.nextafter(at_threshold, 0))) is None
 
 
 def test_add_delete_route_references(semantic_router):
