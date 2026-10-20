@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import inspect
 import sys
 import textwrap
 import uuid
@@ -161,6 +162,15 @@ async def _unresolvable(ctx: ToolContext, query: "NoSuchType") -> dict:  # noqa:
     return {}
 
 
+class _NoSchema:
+    pass
+
+
+async def _no_schema(ctx: ToolContext, query: _NoSchema) -> dict:
+    """Search."""
+    return {}
+
+
 @pytest.mark.parametrize(
     "fn, message",
     [
@@ -174,6 +184,7 @@ async def _unresolvable(ctx: ToolContext, query: "NoSuchType") -> dict:  # noqa:
         pytest.param(_varkw, "'options' must be a plain", id="varkw"),
         pytest.param(_positional_only, "'query' must be a plain", id="pos-only"),
         pytest.param(_unresolvable, "cannot be resolved", id="unresolvable"),
+        pytest.param(_no_schema, "no input schema can describe", id="no-schema"),
     ],
 )
 def test_a_malformed_signature_is_refused_where_it_is_declared(fn, message):
@@ -311,8 +322,7 @@ async def test_the_tool_runs_with_a_context_for_its_binding(
 
 
 async def test_a_writing_tool_is_refused_on_an_index_now_read_only(monkeypatch):
-    # Startup refuses the pairing, but tools register once and the binding is
-    # re-read on every start, so the call itself has to check too.
+    # Startup refuses the pairing too; the call checks again on its own.
     _as_caller(monkeypatch)
     called: list[str] = []
 
@@ -333,8 +343,8 @@ async def test_a_writing_tool_is_refused_on_an_index_now_read_only(monkeypatch):
 @pytest.mark.parametrize(
     "writes, scopes",
     [
-        pytest.param(False, ["kb.write"], id="read-without-read-scope"),
-        pytest.param(True, ["kb.read"], id="write-without-write-scope"),
+        pytest.param(False, ["kb.write", "tickets.read"], id="read-without-read-scope"),
+        pytest.param(True, ["kb.read", "tickets.read"], id="write-without-write-scope"),
         pytest.param(False, ["kb.read"], id="read-without-tool-scope"),
         pytest.param(True, ["kb.write"], id="write-without-tool-scope"),
     ],
@@ -566,15 +576,19 @@ def test_a_module_that_contributes_no_tools_fails(tool_module, source, message):
         load_code_tools([name])
 
 
-async def test_a_timed_out_call_gives_back_its_concurrency_slot(monkeypatch):
+@pytest.mark.parametrize("slot_free", [True, False], ids=["mid-call", "queued"])
+async def test_a_timed_out_call_gives_back_its_concurrency_slot(monkeypatch, slot_free):
     # Against the real run_guarded: a tool cut off mid-call must release the
     # semaphore and the active-request count, or the cap leaks one slot per
-    # timeout until the server stops answering.
+    # timeout until the server stops answering. One cut off while queued for
+    # the slot must close the Redis call it never started.
     _as_caller(monkeypatch)
+    started: list[Any] = []
 
     class HangingIndex:
-        async def exists(self):
-            await asyncio.sleep(5)
+        def exists(self):
+            started.append(asyncio.sleep(5))
+            return started[-1]
 
     server = RedisVLMCPServer(MCPSettings(config="/tmp/mcp.yaml"))
     server._semaphore = asyncio.Semaphore(1)
@@ -595,9 +609,14 @@ async def test_a_timed_out_call_gives_back_its_concurrency_slot(monkeypatch):
         return {"exists": await ctx.index.exists()}
 
     register_code_tool(server, build_code_tool_spec(probe), "tickets")
+    if not slot_free:
+        await server._semaphore.acquire()
 
     with pytest.raises(RedisVLMCPError):
         await registered["probe"]()
 
     assert server._active_requests == 0
+    assert inspect.getcoroutinestate(started[0]) == inspect.CORO_CLOSED
+    if not slot_free:
+        server._semaphore.release()
     assert server._semaphore.locked() is False

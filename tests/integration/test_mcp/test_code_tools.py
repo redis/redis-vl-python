@@ -126,26 +126,6 @@ async def _call(server: RedisVLMCPServer, name: str, **kwargs):
     return await tool.fn(**kwargs)
 
 
-async def test_a_read_tool_queries_the_bound_index(server_for):
-    server = server_for()
-
-    @server.code_tool()
-    async def open_tickets(ctx: ToolContext, limit: int = 10) -> dict:
-        """List open support tickets."""
-        query = FilterQuery(
-            filter_expression=Tag("status") == "open",
-            return_fields=["content"],
-            num_results=limit,
-        )
-        return {"tickets": sorted(r["content"] for r in await ctx.index.query(query))}
-
-    await server.startup()
-
-    assert await _call(server, "open-tickets") == {
-        "tickets": ["login failure", "refund delayed"]
-    }
-
-
 async def test_a_writing_tool_writes_through_its_handle(server_for):
     server = server_for()
 

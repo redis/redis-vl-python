@@ -13,7 +13,8 @@ against its name, and records are addressed by document id, which the index
 turns into a key under its own prefix. Nothing accepts a full Redis key or a
 query that names its own target, because either could reach another index's
 documents, including a tenant-scoped one. An index whose prefix overlaps
-another's shares keys with it, which no handle can tell apart.
+another's shares keys with it, which no handle can tell apart; an index with
+an empty prefix covers every key, so its document ids are full Redis keys.
 
 This is a guardrail, not a sandbox: Python can still reach private attributes.
 It makes the safe path the only obvious one.
