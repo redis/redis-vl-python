@@ -28,7 +28,7 @@ from redisvl.mcp.config import validate_tool_name
 from redisvl.mcp.context import ToolContext
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 
-# Where `tool` leaves a function's spec for the loader to find. An attribute on
+# Where `code_tool` leaves a function's spec for the loader to find. An attribute on
 # the function rather than a module-level registry, so importing a module
 # registers nothing anywhere: two servers in one process, and a test that
 # imports a tool module, stay independent of each other.

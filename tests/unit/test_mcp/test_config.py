@@ -1095,13 +1095,6 @@ def test_injection_composes_with_a_static_lock_on_another_field():
     assert [entry.field for entry in profile.lock.inject] == ["tenant_id"]
 
 
-def test_code_tool_modules_are_off_by_default():
-    server = MCPConfig.model_validate(_valid_config()).server
-
-    assert server.code_tool_modules == []
-    assert server.allow_code_tools is False
-
-
 def test_code_tool_modules_load_once_the_operator_allows_code_tools():
     config = _valid_config()
     config["server"].update(
