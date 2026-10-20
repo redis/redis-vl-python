@@ -266,7 +266,15 @@ class RedisVLMCPServer(FastMCP):
             self._close_awaitable(awaitable)
             raise RuntimeError("MCP server is not running")
 
-        async with semaphore:
+        try:
+            await semaphore.acquire()
+        except BaseException:
+            # Cancelled while waiting for a slot, as by a code tool's whole-call
+            # timeout, so the awaitable never started.
+            self._close_awaitable(awaitable)
+            raise
+
+        try:
             async with self._request_state_lock:
                 if self._lifecycle_state is not _LifecycleState.RUNNING:
                     self._close_awaitable(awaitable)
@@ -286,6 +294,8 @@ class RedisVLMCPServer(FastMCP):
                     self._active_requests -= 1
                     if self._active_requests == 0:
                         self._active_requests_drained.set()
+        finally:
+            semaphore.release()
 
     @staticmethod
     def _build_vectorizer(binding: MCPIndexBindingConfig) -> Any:
