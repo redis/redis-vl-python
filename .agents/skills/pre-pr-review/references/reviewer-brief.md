@@ -23,7 +23,7 @@ The brief also has no questions in it, because the PR shouldn't have any open on
 <sub>Reviewed `<short sha>`, fixes in `<short sha>` · <agent> (<model>) · lenses: <lenses that ran></sub>
 ```
 
-Leave out "Beyond CI" when there's nothing beyond CI to report, and "Since the last brief" until the brief has been updated after a push. Keep the other sections.
+"Start here", "Not verified" and the footer always appear. Leave out "Where it could fail" when nothing in the diff is a credible risk, "Beyond CI" when there's nothing beyond CI to report, and "Since the last brief" until the brief has been updated after a push. An empty heading tells the reviewer nothing.
 
 ## What goes in each section
 

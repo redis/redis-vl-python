@@ -62,9 +62,11 @@ Run a second challenge round only if the first round's fixes changed the code ma
 
 ## 6. Settle open questions with the author
 
-A PR should reach the reviewer with no open questions. Before the PR is opened or marked ready, take everything the review couldn't settle to the author and get an answer: findings outside the PR's scope, rejections you're unsure about, and trade-offs. You work for the author, and the reviewer shouldn't have to answer questions the author never saw.
+A PR should reach the reviewer with no open questions. Before the PR is opened or marked ready, and before each later rewrite of the brief, take everything the review couldn't settle to the author and get an answer: findings outside the PR's scope, rejections you're unsure about, and trade-offs. You work for the author, and the reviewer shouldn't have to answer questions the author never saw.
 
 Once the author has decided, record a deliberate trade-off that a reviewer might question in the PR's Notes section, as a decision with its reason. Notes say what was decided and why; they don't ask the reviewer anything.
+
+If you can't reach the author, for example because you're running unattended, don't open the PR or mark it ready. Leave it as a draft, or unopened, and put the questions in your report to the author, never in the PR.
 
 ## 7. Write the Reviewer Brief
 

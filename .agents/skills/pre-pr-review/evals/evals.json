@@ -13,7 +13,8 @@
         "\"Not verified\" names live provider APIs or cluster mode.",
         "\"Beyond CI\" contains only checks CI does not run, or is omitted.",
         "The footer names the reviewed commit, the agent and model, and the lenses that ran.",
-        "The visible brief is under about 200 words."
+        "The visible brief is under about 200 words.",
+        "Any question the review could not settle is put to the user before the brief is written, and none appears in the brief or elsewhere in the PR."
       ]
     },
     {

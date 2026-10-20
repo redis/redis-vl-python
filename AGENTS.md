@@ -142,7 +142,8 @@ In short, the review:
 2. Runs six review lenses (correctness, security, design, tests, docs and Redis behaviour), each starting fresh from the diff. Authors who want to save tokens can run fewer; correctness always runs.
 3. Runs a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure.
 4. Fixes the surviving findings, in scope, and re-runs the checks those fixes touched.
-5. Writes the Reviewer Brief into the PR description. `scripts/update_brief.py` replaces just that section.
+5. Settles anything it couldn't resolve with the author, so the PR has no open questions.
+6. Writes the Reviewer Brief into the PR description. `scripts/update_brief.py` replaces just that section.
 
 Write the brief for a reviewer who sees the change as it is now and has never seen your review. Point them at the current code, not at problems you've already fixed. Re-run the review after any substantive push, because the brief names the commit it reviewed.
 
