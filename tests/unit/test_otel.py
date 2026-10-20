@@ -50,6 +50,20 @@ def test_off_switch_silences_redisvl_despite_a_configured_sdk(otel_sdk, monkeypa
     assert "probe.disabled" not in _metric_scopes(reader)
 
 
+@pytest.mark.parametrize(
+    "value, enabled",
+    [("SPAN_ONLY", True), ("span_and_event", True), ("true", False), ("", False)],
+)
+def test_only_the_span_modes_turn_on_content_capture(monkeypatch, value, enabled):
+    # "true" turns capture on in older GenAI instrumentations, but not here.
+    monkeypatch.setenv(otel.CAPTURE_CONTENT_ENV_VAR, value)
+    otel.capture_content.cache_clear()
+    try:
+        assert otel.capture_content() is enabled
+    finally:
+        otel.capture_content.cache_clear()
+
+
 def test_error_type_qualifies_all_but_builtin_exceptions():
     from redis.exceptions import ConnectionError as RedisConnectionError
 
