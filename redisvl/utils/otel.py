@@ -40,7 +40,7 @@ except ImportError:  # the redisvl[otel] extra is not installed
 
 
 if TYPE_CHECKING:
-    from opentelemetry.metrics import Meter
+    from opentelemetry.metrics import Histogram, Meter
     from opentelemetry.trace import Tracer
 
 INSTRUMENTATION_SCOPE = "redisvl"
@@ -74,6 +74,27 @@ GEN_AI_REQUEST_MODEL = "gen_ai.request.model"
 GEN_AI_EMBEDDINGS_DIMENSION_COUNT = "gen_ai.embeddings.dimension.count"
 GEN_AI_DATA_SOURCE_ID = "gen_ai.data_source.id"
 GEN_AI_RETRIEVAL_TOP_K = "gen_ai.retrieval.top_k"
+
+
+# Bucket advice. The GenAI duration buckets start at 10 ms, but a cache lookup
+# on local Redis takes about 250 us excluding embedding, so these start at
+# 100 us. Distance buckets are
+# dense where cosine thresholds usually sit and coarse up to the maximum of 2.
+# Applications can override both with SDK views.
+_HISTOGRAMS = {
+    SEMANTIC_CACHE_OPERATION_DURATION: (
+        "s",
+        "Duration of SemanticCache operations.",
+        (0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05)
+        + (0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    ),
+    SEMANTIC_CACHE_DISTANCE: (
+        "1",
+        "Vector distance of the nearest SemanticCache candidate per lookup.",
+        tuple(i / 100 for i in range(1, 11))
+        + (0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0),
+    ),
+}
 
 
 class _NoOpSpan(ContextDecorator):
@@ -140,3 +161,31 @@ def get_meter() -> "Meter":
     if not _enabled():
         return _NoOpMeter()  # type: ignore[return-value]
     return metrics.get_meter(INSTRUMENTATION_SCOPE, __version__, schema_url=SCHEMA_URL)
+
+
+@lru_cache(maxsize=None)
+def histogram(name: str) -> "Histogram":
+    """Return one of RedisVL's histograms, created once on its meter."""
+    unit, description, boundaries = _HISTOGRAMS[name]
+    return get_meter().create_histogram(
+        name,
+        unit=unit,
+        description=description,
+        explicit_bucket_boundaries_advisory=boundaries,
+    )
+
+
+def error_type(error: BaseException) -> str:
+    """Name an exception's type as the SDK names it on exception events: the
+    qualified class name, prefixed by its module unless it is a builtin."""
+    cls = type(error)
+    if cls.__module__ == "builtins":
+        return cls.__qualname__
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
+def _clear_caches() -> None:
+    """Forget the cached tracer, meter and instruments. For tests."""
+    get_tracer.cache_clear()
+    get_meter.cache_clear()
+    histogram.cache_clear()
