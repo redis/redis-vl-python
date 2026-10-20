@@ -66,6 +66,7 @@ def _startup_config(indexes=None):
             # fingerprints its registered tool surface.
             builtin_tools={},
             builtin_tool_enabled=lambda _name: True,
+            code_tool_modules=[],
         ),
         indexes=indexes or {"knowledge": _binding_namespace()},
         custom_tools=[],

@@ -1298,3 +1298,18 @@ def test_a_restart_that_moves_a_code_tool_is_fatal():
 
 def test_a_restart_with_the_same_code_tools_proceeds():
     _restart_with(registered_on="knowledge", restarted_on="knowledge")
+
+
+def test_loaded_code_tools_are_resolved_with_registered_ones():
+    server = _code_tool_server()
+    server.code_tool()(recent_tickets)
+
+    async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
+        """Close a ticket."""
+        return {}
+
+    loaded = [build_code_tool_spec(close_ticket)]
+
+    resolved = server._resolve_code_tools(_config_with(), loaded)
+
+    assert [spec.name for spec, _ in resolved] == ["recent-tickets", "close-ticket"]

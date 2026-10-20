@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from enum import Enum, auto
 from importlib import import_module
@@ -20,6 +20,7 @@ from redisvl.mcp.tools.code import (
     CodeToolSpec,
     _ToolFn,
     build_code_tool_spec,
+    load_code_tools,
     register_code_tool,
 )
 from redisvl.mcp.tools.list_indexes import register_list_indexes_tool
@@ -449,15 +450,19 @@ class RedisVLMCPServer(FastMCP):
                 "streamable-http) so the configured auth applies."
             )
 
-    def _resolve_code_tools(self, config: Any) -> tuple[tuple[CodeToolSpec, str], ...]:
+    def _resolve_code_tools(
+        self, config: Any, loaded: Iterable[CodeToolSpec] = ()
+    ) -> tuple[tuple[CodeToolSpec, str], ...]:
         """Pair each code tool with its binding, refusing any that cannot hold.
 
-        A code tool is declared in Python, so the rules the config model applies
-        to profiles are applied here instead, against the loaded config.
+        Covers tools registered with :meth:`code_tool` and those ``loaded``
+        from ``server.code_tool_modules`` alike. A code tool is declared in
+        Python, so the rules the config model applies to profiles are applied
+        here instead, against the loaded config.
         """
         taken = {profile.name for profile in config.custom_tools}
         resolved: list[tuple[CodeToolSpec, str]] = []
-        for spec in self._code_tools:
+        for spec in [*self._code_tools, *loaded]:
             if spec.name in taken:
                 raise ValueError(
                     f"code tool name '{spec.name}' is already used by another "
@@ -899,7 +904,11 @@ class RedisVLMCPServer(FastMCP):
         # Before any binding connects: both depend only on the loaded config,
         # so an unworkable one should not first need a reachable Redis.
         self._verify_injection_has_a_token(self.config.custom_tools)
-        self._resolved_code_tools = self._resolve_code_tools(self.config)
+        # Imported here, before any binding connects, so a module that fails to
+        # import is reported without first needing a reachable Redis.
+        self._resolved_code_tools = self._resolve_code_tools(
+            self.config, load_code_tools(self.config.server.code_tool_modules)
+        )
         self._verify_no_unscoped_route_to_injected_indexes(
             self.config, self._resolved_code_tools
         )

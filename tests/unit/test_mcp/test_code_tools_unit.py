@@ -1,7 +1,11 @@
 """Code tools: what a valid one looks like, and what wraps every call."""
 
 import asyncio
+import importlib
 import inspect
+import sys
+import textwrap
+import uuid
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
@@ -19,7 +23,12 @@ from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
-from redisvl.mcp.tools.code import build_code_tool_spec, register_code_tool
+from redisvl.mcp.tools.code import (
+    build_code_tool_spec,
+    code_tool,
+    load_code_tools,
+    register_code_tool,
+)
 
 
 async def recent_tickets(ctx: ToolContext, query: str, limit: int = 5) -> dict:
@@ -430,6 +439,141 @@ async def test_an_mcp_error_from_the_tool_passes_through_unchanged(monkeypatch):
         await _registered(failing)(query="refund")
 
     assert exc_info.value is error
+
+
+# --------------------------------------------------------------------------
+# @code_tool and the module loader
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tool_module(tmp_path, monkeypatch):
+    """Write importable modules under unique names, unloading them afterwards."""
+    monkeypatch.syspath_prepend(str(tmp_path))
+    written: list[str] = []
+
+    def write(source: str) -> str:
+        name = f"code_tools_{uuid.uuid4().hex}"
+        (tmp_path / f"{name}.py").write_text(textwrap.dedent(source))
+        # The directory may already be cached as scanned by an earlier import.
+        importlib.invalidate_caches()
+        written.append(name)
+        return name
+
+    yield write
+
+    for name in written:
+        sys.modules.pop(name, None)
+
+
+_TWO_TOOLS = """
+    from redisvl.mcp import ToolContext, code_tool
+
+    @code_tool(namespace="support")
+    async def open_tickets(ctx: ToolContext, query: str) -> dict:
+        '''List open tickets.'''
+        return {}
+
+    @code_tool(writes=True)
+    async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
+        '''Close a ticket.'''
+        return {}
+
+    async def helper(ctx: ToolContext, query: str) -> dict:
+        '''Not a tool: never decorated.'''
+        return {}
+"""
+
+
+def test_tool_marks_the_function_and_returns_it_unchanged():
+    async def triage(ctx: ToolContext, query: str) -> dict:
+        """Triage tickets."""
+        return {}
+
+    marked = code_tool(scope="tickets.triage")(triage)
+
+    assert marked is triage
+    assert triage.__redisvl_mcp_tool__.scope == "tickets.triage"
+
+
+def test_tool_checks_the_function_where_it_is_declared():
+    def sync_tool(ctx: ToolContext, query: str) -> dict:
+        """Search."""
+        return {}
+
+    with pytest.raises(TypeError, match="must be an async function"):
+        code_tool()(sync_tool)
+
+
+def test_the_loader_returns_a_modules_tools_in_definition_order(tool_module):
+    specs = load_code_tools([tool_module(_TWO_TOOLS)])
+
+    assert [(spec.name, spec.writes) for spec in specs] == [
+        ("support-open-tickets", False),
+        ("close-ticket", True),
+    ]
+
+
+def test_a_re_exported_tool_counts_once(tool_module):
+    original = tool_module(_TWO_TOOLS)
+    re_export = tool_module(f"from {original} import open_tickets\n")
+
+    specs = load_code_tools([original, re_export])
+
+    assert [spec.name for spec in specs] == ["support-open-tickets", "close-ticket"]
+
+
+def test_only_a_function_carrying_its_own_marker_counts(tool_module):
+    # A class or other object can hold a real spec in its __dict__; only a
+    # function the loader can register stands for a tool.
+    name = tool_module(_TWO_TOOLS + """
+    class Holder:
+        pass
+
+    Holder.__redisvl_mcp_tool__ = open_tickets.__redisvl_mcp_tool__
+    """)
+
+    assert len(load_code_tools([name])) == 2
+
+
+def test_a_decorator_over_code_tool_is_refused_rather_than_skipped(tool_module):
+    name = tool_module("""
+    import functools
+
+    from redisvl.mcp import ToolContext, code_tool
+
+    def logged(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            return await fn(*args, **kwargs)
+        return wrapper
+
+    @logged
+    @code_tool()
+    async def open_tickets(ctx: ToolContext, query: str) -> dict:
+        "List open tickets."
+        return {}
+    """)
+
+    with pytest.raises(ValueError, match="apply @code_tool outermost"):
+        load_code_tools([name])
+
+
+@pytest.mark.parametrize(
+    "source, message",
+    [
+        pytest.param(None, "could not be imported: No module named", id="missing"),
+        pytest.param(
+            "raise RuntimeError('boom')\n", "could not be imported: boom", id="raises"
+        ),
+        pytest.param("VALUE = 1\n", "defines no code tools", id="no-tools"),
+    ],
+)
+def test_a_module_that_contributes_no_tools_fails(tool_module, source, message):
+    name = "code_tools_absent_module" if source is None else tool_module(source)
+
+    with pytest.raises(ValueError, match=f"entry '{name}' {message}"):
+        load_code_tools([name])
 
 
 @pytest.mark.parametrize("slot_free", [True, False], ids=["mid-call", "queued"])
