@@ -453,12 +453,13 @@ server.run(transport="streamable-http", host="127.0.0.1", port=8000)
 What the client sees:
 
 - `open-tickets-for-product`, taking `product` (required) and `limit`, described by its docstring.
-- `delete-spam-ticket`, taking `ticket_id`. A caller needs the server's write scope and `tickets.triage`, and the tool deletes nothing that is not already marked as spam.
+- `delete-spam-ticket`, taking `ticket_id`. With authentication configured, a caller needs the server's write scope and `tickets.triage`; without it, no scope is checked. Either way, the tool deletes nothing that is not already marked as spam.
 - No argument for the context or the index, in either tool.
 
 Rules worth knowing:
 
-- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool cannot touch another index's keys. There is no Redis client and no way to create, drop or clear the index.
+- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool stays under its index's key prefix. That does not separate indexes whose prefixes overlap, or an index with an empty prefix, which covers every key. There is no Redis client and no way to create, drop or clear the index.
+- **Writing tools need a cast for type checkers.** `ctx.index` is typed as `IndexHandle`. In a tool registered with `writes=True`, `cast(WritableIndexHandle, ctx.index)` gives a type checker the write methods. Both types are exported from `redisvl.mcp`.
 - **Every call is bounded.** Each `ctx.index` call takes a slot under the concurrency cap and the binding's `request_timeout_seconds`, and the whole tool call is bounded by the same timeout.
 - **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself.
 - **Register before starting.** Tools register once, at the first startup, so a tool registered afterwards is refused.
