@@ -318,6 +318,34 @@ def normalize_index_definition(index_info: dict[str, Any]) -> dict[str, Any]:
     return _normalize_index_info_mapping(index_info.get("index_definition"))
 
 
+# Vector parameter names that parse_vector_attrs reads from FT.INFO. In a
+# RESP2 unified ``flags`` list, only these are paired with the next token, so
+# an unknown bare token costs one position instead of shifting every pair.
+_VECTOR_PARAM_KEYS = frozenset(
+    {
+        "algorithm",
+        "data_type",
+        "datatype",
+        "type",
+        "dim",
+        "dims",
+        "distance_metric",
+        "initial_cap",
+        "block_size",
+        "m",
+        "ef_construction",
+        "ef_runtime",
+        "epsilon",
+        "compression",
+        "reduce",
+        "graph_max_degree",
+        "construction_window_size",
+        "search_window_size",
+        "training_threshold",
+    }
+)
+
+
 def normalize_index_fields(index_info: dict[str, Any]) -> list[dict[str, Any]]:
     """Return FT.INFO field entries in mapping form."""
     return [
@@ -373,6 +401,18 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                 for key, value in attrs.items()
                 if key not in {"identifier", "attribute", "type", "flags"}
             }
+            # redis-py 8 on RESP2 with legacy_responses=False puts the vector
+            # params in "flags" as key/value pairs, possibly followed by
+            # valueless modifiers: ["algorithm", "FLAT", "dim", 4, "INDEXMISSING"]
+            flags = attrs.get("flags") or []
+            i = 0
+            while i < len(flags):
+                key = str(flags[i]).lower()
+                if key not in _VECTOR_PARAM_KEYS or i + 1 >= len(flags):
+                    i += 1
+                    continue
+                vector_attrs.setdefault(key, flags[i + 1])
+                i += 2
         else:
             # Check if we have any attributes beyond the type declaration
             if len(attrs) <= 6:
@@ -408,10 +448,18 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         normalized = {}
 
         # Handle dims/dim field - REQUIRED for vector fields
-        if "dim" in vector_attrs:
-            normalized["dims"] = int(vector_attrs.pop("dim"))
-        elif "dims" in vector_attrs:
-            normalized["dims"] = int(vector_attrs["dims"])
+        if "dim" in vector_attrs or "dims" in vector_attrs:
+            raw_dims = (
+                vector_attrs.pop("dim")
+                if "dim" in vector_attrs
+                else vector_attrs["dims"]
+            )
+            try:
+                normalized["dims"] = int(raw_dims)
+            except (ValueError, TypeError):
+                # Unparseable dims: fall through to the required-dims check
+                # below, which skips the field with a warning.
+                pass
         else:
             # If dims is missing from normal parsing, try scanning the raw attrs
             # This handles edge cases where the format is unexpected
@@ -604,6 +652,14 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             if attrs is None:
                 # Vector field attributes cannot be parsed on this Redis version
                 # Skip this field - it cannot be properly reconstructed
+                logger.warning(
+                    "Skipping vector field %r of index %r: could not parse its "
+                    "attributes from FT.INFO. The recovered schema is incomplete, "
+                    "and recreating the index from it (e.g. create(overwrite=True)) "
+                    "drops this field.",
+                    name,
+                    index_name,
+                )
                 continue
             field["attrs"] = attrs
         else:
