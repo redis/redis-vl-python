@@ -235,8 +235,11 @@ def test_router_and_message_history_lookups_produce_embeddings_spans(
     ]
 
 
-def test_no_prompt_or_response_text_is_recorded_by_default(cache, otel_sdk):
+def test_no_prompt_or_response_text_is_recorded_by_default(
+    cache, otel_sdk, monkeypatch
+):
     spans, _ = otel_sdk
+    monkeypatch.delenv(otel.CAPTURE_CONTENT_ENV_VAR, raising=False)
     cache.store("paris", "a secret response")
     cache.check("paris")
 
