@@ -284,6 +284,35 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
+### Review Record
+
+Maintainer PRs, and any PR written with a coding agent, carry a **Review record**: a short section at the end of the PR description that says what review the change went through before a human looked at it. Outside contributors are welcome to add one but don't have to.
+
+#### Writing one
+
+Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review picks the angles the diff needs (correctness always, and security, design, tests, docs or Redis behaviour when the change calls for them), checks each finding against the code, fixes what holds up, and writes the record under the `## Review record` heading of the PR template. Run it again after any substantive push.
+
+A record states:
+
+- the commit it reviewed, and the agent and model that ran it;
+- which review angles ran, which were skipped, and why;
+- what was fixed, with file and line;
+- what was rejected, and why;
+- the commands that were run, with their results, and any Redis documentation pages relied on;
+- what was **not** checked, for example cluster behaviour or provider APIs.
+
+#### Reading one
+
+The record is the author's claim about their own review. It isn't an approval and it isn't proof, so use it to decide where to look rather than as a reason not to look. A quick way to review a PR that has one:
+
+1. Read the summary Bugbot adds to the PR description for what the change does and how risky it is.
+2. Check that the record's commit matches the PR's head commit. If later commits aren't covered, ask the author to re-run the review.
+3. Read the record. A record with no rejected findings and nothing under "Not checked" deserves more scrutiny, not less.
+4. Look at any open Bugbot or reviewer threads. Each should have a reply giving its outcome (fixed, already fixed, invalid with evidence, duplicate, or needs a decision).
+5. Spot-check one fixed finding in the diff, and decide whether anything under "Not checked" matters for this change.
+
+If the record, Bugbot and the spot-checks agree, approve. If they disagree, the disagreement shows you where to review in depth.
+
 ### PR Labels
 
 This project uses an automated release process powered by [Auto](https://intuit.github.io/auto/). PRs must be labeled to indicate the type of change:
@@ -311,6 +340,7 @@ Before submitting your PR, ensure:
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear and descriptive
 - [ ] PR description explains what changes were made and why
+- [ ] For maintainer or agent-assisted PRs, the Review record names the PR's head commit
 - [ ] Appropriate `auto:*` label is applied to indicate the change type
 
 ## Getting Help
