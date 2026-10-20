@@ -413,7 +413,7 @@ class SemanticRouter(BaseModel):
         """Apply distance threshold on a route by route basis."""
         filter = ""
         for i, route in enumerate(self.routes):
-            filter_str = f"(@route_name == '{route.name}' && @distance < {route.distance_threshold})"
+            filter_str = f"(@route_name == '{route.name}' && @distance <= {route.distance_threshold})"
             if i > 0:
                 filter += " || "
             filter += filter_str
