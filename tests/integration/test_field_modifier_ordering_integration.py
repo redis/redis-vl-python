@@ -256,6 +256,46 @@ class TestFieldModifierIntegration:
         )
         index.delete(drop=True)
 
+    @pytest.mark.parametrize("algorithm", ["flat", "hnsw"])
+    def test_vector_field_index_missing(self, client, redis_url, worker_id, algorithm):
+        """Test that a vector field with INDEXMISSING creates and supports ismissing()."""
+        skip_if_search_version_below_for_indexmissing(client)
+        name = f"test_vec_ismissing_{algorithm}_{worker_id}"
+        prefix = f"vec_ismiss_{algorithm}_{worker_id}:"
+        schema_dict = {
+            "index": {"name": name, "prefix": prefix, "storage_type": "hash"},
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": algorithm,
+                        "dims": 3,
+                        "index_missing": True,
+                    },
+                }
+            ],
+        }
+
+        schema = IndexSchema.from_dict(schema_dict)
+        index = SearchIndex(schema=schema, redis_url=redis_url)
+
+        index.create(overwrite=True)
+
+        client.hset(f"{prefix}1", "embedding", b"\x00" * 12)
+        client.hset(f"{prefix}2", "other_field", "no embedding")
+
+        result = client.execute_command(
+            "FT.SEARCH", name, "ismissing(@embedding)", "DIALECT", "2"
+        )
+
+        assert result[0] == 1
+        assert f"{prefix}2" in str(result)
+
+        # Cleanup
+        client.delete(f"{prefix}1", f"{prefix}2")
+        index.delete(drop=True)
+
 
 class TestIndexEmptyIntegration:
     """Integration tests for INDEXEMPTY functionality."""
