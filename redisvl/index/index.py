@@ -6,7 +6,8 @@ import time
 import warnings
 import weakref
 from dataclasses import dataclass
-from math import ceil
+from math import ceil, isfinite
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -19,8 +20,10 @@ from typing import (
     Sequence,
     cast,
 )
+from urllib.parse import urlsplit
 
 import redis.exceptions
+import yaml
 
 # Add missing imports
 from redis import Redis
@@ -671,6 +674,9 @@ class BaseSearchIndex:
     }
 
     schema: IndexSchema
+    _redis_url: str | None
+    _connection_kwargs: dict[str, Any]
+    _client_was_injected: bool
 
     # Module-level callback (set per subclass) used to close an owned client
     # when the index is garbage collected. Must never be a bound method.
@@ -859,9 +865,114 @@ class BaseSearchIndex:
         hash or json."""
         return self.schema.index.storage_type
 
+    def to_dict(self, include_connection: bool = False) -> dict[str, Any]:
+        """Export the schema and, optionally, safe connection metadata.
+
+        No Redis connection is opened. By default the result is identical to
+        ``schema.to_dict()``. Connection exports omit URL user information,
+        query parameters, fragments and non-allowlisted connection options.
+        Any omission requires a complete explicit connection when restoring.
+        Injected clients and environment variables are never inspected.
+
+        Args:
+            include_connection: Include a ``connection`` mapping. Defaults to False.
+
+        Returns:
+            A dictionary accepted by ``from_dict()``.
+
+        Raises:
+            ValueError: If an explicitly configured URL cannot be safely exported.
+        """
+        data = self.schema.to_dict()
+        if not include_connection:
+            return data
+
+        url = None if self._client_was_injected else self._redis_url
+        requires_override = not url
+        if url:
+            try:
+                parts = urlsplit(url)
+                if parts.scheme not in {"redis", "rediss", "unix", "redis+sentinel"}:
+                    raise ValueError
+                endpoint = parts.netloc.rsplit("@", 1)[-1]
+                if parts.scheme != "unix" and not endpoint:
+                    raise ValueError
+            except ValueError:
+                raise ValueError(
+                    "Cannot safely serialize the configured Redis URL"
+                ) from None
+            requires_override = bool(
+                "@" in parts.netloc or parts.query or parts.fragment
+            )
+            # Keep the authority intact: rebuilding from hostname loses IPv6
+            # brackets and Sentinel host lists.
+            url = f"{parts.scheme}://{endpoint}{parts.path}"
+
+        safe_kwargs: dict[str, Any] = {}
+        boolean_options = {
+            "ssl",
+            "ssl_check_hostname",
+            "decode_responses",
+            "socket_keepalive",
+            "retry_on_timeout",
+            "cluster",
+        }
+        numeric_options = {
+            "db",
+            "protocol",
+            "socket_timeout",
+            "socket_connect_timeout",
+            "health_check_interval",
+            "max_connections",
+        }
+        for key, value in self._connection_kwargs.items():
+            if (
+                (key in boolean_options and type(value) is bool)
+                or (
+                    key in numeric_options
+                    and type(value) in (int, float)
+                    and isfinite(value)
+                )
+                or (
+                    key == "ssl_cert_reqs"
+                    and type(value) is str
+                    and value in {"none", "optional", "required"}
+                )
+            ):
+                safe_kwargs[key] = value
+            else:
+                requires_override = True
+        data["connection"] = {
+            "redis_url": url,
+            "connection_kwargs": safe_kwargs,
+            "requires_override": requires_override,
+        }
+        return data
+
+    def to_yaml(
+        self, file_path: str, include_connection: bool = False, overwrite: bool = True
+    ) -> None:
+        """Write the configuration to YAML, with the same rules as ``to_dict``.
+
+        Args:
+            file_path: Destination file.
+            include_connection: Include safe connection metadata. Defaults to False.
+            overwrite: Replace an existing file. Defaults to True.
+
+        Raises:
+            FileExistsError: If the destination exists and overwrite is False.
+            ValueError: If a configured URL cannot be safely exported.
+        """
+        # Serialize before opening the file so validation cannot truncate it.
+        content = yaml.safe_dump(self.to_dict(include_connection), sort_keys=False)
+        with open(Path(file_path).resolve(), "w" if overwrite else "x") as file:
+            file.write(content)
+
     @classmethod
     def from_yaml(cls, schema_path: str, **kwargs):
-        """Create a SearchIndex from a YAML schema file.
+        """Create a SearchIndex from a YAML schema or exported configuration.
+
+        Connection metadata follows the same override rules as ``from_dict``.
 
         Args:
             schema_path (str): Path to the YAML schema file.
@@ -875,12 +986,27 @@ class BaseSearchIndex:
 
             index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
         """
-        schema = IndexSchema.from_yaml(schema_path)
-        return cls(schema=schema, **kwargs)
+        try:
+            path = Path(schema_path).resolve()
+        except OSError as error:
+            raise ValueError(f"Invalid file path: {schema_path}") from error
+        if not path.exists():
+            raise FileNotFoundError(f"Schema file {schema_path} does not exist")
+        with open(path, "r") as file:
+            data = yaml.safe_load(file)
+        if not isinstance(data, dict):
+            return cls(schema=IndexSchema.model_validate(data), **kwargs)
+        return cls.from_dict(data, **kwargs)
 
     @classmethod
     def from_dict(cls, schema_dict: dict[str, Any], **kwargs):
-        """Create a SearchIndex from a dictionary.
+        """Create a SearchIndex from a schema or exported configuration.
+
+        A nonempty ``redis_url`` or an explicit ``redis_client`` replaces all
+        stored connection metadata. Otherwise stored options are used, with
+        explicit ``connection_kwargs`` replacing the stored mapping. Redacted
+        or unavailable connections require an explicit URL or client; they
+        never silently fall back to ``REDIS_URL``.
 
         Args:
             schema_dict (Dict[str, Any]): A dictionary containing the schema.
@@ -904,7 +1030,29 @@ class BaseSearchIndex:
             }, redis_url="redis://localhost:6379")
 
         """
-        schema = IndexSchema.from_dict(schema_dict)
+        data = schema_dict.copy()
+        if "connection" in data:
+            connection = data.pop("connection")
+            if not isinstance(connection, dict):
+                raise ValueError("connection must be a mapping")
+            url = connection.get("redis_url")
+            options = connection.get("connection_kwargs", {})
+            requires_override = connection.get("requires_override", False)
+            if (
+                (url is not None and not isinstance(url, str))
+                or not isinstance(options, dict)
+                or type(requires_override) is not bool
+            ):
+                raise ValueError("Invalid connection metadata")
+            if kwargs.get("redis_client") is None and not kwargs.get("redis_url"):
+                if requires_override or not url:
+                    raise ValueError(
+                        "This configuration requires an explicit redis_url or redis_client; "
+                        "supply the complete connection configuration."
+                    )
+                kwargs["redis_url"] = url
+                kwargs.setdefault("connection_kwargs", options.copy())
+        schema = IndexSchema.from_dict(data)
         return cls(schema=schema, **kwargs)
 
     def disconnect(self):
