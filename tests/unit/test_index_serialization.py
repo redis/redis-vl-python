@@ -71,6 +71,9 @@ def test_json_schema_roundtrip(index_class, schema):
     "url",
     [
         "redis://localhost:6379/2",
+        "redis://",
+        "redis:///1",
+        "rediss:///2",
         "rediss://[2001:db8::1]:6380/3",
         "unix:///tmp/redis.sock",
         "redis+sentinel://host1:26379,host2:26380/my%2Dmaster/1",
@@ -158,6 +161,16 @@ def test_incomplete_override_does_not_fall_back(index_class, schema, override):
         index_class.from_dict(index.to_dict(include_connection=True), **override)
 
 
+@pytest.mark.parametrize("suffix", ["?db=2", "#secret"])
+def test_url_omission_alone_requires_override(index_class, schema, suffix):
+    index = index_class.from_dict(schema, redis_url="redis://host/0" + suffix)
+    config = index.to_dict(include_connection=True)
+    assert config["connection"]["redis_url"] == "redis://host/0"
+    assert config["connection"]["requires_override"] is True
+    with pytest.raises(ValueError, match="explicit redis_url or redis_client"):
+        index_class.from_dict(config)
+
+
 def test_explicit_endpoint_does_not_inherit_connection_options(index_class, schema):
     index = index_class.from_dict(
         schema, redis_url="rediss://original", connection_kwargs={"ssl": True}
@@ -225,7 +238,7 @@ def test_allowlist_rejects_unsafe_values(index_class, schema, options):
 
 @pytest.mark.parametrize(
     "url",
-    ["rediss://[invalid-secret", "http://user:secret@host", "redis:///missing-host"],
+    ["rediss://[invalid-secret", "http://user:secret@host", "redis://[invalid-secret]"],
 )
 def test_invalid_url_errors_do_not_expose_input(index_class, schema, url):
     index = index_class.from_dict(schema, redis_url=url)

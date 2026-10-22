@@ -18,7 +18,7 @@ Search Index Classes
      - Outcome of a bulk operation: how many documents matched, how many were processed, and whether the run completed.
 
 Serializing index configurations
-===============================
+================================
 
 Both index classes provide synchronous ``to_dict()`` and ``to_yaml()`` methods.
 They export the schema by default, without opening a connection or reading
@@ -56,7 +56,9 @@ Any omission sets ``requires_override: true``. Configurations sourced from an
 injected client or the environment also require an override: their connection
 internals are not inspected. Restoring such a configuration without a nonempty
 ``redis_url`` or a ``redis_client`` raises ``ValueError``, even if ``REDIS_URL``
-is set. Supply the complete connection configuration at restore time:
+is set. This also applies to instances created by ``from_existing()``, even
+with an explicit URL, because that factory supplies a client internally.
+Supply the complete connection configuration at restore time:
 
 .. code-block:: python
 

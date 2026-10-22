@@ -873,6 +873,7 @@ class BaseSearchIndex:
         query parameters, fragments and non-allowlisted connection options.
         Any omission requires a complete explicit connection when restoring.
         Injected clients and environment variables are never inspected.
+        This includes clients supplied internally by ``from_existing()``.
 
         Args:
             include_connection: Include a ``connection`` mapping. Defaults to False.
@@ -895,8 +896,6 @@ class BaseSearchIndex:
                 if parts.scheme not in {"redis", "rediss", "unix", "redis+sentinel"}:
                     raise ValueError
                 endpoint = parts.netloc.rsplit("@", 1)[-1]
-                if parts.scheme != "unix" and not endpoint:
-                    raise ValueError
             except ValueError:
                 raise ValueError(
                     "Cannot safely serialize the configured Redis URL"
