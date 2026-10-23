@@ -87,6 +87,10 @@ _MISSING_INDEX_ERROR_FRAGMENTS = (
     "no such index",
     "search_index_not_found",
     "index not found",
+    # Valkey Search words the error as
+    # "Index with name '<name>' not found in database <n>", where the index
+    # name sits between "index" and "not found", so "index not found" misses it.
+    "not found in database",
 )
 
 
