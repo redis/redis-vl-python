@@ -1048,17 +1048,24 @@ class RedisConnectionFactory:
             ... )
             ([('host1', 26379), ('host2', 26380)], 'mymaster', '0', 'user', 'pass')
         """
-        parsed_url = urlparse(url)
-        hosts_part = parsed_url.netloc.split("@")[-1]
-        sentinel_hosts = hosts_part.split(",")
+        # A comma-separated authority is not a standard URL netloc, especially
+        # when it mixes hostnames and IPv6 literals. Parse each node separately.
+        scheme, _, remainder = url.partition("://")
+        authority = remainder.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+        userinfo, separator, hosts_part = authority.rpartition("@")
+        parsed_url = urlparse(
+            f"{scheme}://{userinfo}{separator}localhost{remainder[len(authority):]}"
+        )
 
         sentinel_list = []
-        for host in sentinel_hosts:
-            host_parts = host.split(":")
-            if len(host_parts) == 2:
-                sentinel_list.append((host_parts[0], int(host_parts[1])))
-            else:
-                sentinel_list.append((host_parts[0], 26379))
+        for host in hosts_part.split(","):
+            node = urlparse(f"//{host}")
+            hostname, port = node.hostname, node.port
+            if not hostname or host.endswith(":"):
+                raise ValueError("Sentinel nodes require a hostname and a valid port")
+            sentinel_list.append(
+                (unquote(hostname), port if port is not None else 26379)
+            )
 
         service_name = "mymaster"
         db = None
