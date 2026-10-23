@@ -34,6 +34,10 @@ MISSING_INDEX_MESSAGES = [
     f"{INDEX_NAME}: no such index",
     f"SEARCH_INDEX_NOT_FOUND Index not found: {INDEX_NAME}",
     "Index not found",
+    # Valkey Search (e.g. Amazon ElastiCache for Valkey) puts the index name
+    # between "index" and "not found", so the "index not found" fragment above
+    # does not match it. Before #672 this wording worked via FT._LIST.
+    f"Index with name '{INDEX_NAME}' not found in database 0",
 ]
 
 # Failures that must never be read as "the index is absent": reporting False
