@@ -547,6 +547,14 @@ async def test_batch_search(async_index):
                 reason="legacy_responses requires redis-py 8",
             ),
         ),
+        pytest.param(
+            {"protocol": 2, "legacy_responses": False},
+            id="resp2-new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
     ],
 )
 async def test_client_from_existing_and_batch_search(
