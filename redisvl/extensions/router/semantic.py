@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import redis.commands.search.reducers as reducers
 import yaml
@@ -20,7 +20,7 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
     SemanticRouterIndexSchema,
 )
-from redisvl.index import SearchIndex
+from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import FilterQuery, VectorRangeQuery
 from redisvl.query.filter import Tag
 from redisvl.redis.connection import RedisConnectionFactory, _split_from_existing_kwargs
@@ -52,6 +52,12 @@ class SemanticRouter(BaseModel):
     """Configuration for routing behavior."""
 
     _index: SearchIndex = PrivateAttr()
+    _aindex: AsyncSearchIndex | None = PrivateAttr(default=None)
+    # Kept so the async index can reach the same Redis as the sync one.
+    _redis_client_provided: bool = PrivateAttr(default=False)
+    _redis_url: str = PrivateAttr(default="redis://localhost:6379")
+    _connection_kwargs: dict[str, Any] | None = PrivateAttr(default=None)
+    _lib_name: str | None = PrivateAttr(default=None)
     # A private attribute, never a field: it describes this instance's
     # relationship to the index, and must not reach the stored route config.
     _create_index: bool = PrivateAttr(default=True)
@@ -139,6 +145,10 @@ class SemanticRouter(BaseModel):
         )
 
         self._create_index = create_index
+        self._redis_client_provided = redis_client is not None
+        self._redis_url = redis_url
+        self._connection_kwargs = connection_kwargs or None
+        self._lib_name = (index_kwargs or {}).get("lib_name")
         self._initialize_index(
             redis_client,
             redis_url,
@@ -218,7 +228,7 @@ class SemanticRouter(BaseModel):
             )
         resolved_redis_url = redis_url if created_redis_client else None
         try:
-            return cls.from_dict(
+            router = cls.from_dict(
                 router_dict,
                 redis_url=resolved_redis_url,
                 redis_client=redis_client,
@@ -231,6 +241,11 @@ class SemanticRouter(BaseModel):
             if created_redis_client and redis_client is not None:
                 redis_client.close()
             raise
+        if created_redis_client:
+            # The caller gave a URL, not a client: the async path should connect
+            # from that URL too, rather than convert the client built here.
+            router._redis_client_provided = False
+        return router
 
     @deprecated_argument("dtype")
     def _initialize_index(
@@ -461,6 +476,24 @@ class SemanticRouter(BaseModel):
         max_k: int = 1,
     ) -> list[RouteMatch]:
         """Get route response from vector db"""
+        aggregate_request, params = self._route_matches_request(
+            vector, aggregation_method, max_k
+        )
+        try:
+            aggregation_result: AggregateResult = self._index.aggregate(
+                aggregate_request, params
+            )
+        except ResponseError as e:
+            self._raise_aggregate_error(e)
+        return self._route_matches_from_result(aggregation_result)
+
+    def _route_matches_request(
+        self,
+        vector: list[float],
+        aggregation_method: DistanceAggregationMethod,
+        max_k: int,
+    ) -> tuple[AggregateRequest, dict[str, Any]]:
+        """Build the aggregate request and query params for a routing lookup."""
 
         if not self.routes:
             # Otherwise max() below raises "max() arg is an empty sequence",
@@ -485,18 +518,19 @@ class SemanticRouter(BaseModel):
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k=max_k
         )
+        return aggregate_request, vector_range_query.params
 
-        try:
-            aggregation_result: AggregateResult = self._index.aggregate(
-                aggregate_request, vector_range_query.params
+    @staticmethod
+    def _raise_aggregate_error(e: ResponseError) -> NoReturn:
+        if "VSS is not yet supported on FT.AGGREGATE" in str(e):
+            raise RuntimeError(
+                "Semantic routing is only available on Redis version 7.x.x or greater"
             )
-        except ResponseError as e:
-            if "VSS is not yet supported on FT.AGGREGATE" in str(e):
-                raise RuntimeError(
-                    "Semantic routing is only available on Redis version 7.x.x or greater"
-                )
-            raise e
+        raise e
 
+    def _route_matches_from_result(
+        self, aggregation_result: AggregateResult
+    ) -> list[RouteMatch]:
         # process aggregation results into route matches, dropping any row whose
         # field payload came back missing (the Redis 8.8+ expiry race)
         processed = [
@@ -511,16 +545,67 @@ class SemanticRouter(BaseModel):
             )
         return matches
 
-    def _classify_route(
+    async def _aget_route_matches(
         self,
         vector: list[float],
         aggregation_method: DistanceAggregationMethod,
+        max_k: int = 1,
+    ) -> list[RouteMatch]:
+        """Get route response from vector db without blocking the event loop."""
+        aggregate_request, params = self._route_matches_request(
+            vector, aggregation_method, max_k
+        )
+        aindex = self._get_async_index()
+        try:
+            aggregation_result: AggregateResult = await aindex.aggregate(
+                aggregate_request, params
+            )
+        except ResponseError as e:
+            self._raise_aggregate_error(e)
+        return self._route_matches_from_result(aggregation_result)
+
+    def _get_async_index(self) -> AsyncSearchIndex:
+        """Lazily construct the async search index over the same Redis index."""
+        if self._aindex is None:
+            if self._redis_client_provided:
+                # Reuse the caller's connection settings rather than the URL default.
+                async_client = RedisConnectionFactory.sync_to_async_redis(
+                    self._index._redis_client  # type: ignore[arg-type]
+                )
+                self._aindex = AsyncSearchIndex(
+                    schema=self._index.schema,
+                    redis_client=async_client,
+                    owns_client=True,
+                )
+            else:
+                self._aindex = AsyncSearchIndex(
+                    schema=self._index.schema,
+                    redis_url=self._redis_url,
+                    connection_kwargs=self._connection_kwargs,
+                    lib_name=self._lib_name,
+                )
+        return self._aindex
+
+    @property
+    def aindex(self) -> AsyncSearchIndex | None:
+        """The AsyncSearchIndex used by the async routing methods, once created.
+
+        Returns:
+            AsyncSearchIndex: The async search index, or None before the first
+            async call.
+        """
+        return self._aindex
+
+    async def adisconnect(self) -> None:
+        """Close the async Redis connection opened by the async routing methods."""
+        if self._aindex is not None:
+            await self._aindex.disconnect()
+            self._aindex = None
+
+    @staticmethod
+    def _top_route_match(
+        route_matches: list[RouteMatch], router_name: str
     ) -> RouteMatch:
-        """Classify to a single route using a vector."""
-
-        # take max route as distance threshold
-        route_matches = self._get_route_matches(vector, aggregation_method)
-
         if not route_matches:
             return RouteMatch()
 
@@ -531,8 +616,33 @@ class SemanticRouter(BaseModel):
             return top_route_match
         else:
             raise ValueError(
-                f"{top_route_match.name} not a supported route for the {self.name} semantic router."
+                f"{top_route_match.name} not a supported route for the {router_name} semantic router."
             )
+
+    @staticmethod
+    def _top_route_matches(
+        route_matches: list[RouteMatch], router_name: str
+    ) -> list[RouteMatch]:
+        top_route_matches: list[RouteMatch] = []
+        for route_match in route_matches:
+            if route_match.name is not None:
+                top_route_matches.append(route_match)
+            else:
+                raise ValueError(
+                    f"{route_match.name} not a supported route for the {router_name} semantic router."
+                )
+        return top_route_matches
+
+    def _classify_route(
+        self,
+        vector: list[float],
+        aggregation_method: DistanceAggregationMethod,
+    ) -> RouteMatch:
+        """Classify to a single route using a vector."""
+
+        # take max route as distance threshold
+        route_matches = self._get_route_matches(vector, aggregation_method)
+        return self._top_route_match(route_matches, self.name)
 
     def _classify_multi_route(
         self,
@@ -543,19 +653,7 @@ class SemanticRouter(BaseModel):
         """Classify to multiple routes, up to max_k (int), using a vector."""
 
         route_matches = self._get_route_matches(vector, aggregation_method, max_k=max_k)
-
-        # process route matches
-        top_route_matches: list[RouteMatch] = []
-        if route_matches:
-            for route_match in route_matches:
-                if route_match.name is not None:
-                    top_route_matches.append(route_match)
-                else:
-                    raise ValueError(
-                        f"{route_match.name} not a supported route for the {self.name} semantic router."
-                    )
-
-        return top_route_matches
+        return self._top_route_matches(route_matches, self.name)
 
     @deprecated_argument("distance_threshold")
     def __call__(
@@ -626,6 +724,83 @@ class SemanticRouter(BaseModel):
         )
 
         return top_route_matches
+
+    async def aroute(
+        self,
+        statement: str | None = None,
+        vector: list[float] | None = None,
+        aggregation_method: DistanceAggregationMethod | None = None,
+    ) -> RouteMatch:
+        """Async version of calling the router: match a statement or vector to
+        its best route without blocking the event loop.
+
+        Embedding uses the vectorizer's ``aembed`` and the lookup runs on an
+        :class:`~redisvl.index.AsyncSearchIndex` over the same Redis index, so
+        it returns the same match as ``router(statement)``.
+
+        Args:
+            statement (Optional[str]): The input statement to be queried.
+            vector (Optional[List[float]]): The input vector to be queried.
+            aggregation_method (Optional[DistanceAggregationMethod]): The aggregation method used for vector distances.
+
+        Returns:
+            RouteMatch: The matching route.
+
+        .. code-block:: python
+
+            match = await router.aroute("hi there")
+        """
+        if not vector:
+            if not statement:
+                raise ValueError("Must provide a vector or statement to the router")
+            vector = await self.vectorizer.aembed(statement)  # type: ignore
+
+        aggregation_method = (
+            aggregation_method or self.routing_config.aggregation_method
+        )
+
+        route_matches = await self._aget_route_matches(
+            vector, aggregation_method  # type: ignore
+        )
+        return self._top_route_match(route_matches, self.name)
+
+    async def aroute_many(
+        self,
+        statement: str | None = None,
+        vector: list[float] | None = None,
+        max_k: int | None = None,
+        aggregation_method: DistanceAggregationMethod | None = None,
+    ) -> list[RouteMatch]:
+        """Async version of :meth:`route_many`: return up to ``max_k`` matching
+        routes without blocking the event loop.
+
+        Args:
+            statement (Optional[str]): The input statement to be queried.
+            vector (Optional[List[float]]): The input vector to be queried.
+            max_k (Optional[int]): The maximum number of top matches to return.
+            aggregation_method (Optional[DistanceAggregationMethod]): The aggregation method used for vector distances.
+
+        Returns:
+            List[RouteMatch]: The matching routes and their details.
+
+        .. code-block:: python
+
+            matches = await router.aroute_many("hi there", max_k=2)
+        """
+        if not vector:
+            if not statement:
+                raise ValueError("Must provide a vector or statement to the router")
+            vector = await self.vectorizer.aembed(statement)  # type: ignore
+
+        max_k = max_k or self.routing_config.max_k
+        aggregation_method = (
+            aggregation_method or self.routing_config.aggregation_method
+        )
+
+        route_matches = await self._aget_route_matches(
+            vector, aggregation_method, max_k=max_k  # type: ignore
+        )
+        return self._top_route_matches(route_matches, self.name)
 
     def add_route(self, route: Route) -> str:
         """Add a new route to the SemanticRouter.

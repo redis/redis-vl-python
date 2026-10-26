@@ -817,3 +817,94 @@ def test_delete_route_references(semantic_router):
     # the way back in, so from_existing could not reload the config.
     router_dict = semantic_router.to_dict()
     assert [r["name"] for r in router_dict["routes"]] == ["farewell"]
+
+
+async def test_aroute_matches_sync(semantic_router):
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
+
+    for statement in ["hello", "goodbye", "unknown_phrase"]:
+        assert await semantic_router.aroute(statement) == semantic_router(statement)
+    await semantic_router.adisconnect()
+
+
+async def test_aroute_vector(semantic_router):
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
+
+    vector = semantic_router.vectorizer.embed("goodbye")
+    match = await semantic_router.aroute(vector=vector)
+    assert match.name == "farewell"
+    await semantic_router.adisconnect()
+
+
+async def test_aroute_many_matches_sync(semantic_router):
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
+
+    matches = await semantic_router.aroute_many("hello", max_k=2)
+    assert matches == semantic_router.route_many("hello", max_k=2)
+    assert matches[0].name == "greeting"
+    await semantic_router.adisconnect()
+
+
+async def test_aroute_requires_input(semantic_router):
+    with pytest.raises(ValueError, match="Must provide a vector or statement"):
+        await semantic_router.aroute()
+    with pytest.raises(ValueError, match="Must provide a vector or statement"):
+        await semantic_router.aroute_many()
+
+
+async def test_aroute_sees_routes_added_after_first_call(semantic_router):
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
+
+    assert (await semantic_router.aroute("how is the weather today")).name is None
+    semantic_router.add_route(
+        Route(
+            name="weather",
+            references=["how is the weather today", "will it rain"],
+            distance_threshold=0.3,
+        )
+    )
+    assert (await semantic_router.aroute("how is the weather today")).name == "weather"
+    await semantic_router.adisconnect()
+    assert semantic_router.aindex is None
+
+
+async def test_aroute_with_redis_url(redis_url, routes, hf_vectorizer, redis_test_name):
+    router = SemanticRouter(
+        name=redis_test_name("test_router_async_url"),
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    try:
+        skip_if_no_redis_search(router._index.client)
+        skip_if_redis_version_below(router._index.client, "7.0.0")
+        assert (await router.aroute("hello")).name == "greeting"
+        assert router.aindex is not None
+    finally:
+        await router.adisconnect()
+        router.delete()
+
+
+async def test_aroute_from_existing_url_connects_from_url(
+    redis_url, routes, hf_vectorizer, redis_test_name
+):
+    name = redis_test_name("test_router_async_from_existing")
+    router = SemanticRouter(
+        name=name,
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    loaded = SemanticRouter.from_existing(name, redis_url=redis_url)
+    try:
+        skip_if_no_redis_search(router._index.client)
+        skip_if_redis_version_below(router._index.client, "7.0.0")
+        assert (await loaded.aroute("hello")).name == "greeting"
+        # Built from the caller's URL, not converted from the client that
+        # from_existing created, so URL-only setups (unix, sentinel) work too.
+        assert loaded.aindex._redis_url == redis_url
+    finally:
+        await loaded.adisconnect()
+        router.delete()
