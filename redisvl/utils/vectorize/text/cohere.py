@@ -123,7 +123,10 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Args:
             api_config: Dictionary with API configuration options
-            **kwargs: Additional arguments to pass to Cohere client
+            **kwargs: Additional arguments to pass to the Cohere clients.
+                A custom ``httpx_client`` is synchronous, so it goes to the
+                sync client only, and async calls fall back to it. Pass
+                ``async_httpx_client`` to give the async client its own.
 
         Raises:
             ImportError: If the cohere library is not installed
@@ -150,8 +153,19 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
 
+        async_httpx_client = kwargs.pop("async_httpx_client", None)
         self._client = Client(api_key=api_key, client_name="redisvl", **kwargs)
-        self._aclient = AsyncClient(api_key=api_key, client_name="redisvl", **kwargs)
+
+        # A user-supplied httpx_client is sync and can't be awaited, so without
+        # an async one the async methods keep falling back to the sync client.
+        self._aclient = None
+        if "httpx_client" not in kwargs or async_httpx_client is not None:
+            async_kwargs = dict(kwargs)
+            if async_httpx_client is not None:
+                async_kwargs["httpx_client"] = async_httpx_client
+            self._aclient = AsyncClient(
+                api_key=api_key, client_name="redisvl", **async_kwargs
+            )
 
     def _set_model_dims(self) -> int:
         """
@@ -352,6 +366,9 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: If content is not a string or input_type is not provided
             ValueError: If embedding fails
         """
+        if self._aclient is None:
+            return await super()._aembed(content, **kwargs)
+
         if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
@@ -369,11 +386,6 @@ class CohereTextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
-    @retry(
-        wait=wait_random_exponential(min=1, max=60),
-        stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(TypeError),
-    )
     async def _aembed_many(
         self,
         contents: list[str],
@@ -397,13 +409,28 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings or input_type is not provided
             ValueError: If embedding fails
         """
+        if self._aclient is None:
+            return await super()._aembed_many(contents, batch_size=batch_size, **kwargs)
+        return await self._aembed_many_with(
+            self._aclient, contents, batch_size, **kwargs
+        )
+
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
+    async def _aembed_many_with(
+        self, aclient: Any, contents: list[str], batch_size: int, **kwargs
+    ) -> list[list[float | int]]:
+        """Embed a batch of texts with the async Cohere client, with retries."""
         self._validate_contents(contents)
         input_type, embedding_types = self._prepare_request(kwargs)
 
         embeddings: list[Any] = []
         for batch in self.batchify(contents, batch_size):
             try:
-                response = await self._aclient.embed(
+                response = await aclient.embed(
                     texts=batch,
                     model=self.model,
                     input_type=input_type,

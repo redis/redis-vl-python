@@ -161,3 +161,38 @@ def test_embed_and_embed_many_still_use_sync_client(fake_cohere_module, vectoriz
     ]
     assert async_client.embed_calls == []
     assert sync_client.embed_calls[-1]["texts"] == ["x", "yy"]
+
+
+async def test_sync_httpx_client_keeps_async_on_sync_fallback(fake_cohere_module):
+    sync_httpx = object()
+    vectorizer = CohereTextVectorizer(
+        api_config={"api_key": "test-key"}, httpx_client=sync_httpx
+    )
+    sync_client = fake_cohere_module.Client.instances[-1]
+
+    assert sync_client.kwargs == {"httpx_client": sync_httpx}
+    assert fake_cohere_module.AsyncClient.instances == []
+    assert await vectorizer.aembed(
+        "hello", input_type="search_query"
+    ) == _embedding_for("hello")
+    assert await vectorizer.aembed_many(["a", "bb"], input_type="search_document") == [
+        _embedding_for("a"),
+        _embedding_for("bb"),
+    ]
+    assert sync_client.embed_calls[-1]["texts"] == ["a", "bb"]
+
+
+async def test_async_httpx_client_goes_to_async_client_only(fake_cohere_module):
+    sync_httpx, async_httpx = object(), object()
+    vectorizer = CohereTextVectorizer(
+        api_config={"api_key": "test-key"},
+        httpx_client=sync_httpx,
+        async_httpx_client=async_httpx,
+    )
+    sync_client = fake_cohere_module.Client.instances[-1]
+    async_client = fake_cohere_module.AsyncClient.instances[-1]
+
+    assert sync_client.kwargs == {"httpx_client": sync_httpx}
+    assert async_client.kwargs == {"httpx_client": async_httpx}
+    await vectorizer.aembed("hello", input_type="search_query")
+    assert async_client.embed_calls[-1]["texts"] == ["hello"]
