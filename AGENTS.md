@@ -132,19 +132,20 @@ redisvl/
 
 ## Before you mark a PR ready
 
-Run the pre-PR review and put its Review record in the PR description. A human approves every merge to `main`, and the record is what lets them do that quickly: it tells them which commit was reviewed, from which angles, what was fixed, what was rejected and why, and what was not checked.
+Run the pre-PR review and put its Reviewer Brief in the PR description. A human approves every merge to `main`. The review catches problems before they reach that person, and the brief gives them a head start: where to begin reading, where the change could still fail, and what nobody has checked. Settle any open questions with the author before the PR is opened or marked ready, so the PR reaches the reviewer with none.
 
-The procedure lives in `.agents/skills/pre-pr-review/SKILL.md`, in the Agent Skills format. If your agent doesn't discover skills there by itself, open `SKILL.md` and follow it as written: it's plain Markdown, and every file it refers to is under `.agents/skills/pre-pr-review/references/`.
+The procedure lives in `.agents/skills/pre-pr-review/SKILL.md`, in the Agent Skills format. If your agent doesn't discover skills there by itself, open `SKILL.md` and follow it as written. It's plain Markdown, and every file it refers to is under `.agents/skills/pre-pr-review/`.
 
 In short, the review:
 
 1. Reads the full diff against `main`, plus the callers of anything public that changed.
-2. Picks which of six lenses the diff needs (correctness always; security, design, tests, docs and Redis behaviour when the diff calls for them) and records why.
-3. Runs one pass per lens, then a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure.
+2. Runs six review lenses (correctness, security, design, tests, docs and Redis behaviour), each starting fresh from the diff. Authors who want to save tokens can run fewer; correctness always runs.
+3. Runs a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure.
 4. Fixes the surviving findings, in scope, and re-runs the checks those fixes touched.
-5. Writes the Review record into the PR description, replacing any earlier one.
+5. Settles anything it couldn't resolve with the author, so the PR has no open questions.
+6. Writes the Reviewer Brief into the PR description. `scripts/update_brief.py` replaces just that section.
 
-Re-run it after any substantive push. A record that names an older commit than the PR's head is stale.
+Write the brief for a reviewer who sees the change as it is now and has never seen your review. Point them at the current code, not at problems you've already fixed. Re-run the review after any substantive push, because the brief names the commit it reviewed.
 
 ## Redis documentation
 
@@ -152,9 +153,9 @@ Check Redis behaviour against the official documentation, not memory. Redis host
 
 ## Responding to review
 
-Cursor Bugbot reviews every PR, and humans may comment too. Handle each point as `SKILL.md` describes under "Responding to review": verify it against the code, give it one disposition, reply on the thread and add a line to the Review record. Treat a reviewer's wording as a claim to check, not a verdict.
+Cursor Bugbot reviews every PR, and humans may comment too. Handle each point as `SKILL.md` describes under "Responding to review": verify it against the code, give it one outcome, reply on the thread, and update the Reviewer Brief if anything changed. Treat a reviewer's wording as a claim to check, not a verdict.
 
 ## Honesty rules
 
-- Never list a check under "Verified" unless you ran it and saw its output.
+- Never claim a check in the Reviewer Brief unless you ran it and saw its output.
 - Say what you didn't check. Cluster tests and tests that need API keys don't run in CI, so name them when the change touches those paths.
