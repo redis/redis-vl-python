@@ -923,3 +923,79 @@ def test_create_index_false_clear_works_under_a_read_write_acl(
         assert len(owner.get_recent(top_k=10)) == 1
     finally:
         owner.delete()
+
+
+async def test_async_message_history_matches_sync(standard_history, monkeypatch):
+    # Expected results come from the sync path before it is blocked.
+    standard_history.add_messages(_numbered_messages(6))
+    standard_history.add_message(
+        {"role": "tool", "content": "lookup", "tool_call_id": "t1"}
+    )
+    expected = {
+        "recent": standard_history.get_recent(top_k=4),
+        "text": standard_history.get_recent(top_k=3, as_text=True),
+        "raw_ids": [m[ID_FIELD_NAME] for m in standard_history.get_recent(raw=True)],
+        "roles": standard_history.get_recent(top_k=10, role=["user", "tool"]),
+        "count": standard_history.count(),
+    }
+    other_tag = "other_session"
+    standard_history.store("q", "a", session_tag=other_tag)
+
+    def blocking(*args, **kwargs):
+        raise AssertionError("the async path made a blocking call")
+
+    # The async methods must read and write through the async index only.
+    monkeypatch.setattr(standard_history._index, "query", blocking)
+    monkeypatch.setattr(standard_history._index, "load", blocking)
+    monkeypatch.setattr(standard_history._index, "clear", blocking)
+    try:
+        actual = {
+            "recent": await standard_history.aget_recent(top_k=4),
+            "text": await standard_history.aget_recent(top_k=3, as_text=True),
+            "raw_ids": [
+                m[ID_FIELD_NAME] for m in await standard_history.aget_recent(raw=True)
+            ],
+            "roles": await standard_history.aget_recent(
+                top_k=10, role=["user", "tool"]
+            ),
+            "count": await standard_history.acount(),
+        }
+        assert actual == expected
+        assert await standard_history.acount(session_tag=other_tag) == 2
+
+        # Writes land where the sync reader would find them, and adrop with no
+        # id removes the latest entry.
+        await standard_history.astore("async prompt", "async response")
+        await standard_history.aadd_message({"role": "user", "content": "last"})
+        assert await standard_history.acount() == expected["count"] + 3
+        assert (await standard_history.aget_recent(top_k=1)) == [
+            {"role": "user", "content": "last"}
+        ]
+        await standard_history.adrop()
+        assert (await standard_history.aget_recent(top_k=1)) == [
+            {"role": "llm", "content": "async response"}
+        ]
+        with pytest.raises(ValueError):
+            await standard_history.aget_recent(top_k=-1)
+
+        await standard_history.aclear()
+        assert await standard_history.acount() == 0
+        assert await standard_history.acount(session_tag=other_tag) == 0
+    finally:
+        await standard_history.adisconnect()
+    assert standard_history.aindex is None
+
+
+async def test_async_message_history_with_redis_url(app_name, redis_url):
+    history = MessageHistory(name=app_name, redis_url=redis_url)
+    try:
+        await history.astore("hello", "hi")
+        assert await history.aget_recent(top_k=2) == [
+            {"role": "user", "content": "hello"},
+            {"role": "llm", "content": "hi"},
+        ]
+        # Built from the URL the sync index owns, not converted from its client.
+        assert history.aindex._redis_url == redis_url
+    finally:
+        await history.adisconnect()
+        history.clear()
