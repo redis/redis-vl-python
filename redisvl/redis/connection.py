@@ -1,3 +1,4 @@
+import inspect
 import os
 from collections.abc import Mapping
 from typing import Any, TypeVar, overload
@@ -11,10 +12,13 @@ from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.connection import AbstractConnection as AsyncAbstractConnection
 from redis.asyncio.connection import Connection as AsyncConnection
 from redis.asyncio.connection import SSLConnection as AsyncSSLConnection
+from redis.asyncio.connection import (
+    UnixDomainSocketConnection as AsyncUnixDomainSocketConnection,
+)
 from redis.asyncio.sentinel import Sentinel as AsyncSentinel
-from redis.connection import SSLConnection
+from redis.connection import SSLConnection, UnixDomainSocketConnection
 from redis.exceptions import ResponseError
-from redis.sentinel import Sentinel
+from redis.sentinel import Sentinel, SentinelConnectionPool
 
 from redisvl import __version__
 from redisvl.redis.constants import (
@@ -300,6 +304,59 @@ async def _aidentify_client(
         await client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
     except ResponseError as e:
         logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
+
+
+def _accepted_init_kwargs(cls: type) -> set[str]:
+    """Return the keyword arguments ``cls(...)`` accepts, walking its MRO.
+
+    redis-py's connection classes each declare their own keywords and pass the
+    rest up with ``**kwargs``, so the full set is the union of every
+    ``__init__`` in the chain up to the first one without ``**kwargs``.
+    """
+    accepted: set[str] = set()
+    for klass in cls.__mro__:
+        init = klass.__dict__.get("__init__")
+        if init is None:
+            continue
+        params = inspect.signature(init).parameters
+        accepted.update(
+            name
+            for name, param in params.items()
+            if name != "self"
+            and param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY)
+        )
+        if not any(p.kind is p.VAR_KEYWORD for p in params.values()):
+            break
+    return accepted
+
+
+def _async_connection_kwargs(
+    connection_kwargs: Mapping[str, Any],
+    connection_class: type[AsyncAbstractConnection],
+) -> dict[str, Any]:
+    """Translate a sync pool's ``connection_kwargs`` for an async connection class.
+
+    Keywords the async class does not accept are dropped when they hold their
+    default (``None`` or ``False``). One that is set, such as
+    ``ssl_validate_ocsp=True``, is a setting the async client cannot honour,
+    so it raises instead of being silently lost.
+    """
+    accepted = _accepted_init_kwargs(connection_class)
+    kwargs: dict[str, Any] = {}
+    lost: list[str] = []
+    for name, value in connection_kwargs.items():
+        if name in accepted:
+            kwargs[name] = value
+        elif value not in (None, False):
+            lost.append(name)
+    if lost:
+        raise ValueError(
+            "Cannot convert this Redis client to async: the async "
+            f"{connection_class.__name__} does not support "
+            f"{', '.join(sorted(lost))}. Pass redis_url and connection_kwargs "
+            "instead so the async client is built directly."
+        )
+    return kwargs
 
 
 def _normalize_index_info_mapping(value: Any) -> dict[str, Any]:
@@ -875,7 +932,20 @@ class RedisConnectionFactory:
     def sync_to_async_redis(
         redis_client: SyncRedisClient,
     ) -> AsyncRedisClient:
-        """Convert a synchronous Redis client to an asynchronous one."""
+        """Convert a synchronous Redis client to an asynchronous one.
+
+        The async client is built from the sync client's connection settings:
+        TLS and unix-socket connections (including subclasses) map to their
+        async connection classes, and keywords that only the sync classes
+        accept are dropped when they hold their default.
+
+        Raises:
+            ValueError: For a ``RedisCluster`` client, a Sentinel-managed
+                client (from ``Sentinel.master_for`` or ``slave_for``), or a
+                client with a sync-only setting the async client cannot honour
+                (such as OCSP validation). Build the async client from a URL
+                in those cases.
+        """
         if isinstance(redis_client, RedisCluster):
             raise ValueError(
                 "RedisCluster is not supported for sync-to-async conversion."
@@ -884,17 +954,27 @@ class RedisConnectionFactory:
         # At this point, redis_client is guaranteed to be Redis type
         assert isinstance(redis_client, Redis)  # Type narrowing for MyPy
 
+        pool = redis_client.connection_pool
+        if isinstance(pool, SentinelConnectionPool):
+            raise ValueError(
+                "Sentinel-managed clients are not supported for sync-to-async "
+                "conversion. Build the async client from the sentinel URL instead."
+            )
+
         # pick the right connection class
-        connection_class: type[AsyncAbstractConnection] = (
-            AsyncSSLConnection
-            if redis_client.connection_pool.connection_class == SSLConnection
-            else AsyncConnection
-        )
+        connection_class: type[AsyncAbstractConnection]
+        if issubclass(pool.connection_class, SSLConnection):
+            connection_class = AsyncSSLConnection
+        elif issubclass(pool.connection_class, UnixDomainSocketConnection):
+            connection_class = AsyncUnixDomainSocketConnection
+        else:
+            connection_class = AsyncConnection
+
         # make async client
         return AsyncRedis.from_pool(
             AsyncConnectionPool(
                 connection_class=connection_class,
-                **redis_client.connection_pool.connection_kwargs,
+                **_async_connection_kwargs(pool.connection_kwargs, connection_class),
             )
         )
 
