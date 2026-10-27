@@ -53,11 +53,6 @@ class SemanticRouter(BaseModel):
 
     _index: SearchIndex = PrivateAttr()
     _aindex: AsyncSearchIndex | None = PrivateAttr(default=None)
-    # Kept so the async index can reach the same Redis as the sync one.
-    _redis_client_provided: bool = PrivateAttr(default=False)
-    _redis_url: str = PrivateAttr(default="redis://localhost:6379")
-    _connection_kwargs: dict[str, Any] | None = PrivateAttr(default=None)
-    _lib_name: str | None = PrivateAttr(default=None)
     # A private attribute, never a field: it describes this instance's
     # relationship to the index, and must not reach the stored route config.
     _create_index: bool = PrivateAttr(default=True)
@@ -145,10 +140,6 @@ class SemanticRouter(BaseModel):
         )
 
         self._create_index = create_index
-        self._redis_client_provided = redis_client is not None
-        self._redis_url = redis_url
-        self._connection_kwargs = connection_kwargs or None
-        self._lib_name = (index_kwargs or {}).get("lib_name")
         self._initialize_index(
             redis_client,
             redis_url,
@@ -228,7 +219,7 @@ class SemanticRouter(BaseModel):
             )
         resolved_redis_url = redis_url if created_redis_client else None
         try:
-            router = cls.from_dict(
+            return cls.from_dict(
                 router_dict,
                 redis_url=resolved_redis_url,
                 redis_client=redis_client,
@@ -241,11 +232,6 @@ class SemanticRouter(BaseModel):
             if created_redis_client and redis_client is not None:
                 redis_client.close()
             raise
-        if created_redis_client:
-            # The caller gave a URL, not a client: the async path should connect
-            # from that URL too, rather than convert the client built here.
-            router._redis_client_provided = False
-        return router
 
     @deprecated_argument("dtype")
     def _initialize_index(
@@ -567,22 +553,21 @@ class SemanticRouter(BaseModel):
     def _get_async_index(self) -> AsyncSearchIndex:
         """Lazily construct the async search index over the same Redis index."""
         if self._aindex is None:
-            if self._redis_client_provided:
-                # Reuse the caller's connection settings rather than the URL default.
-                async_client = RedisConnectionFactory.sync_to_async_redis(
-                    self._index._redis_client  # type: ignore[arg-type]
-                )
+            index = self._index
+            if index._owns_redis_client and index._redis_url:
                 self._aindex = AsyncSearchIndex(
-                    schema=self._index.schema,
-                    redis_client=async_client,
-                    owns_client=True,
+                    schema=index.schema,
+                    redis_url=index._redis_url,
+                    connection_kwargs=index._connection_kwargs or None,
+                    lib_name=index._lib_name,
                 )
             else:
                 self._aindex = AsyncSearchIndex(
-                    schema=self._index.schema,
-                    redis_url=self._redis_url,
-                    connection_kwargs=self._connection_kwargs,
-                    lib_name=self._lib_name,
+                    schema=index.schema,
+                    redis_client=RedisConnectionFactory.sync_to_async_redis(
+                        index._redis_client  # type: ignore[arg-type]
+                    ),
+                    owns_client=True,
                 )
         return self._aindex
 
@@ -729,6 +714,7 @@ class SemanticRouter(BaseModel):
         self,
         statement: str | None = None,
         vector: list[float] | None = None,
+        *,
         aggregation_method: DistanceAggregationMethod | None = None,
     ) -> RouteMatch:
         """Async version of calling the router: match a statement or vector to
@@ -737,6 +723,14 @@ class SemanticRouter(BaseModel):
         Embedding uses the vectorizer's ``aembed`` and the lookup runs on an
         :class:`~redisvl.index.AsyncSearchIndex` over the same Redis index, so
         it returns the same match as ``router(statement)``.
+
+        Pass ``redis_url`` rather than a client to the router if you need
+        async routing over SSL, a unix socket, Sentinel or Redis Cluster: those
+        clients cannot be converted to their async form. With a vectorizer that
+        has no native ``aembed``, such as the default ``HFTextVectorizer``,
+        embedding still blocks the loop; only the Redis call is non-blocking.
+        The async client is bound to the event loop that made the first call,
+        so call :meth:`adisconnect` before switching loops.
 
         Args:
             statement (Optional[str]): The input statement to be queried.
@@ -768,11 +762,13 @@ class SemanticRouter(BaseModel):
         self,
         statement: str | None = None,
         vector: list[float] | None = None,
+        *,
         max_k: int | None = None,
         aggregation_method: DistanceAggregationMethod | None = None,
     ) -> list[RouteMatch]:
         """Async version of :meth:`route_many`: return up to ``max_k`` matching
-        routes without blocking the event loop.
+        routes without blocking the event loop. See :meth:`aroute` for the
+        connection and vectorizer caveats.
 
         Args:
             statement (Optional[str]): The input statement to be queried.
