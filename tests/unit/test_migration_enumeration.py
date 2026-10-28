@@ -8,6 +8,16 @@ from redis.client import Redis
 from redis.exceptions import ResponseError
 
 from redisvl.migration import AsyncMigrationExecutor, MigrationExecutor
+from redisvl.migration.utils import parse_percent_indexed
+
+
+@pytest.mark.parametrize(
+    "progress, expected",
+    [("0", 0.0), (0.0, 0.0), ("0.42", 0.42), (None, 1.0)],
+    ids=["resp2-zero", "resp3-zero", "partial", "missing"],
+)
+def test_parse_percent_indexed_keeps_zero(progress, expected):
+    assert parse_percent_indexed({"percent_indexed": progress}) == expected
 
 
 @pytest.fixture(params=[False, True], ids=["sync", "async"])

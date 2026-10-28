@@ -1,7 +1,6 @@
 from fnmatch import fnmatch
 from unittest.mock import MagicMock
 
-import pytest
 import yaml
 from redis.client import Redis
 
@@ -1025,13 +1024,12 @@ def test_plan_no_warning_when_stats_missing_failures_key(monkeypatch, tmp_path):
     assert len(failure_warnings) == 0
 
 
-@pytest.mark.parametrize("progress", ["0.42", 0.42, "0", 0.0])
-def test_plan_warns_when_source_is_still_indexing(monkeypatch, tmp_path, progress):
+def test_plan_warns_when_source_is_still_indexing(monkeypatch, tmp_path):
     """Plan should warn when the source index has percent_indexed < 1.0."""
     source_schema = _make_source_schema()
     dummy_index = DummyIndex(
         source_schema,
-        {"num_docs": 100, "hash_indexing_failures": 0, "percent_indexed": progress},
+        {"num_docs": 100, "hash_indexing_failures": 0, "percent_indexed": "0.42"},
         [b"docs:1"],
     )
     monkeypatch.setattr(
@@ -1063,7 +1061,7 @@ def test_plan_warns_when_source_is_still_indexing(monkeypatch, tmp_path, progres
 
     indexing_warnings = [w for w in plan.warnings if "still building" in w]
     assert len(indexing_warnings) == 1
-    assert f"{float(progress):.4f}" in indexing_warnings[0]
+    assert "0.4200" in indexing_warnings[0]
 
 
 def test_plan_no_warning_when_source_fully_indexed(monkeypatch, tmp_path):

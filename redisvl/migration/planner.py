@@ -16,6 +16,7 @@ from redisvl.migration.models import (
     SchemaPatch,
     SourceSnapshot,
 )
+from redisvl.migration.utils import parse_percent_indexed
 from redisvl.redis.connection import supports_svs
 from redisvl.schema.schema import IndexSchema
 from redisvl.types import SyncRedisClient
@@ -172,8 +173,7 @@ class MigrationPlanner:
         # falls back to SCAN automatically, but surface the condition here
         # so users running `rvl migrate plan` can wait for indexing to
         # complete before applying.
-        progress = snapshot.stats_snapshot.get("percent_indexed")
-        source_percent_indexed = float(progress) if progress is not None else 1.0
+        source_percent_indexed = parse_percent_indexed(snapshot.stats_snapshot)
         if source_percent_indexed < 1.0:
             warnings.append(
                 f"Source index is still building "

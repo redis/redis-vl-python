@@ -33,6 +33,7 @@ from redisvl.migration.utils import (
     estimate_disk_space,
     get_schema_field_path,
     normalize_keys,
+    parse_percent_indexed,
     timestamp_utc,
     wait_for_index_ready,
 )
@@ -270,8 +271,7 @@ class MigrationExecutor:
         try:
             info = convert_bytes(client.ft(index_name).info())
             failures = int(info.get("hash_indexing_failures", 0) or 0)
-            progress = info.get("percent_indexed")
-            percent_indexed = float(progress) if progress is not None else 1.0
+            percent_indexed = parse_percent_indexed(info)
             if failures > 0:
                 logger.warning(
                     f"Index '{index_name}' has {failures} indexing failures. "
@@ -1107,8 +1107,7 @@ class MigrationExecutor:
         source_failures = int(
             plan.source.stats_snapshot.get("hash_indexing_failures", 0) or 0
         )
-        progress = plan.source.stats_snapshot.get("percent_indexed")
-        source_percent_indexed = float(progress) if progress is not None else 1.0
+        source_percent_indexed = parse_percent_indexed(plan.source.stats_snapshot)
         needs_exact_count = source_failures > 0 or source_percent_indexed < 1.0
         needs_enumeration = (
             needs_quantization
