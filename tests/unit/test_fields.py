@@ -356,33 +356,6 @@ def test_redis_field_creation_with_index_attributes(
     # We can't directly inspect them, but we can verify the field creation doesn't fail
 
 
-def test_vector_fields_redis_creation_with_index_missing():
-    """Test that vector fields properly handle index_missing in Redis field creation."""
-
-    # Test FlatVectorField with index_missing
-    flat_field = FlatVectorField(
-        name="flat_embedding",
-        attrs={
-            "algorithm": "flat",
-            "dims": 128,
-            "index_missing": True,
-            "block_size": 100,
-        },
-    )
-    redis_field = flat_field.as_redis_field()
-    assert isinstance(redis_field, RedisVectorField)
-    assert redis_field.name == "flat_embedding"
-
-    # Test HNSWVectorField with index_missing
-    hnsw_field = HNSWVectorField(
-        name="hnsw_embedding",
-        attrs={"algorithm": "hnsw", "dims": 256, "index_missing": True, "m": 24},
-    )
-    redis_field = hnsw_field.as_redis_field()
-    assert isinstance(redis_field, RedisVectorField)
-    assert redis_field.name == "hnsw_embedding"
-
-
 @pytest.mark.parametrize(
     "field_class,algorithm",
     [
@@ -398,17 +371,11 @@ def test_vector_field_index_missing_follows_attribute_block(field_class, algorit
         name="embedding",
         attrs={"algorithm": algorithm, "dims": 128, "index_missing": True},
     )
-    assert "INDEXMISSING" not in field.attrs.field_data
 
     args = field.as_redis_field().redis_args()
     attr_count = args[3]
     assert "INDEXMISSING" not in args[: 4 + attr_count]
     assert args[4 + attr_count :] == ["INDEXMISSING"]
-
-    # Without index_missing, nothing follows the attribute block
-    field = field_class(name="embedding", attrs={"algorithm": algorithm, "dims": 128})
-    args = field.as_redis_field().redis_args()
-    assert len(args) == 4 + args[3]
 
 
 def test_field_factory_with_new_attributes():

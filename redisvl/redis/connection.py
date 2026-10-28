@@ -405,6 +405,7 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             # params in "flags" as key/value pairs, possibly followed by
             # valueless modifiers: ["algorithm", "FLAT", "dim", 4, "INDEXMISSING"]
             flags = attrs.get("flags") or []
+            index_missing = "INDEXMISSING" in flags
             i = 0
             while i < len(flags):
                 key = str(flags[i]).lower()
@@ -414,6 +415,10 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                 vector_attrs.setdefault(key, flags[i + 1])
                 i += 2
         else:
+            # INDEXMISSING is a valueless modifier after the key/value pairs
+            index_missing = "INDEXMISSING" in attrs[6:]
+            attrs = attrs[:6] + [a for a in attrs[6:] if a != "INDEXMISSING"]
+
             # Check if we have any attributes beyond the type declaration
             if len(attrs) <= 6:
                 # Redis 6.2.6-v9 or similar: no vector params in FT.INFO
@@ -560,6 +565,9 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                 normalized["epsilon"] = float(vector_attrs["epsilon"])
             except (ValueError, TypeError):
                 pass
+
+        if index_missing:
+            normalized["index_missing"] = True
 
         # Validate that we have required dims
         if "dims" not in normalized:
