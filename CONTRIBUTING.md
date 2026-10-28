@@ -284,6 +284,36 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
+### Reviewer Brief
+
+Maintainer PRs, and any PR written with a coding agent, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Outside contributors are welcome to add one but don't have to.
+
+#### Writing one
+
+Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review looks at the change from six angles (correctness, security, design, tests, docs and Redis behaviour), checks each finding against the code, fixes what holds up, and then writes the brief under the `## Reviewer Brief` heading of the PR template. Run it again after any substantive push.
+
+A brief tells the reviewer:
+
+- where to start reading, and why;
+- where the change could still fail, with file and line;
+- what wasn't verified, for example cluster behaviour or provider APIs;
+- any evidence CI doesn't show, such as a regression test confirmed to fail without the fix;
+- which commit was reviewed, by which agent and model.
+
+It deliberately leaves out what the review fixed. You see the change as it is now, so problems that no longer exist would only cost you time.
+
+#### Reading one
+
+The brief is the author's account of their own review. It isn't an approval and it isn't proof. Use it to decide where to look first, not as a reason to look less. A quick way to review a PR that has one:
+
+1. Read the summary Bugbot adds to the PR description for what the change does and how risky it is.
+2. Check that the commit in the brief's footer matches the PR's head commit, or that a "Since the last brief" line covers the later commits. If it doesn't, ask the author to re-run the review.
+3. Start reading where the brief says, then look at each spot under "Where it could fail".
+4. Decide whether anything under "Not verified" matters for this change, and read the Notes section for trade-offs the author made on purpose.
+5. Check that every open Bugbot or reviewer thread has a reply giving its outcome.
+
+If the brief, Bugbot and what you see in the diff agree, approve. Where they disagree is where to review in depth.
+
 ### PR Labels
 
 This project uses an automated release process powered by [Auto](https://intuit.github.io/auto/). PRs must be labeled to indicate the type of change:
@@ -311,6 +341,7 @@ Before submitting your PR, ensure:
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear and descriptive
 - [ ] PR description explains what changes were made and why
+- [ ] For maintainer or agent-assisted PRs, the Reviewer Brief covers the PR's head commit
 - [ ] Appropriate `auto:*` label is applied to indicate the change type
 
 ## Getting Help

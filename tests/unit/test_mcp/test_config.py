@@ -967,3 +967,129 @@ custom_tools:
     # Disabling the built-in a profile supersedes is the motivating pairing, so
     # confirm both halves survive one load.
     assert config.server.builtin_tool_enabled("search-records") is False
+
+
+# --------------------------------------------------------------------------
+# lock.inject -- claim-sourced tenant scoping
+# --------------------------------------------------------------------------
+
+_INJECT = {"field": "tenant_id", "from": "claim", "claim": "org", "required": True}
+
+
+def test_the_proposals_published_injection_yaml_loads_verbatim(tmp_path: Path):
+    # Copied from the approved proposal, comments included. An operator pasting
+    # it must hit neither a rejected key nor a rejected position.
+    config_path = tmp_path / "mcp.yaml"
+    config_path.write_text(
+        """
+server:
+  redis_url: redis://localhost:6379
+indexes:
+  customer_kb:
+    redis_name: customer-kb
+    search:
+      type: fulltext
+    runtime:
+      text_field_name: content
+custom_tools:
+  - name: search_customer_kb
+    kind: profile
+    based_on: search-records
+    index: customer_kb
+    description: Search this customer's knowledge base.
+    suppress_schema_hints: true       # default for injection profiles; see below
+    lock:
+      inject:
+        - field: tenant_id                          # a field in THIS index's schema
+          from: claim                               # source is the auth token, not the LLM
+          claim: "https://acme.example/org"         # a claim name THIS IdP emits
+          required: true                            # absent/empty/non-scalar => reject; never unscoped
+""".strip(),
+        encoding="utf-8",
+    )
+
+    (entry,) = load_mcp_config(str(config_path)).custom_tools[0].lock.inject
+
+    assert (entry.field, entry.source, entry.claim, entry.required) == (
+        "tenant_id",
+        "claim",
+        "https://acme.example/org",
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "patch, expected",
+    [
+        # Optional injection is unscoped injection.
+        pytest.param({"required": False}, "required", id="required-false"),
+        pytest.param({"from": "header"}, "from", id="unknown-source"),
+        pytest.param({"claim": "  "}, "claim must not be blank", id="blank-claim"),
+        pytest.param({"field": "  "}, "field must not be blank", id="blank-field"),
+        pytest.param({"default": "acme"}, "default", id="misspelled-or-extra-key"),
+    ],
+)
+def test_an_unusable_inject_entry_is_rejected(patch, expected):
+    entry = {**_INJECT, **patch}
+    config = _raw_config_with_profiles(_profile_dict(lock={"inject": [entry]}))
+    with pytest.raises(ValueError, match=expected):
+        MCPConfig.model_validate(config)
+
+
+def test_an_inject_entry_must_name_its_source():
+    # Stated rather than defaulted: the source is the whole point of the entry.
+    entry = {key: value for key, value in _INJECT.items() if key != "from"}
+    config = _raw_config_with_profiles(_profile_dict(lock={"inject": [entry]}))
+    with pytest.raises(ValueError, match="from"):
+        MCPConfig.model_validate(config)
+
+
+def test_an_empty_inject_list_is_rejected():
+    config = _raw_config_with_profiles(_profile_dict(lock={"inject": []}))
+    with pytest.raises(ValueError, match="at least one entry"):
+        MCPConfig.model_validate(config)
+
+
+def test_injecting_one_field_twice_is_rejected():
+    second = {**_INJECT, "claim": "other_org"}
+    config = _raw_config_with_profiles(
+        _profile_dict(lock={"inject": [_INJECT, second]})
+    )
+    with pytest.raises(ValueError, match="same field more than once: tenant_id"):
+        MCPConfig.model_validate(config)
+
+
+@pytest.mark.parametrize(
+    "locked_filter",
+    [
+        pytest.param({"field": "tenant_id", "op": "eq", "value": "acme"}, id="leaf"),
+        pytest.param(
+            {
+                "and": [
+                    {"field": "category", "op": "eq", "value": "kb"},
+                    {"not": {"field": "tenant_id", "op": "eq", "value": "x"}},
+                ]
+            },
+            id="nested",
+        ),
+    ],
+)
+def test_an_injected_field_cannot_also_be_statically_locked(locked_filter):
+    config = _raw_config_with_profiles(
+        _profile_dict(lock={"filter": locked_filter, "inject": [_INJECT]})
+    )
+    with pytest.raises(ValueError, match="both constrain tenant_id"):
+        MCPConfig.model_validate(config)
+
+
+def test_injection_composes_with_a_static_lock_on_another_field():
+    config = _raw_config_with_profiles(
+        _profile_dict(
+            lock={
+                "filter": {"field": "category", "op": "eq", "value": "kb"},
+                "inject": [_INJECT],
+            }
+        )
+    )
+    profile = MCPConfig.model_validate(config).custom_tools[0]
+    assert [entry.field for entry in profile.lock.inject] == ["tenant_id"]

@@ -91,15 +91,23 @@ class MockAsyncClusterClient(MockClusterClient):
 
 
 class _Index:
-    """Minimal SearchIndex stand-in for the validators' key-count path."""
+    """Minimal SearchIndex stand-in for the validators' key-count path.
+
+    Exposes the lazy accessors the validators read rather than the public
+    ``client`` property: ``_redis_client`` on the sync side, ``_get_client()``
+    on the async side, mirroring SearchIndex and AsyncSearchIndex.
+    """
 
     def __init__(self, client):
-        self.client = client
+        self._redis_client = client
         self.schema = type(
             "S",
             (),
             {"index": type("I", (), {"prefix": PREFIX, "key_separator": ":"})()},
         )()
+
+    async def _get_client(self):
+        return self._redis_client
 
 
 class TestValidatorCountsKeysOnCluster:

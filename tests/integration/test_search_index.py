@@ -1,4 +1,3 @@
-import warnings
 from random import choice
 from unittest import mock
 
@@ -274,29 +273,6 @@ def test_search_index_redis_url(redis_url, index_schema):
 def test_search_index_client(client, index_schema):
     index = SearchIndex(schema=index_schema, redis_client=client)
     assert index.client == client
-
-
-def test_search_index_set_client(async_client, redis_url, index_schema):
-    index = SearchIndex(schema=index_schema, redis_url=redis_url)
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        index.create(overwrite=True, drop=True)
-        assert index.client
-        # should not be able to set an async client here
-        with pytest.raises(TypeError):
-            index.set_client(async_client)
-        assert index.client is not async_client
-
-        index.disconnect()
-        assert index.client is None
-
-
-def test_search_index_connect(index, redis_url):
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        index.connect(redis_url=redis_url)
-    assert index.client
 
 
 def test_search_index_create(index):
@@ -629,6 +605,14 @@ def test_batch_search(index):
         pytest.param(
             {"legacy_responses": False},
             id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+        pytest.param(
+            {"protocol": 2, "legacy_responses": False},
+            id="resp2-new-response-format",
             marks=pytest.mark.skipif(
                 int(redis.__version__.split(".")[0]) < 8,
                 reason="legacy_responses requires redis-py 8",

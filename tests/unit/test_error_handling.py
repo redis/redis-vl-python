@@ -11,7 +11,7 @@ This module tests the enhanced error handling behavior introduced for:
 
 import asyncio
 from collections.abc import Mapping
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import redis.exceptions
@@ -204,11 +204,11 @@ class TestConnectionKwargsValidation:
             "redisvl.extensions.cache.base.RedisConnectionFactory"
         ) as mock_factory:
             mock_client = Mock()
-            mock_factory.get_async_redis_connection.return_value = mock_client
+            mock_factory._get_aredis_connection = AsyncMock(return_value=mock_client)
 
             result = await cache._get_async_redis_client()
             assert result == mock_client
-            mock_factory.get_async_redis_connection.assert_called_once()
+            mock_factory._get_aredis_connection.assert_awaited_once()
 
 
 class TestRouterConfigErrorHandling:
@@ -480,9 +480,11 @@ class TestClusterOperationsErrorHandling:
 
                 # Should have attempted to delete all 3 keys
                 assert mock_cluster_client.delete.call_count == 3
-                # Should have logged the error for the failed key
+                # Should have logged the error for the failed key. The key is
+                # repr'd: it comes from user-supplied data, so quoting it keeps a
+                # newline in a key from forging a second log line.
                 mock_logger.warning.assert_called_once_with(
-                    "Failed to delete key test:key2: Some cluster error"
+                    "Failed to delete key 'test:key2': Some cluster error"
                 )
                 # Should return count of successfully deleted keys (2 out of 3)
                 assert result == 2
@@ -595,7 +597,7 @@ class TestClusterOperationsErrorHandling:
                 assert mock_cluster_client.delete.call_count == 3
                 # Should have logged the error for the failed key
                 mock_logger.warning.assert_called_once_with(
-                    "Failed to delete key test:key2: Some cluster error"
+                    "Failed to delete key 'test:key2': Some cluster error"
                 )
                 # Should return count of successfully deleted keys (2 out of 3)
                 assert result == 2

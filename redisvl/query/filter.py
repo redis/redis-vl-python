@@ -418,8 +418,8 @@ class GeoRadius(GeoSpec):
 
 
 class Geo(FilterField):
-    """A Geo is a FilterField representing a geographic (lat/lon) field in a
-    Redis index.
+    """A Geo is a FilterField representing a geographic (longitude, latitude)
+    field in a Redis index.
 
     Note:
         Redis indexes latitudes only within +/-85.05112878 degrees (EPSG:900913).
@@ -918,6 +918,31 @@ class FilterExpression:
         if not self._filter:
             raise ValueError("Improperly initialized FilterExpression")
         return self._filter
+
+
+def is_match_all_filter(filter_expression: str | FilterExpression | None) -> bool:
+    """Return True if the filter would match every document in the index.
+
+    ``None`` counts as match-all because it defaults to ``FilterExpression("*")``
+    downstream, and a default/empty ``FilterExpression`` -- whose ``str()``
+    raises -- is treated the same way rather than surfacing an opaque error.
+    That raising case is the reason this exists rather than a bare
+    ``str(expr) != "*"`` at each call site.
+
+    Two callers depend on it. The bulk ``*_by_filter`` methods use it to refuse
+    an accidental full-index wipe, and the MCP claim-injection path uses it to
+    reject an injected clause that renders as the wildcard -- which an
+    intersection would otherwise elide, deleting the clause instead of
+    narrowing by it.
+    """
+    if filter_expression is None:
+        return True
+    try:
+        rendered = str(filter_expression).strip()
+    except ValueError:
+        # Improperly initialized FilterExpression() - treat as the match-all sentinel
+        return True
+    return rendered in ("", "*")
 
 
 def render_filter(filter_expression: str | FilterExpression | None) -> str | None:

@@ -8,7 +8,6 @@ from tenacity.retry import retry_if_not_exception_type
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
-from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that openai isn't imported
@@ -206,30 +205,27 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
 
-    @deprecated_argument("text", "content")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
         reraise=True,
     )
-    def _embed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
+    def _embed(self, content: str, **kwargs) -> list[float]:
         """
         Generate a vector embedding for a single text using the AzureOpenAI API.
 
         Args:
             content: Text to embed
-            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the AzureOpenAI API
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If text is not a string
+            TypeError: If content is not a string
             ValueError: If embedding fails
         """
-        content = content or text
         if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
@@ -241,7 +237,6 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
-    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
@@ -250,8 +245,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     )
     def _embed_many(
         self,
-        contents: list[str] | None = None,
-        texts: list[str] | None = None,
+        contents: list[str],
         batch_size: int = 10,
         **kwargs,
     ) -> list[list[float]]:
@@ -260,7 +254,6 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         Args:
             contents: List of texts to embed
-            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the AzureOpenAI API
 
@@ -271,7 +264,6 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
-        contents = contents or texts
         if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if contents and not isinstance(contents[0], str):
@@ -288,20 +280,18 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
-    @deprecated_argument("text", "content")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
         reraise=True,
     )
-    async def _aembed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
+    async def _aembed(self, content: str, **kwargs) -> list[float]:
         """
         Asynchronously generate a vector embedding for a single text using the AzureOpenAI API.
 
         Args:
             content: Text to embed
-            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the AzureOpenAI API
 
         Returns:
@@ -311,7 +301,6 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             TypeError: If content is not a string
             ValueError: If embedding fails
         """
-        content = content or text
         if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
@@ -323,7 +312,6 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
-    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
@@ -332,8 +320,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     )
     async def _aembed_many(
         self,
-        contents: list[str] | None = None,
-        texts: list[str] | None = None,
+        contents: list[str],
         batch_size: int = 10,
         **kwargs,
     ) -> list[list[float]]:
@@ -342,7 +329,6 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         Args:
             contents: List of texts to embed
-            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the AzureOpenAI API
 
@@ -353,7 +339,6 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
-        contents = contents or texts
         if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if contents and not isinstance(contents[0], str):

@@ -1,7 +1,7 @@
 [project]
 name = "redisvl"
 # NOTE: This version value is automatically incremented by the release workflow - do not manually adjust it.
-version = "0.27.2"
+version = "0.28.0"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
 requires-python = ">=3.10,<3.15"
@@ -65,13 +65,15 @@ langcache = ["langcache>=0.11.0"]
 # importing. New text embeddings should use the `google-genai` extra below.
 vertexai = [
     "google-cloud-aiplatform>=1.26,<2.0.0",
-    "protobuf>=5.28.0,<6.0.0",
+    # Uncapped on purpose: nothing here imports protobuf, so the bound belongs
+    # to google-cloud-aiplatform, which declares its own.
+    "protobuf>=5.28.0",
 ]
 # Modern Google backend (Vertex AI + Gemini Developer API) for GoogleGenAIVectorizer.
 google-genai = ["google-genai>=1.0.0"]
 bedrock = [
     "boto3>=1.36.0,<2",
-    "urllib3<2.8.0",
+    "urllib3<2.9.0",
 ]
 pillow = [
     "pillow>=11.3.0",
@@ -87,10 +89,10 @@ all = [
     "sentence-transformers>=5.2.0,<6",
     "langcache>=0.11.0",
     "google-cloud-aiplatform>=1.26,<2.0.0",
-    "protobuf>=5.28.0,<6.0.0",
+    "protobuf>=5.28.0",
     "google-genai>=1.0.0",
     "boto3>=1.36.0,<2",
-    "urllib3<2.8.0",
+    "urllib3<2.9.0",
     "pillow>=11.3.0",
     "sql-redis>=0.7.1",
     "ollama>=0.5.4",
@@ -169,9 +171,6 @@ exclude = '''
 [tool.pytest.ini_options]
 log_cli = true
 asyncio_mode = "auto"
-filterwarnings = [
-    "ignore:get_async_redis_connection will become async in the next major release:DeprecationWarning",
-]
 
 [tool.mypy]
 warn_unused_configs = true

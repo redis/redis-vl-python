@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
+from redisvl.exceptions import PartialDeletionError
 from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     EXTERNAL_INDEX_DROP_CONFLICT,
@@ -67,7 +68,7 @@ class SemanticRouter(BaseModel):
         redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         create_index: bool = True,
         **kwargs,
     ):
@@ -176,10 +177,7 @@ class SemanticRouter(BaseModel):
         overwrite = kwargs.pop("overwrite", False)
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs",),
-        )
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
         lib_name = init_kwargs.get("lib_name")
         index_kwargs: dict[str, Any] = {}
         created_redis_client = False
@@ -197,7 +195,11 @@ class SemanticRouter(BaseModel):
                 **factory_kwargs,
             )
             index_kwargs["_client_validated"] = True
-            index_kwargs["_owns_redis_client"] = True
+            # index_kwargs wins the merge below, so only claim ownership when
+            # the caller has not already answered -- and an explicit None is
+            # not an answer. Matches SearchIndex.from_existing.
+            if init_kwargs.get("owns_client") is None:
+                index_kwargs["owns_client"] = True
             if lib_name is not None:
                 index_kwargs["lib_name"] = lib_name
             created_redis_client = True
@@ -412,7 +414,7 @@ class SemanticRouter(BaseModel):
         """Apply distance threshold on a route by route basis."""
         filter = ""
         for i, route in enumerate(self.routes):
-            filter_str = f"(@route_name == '{route.name}' && @distance < {route.distance_threshold})"
+            filter_str = f"(@route_name == '{route.name}' && @distance <= {route.distance_threshold})"
             if i > 0:
                 filter += " || "
             filter += filter_str
@@ -666,19 +668,47 @@ class SemanticRouter(BaseModel):
 
         Args:
             route_name (str): Name of the route to remove.
+
+        Raises:
+            PartialDeletionError: If some of the route's reference keys could not
+                be unlinked. The route is then kept with exactly those references
+                and the config persisted before raising, so the router keeps
+                describing what the index can still match and a retry removes the
+                remainder.
         """
         route = self.get(route_name)
         if route is None:
             logger.warning(f"Route {route_name} is not found in the SemanticRouter")
-        else:
-            self._index.drop_keys(
-                [
-                    self._route_ref_key(self._index, route.name, hashify(reference))
-                    for reference in route.references
-                ]
+            return
+
+        # Pairs, not a dict: references are not deduplicated on the way in, and
+        # collapsing two identical references here would silently drop one.
+        keyed_references = [
+            (
+                self._route_ref_key(self._index, route.name, hashify(reference)),
+                reference,
             )
-            self.routes = [route for route in self.routes if route.name != route_name]
-            self._update_router_state()
+            for reference in route.references
+        ]
+        keys = list({key for key, _ in keyed_references})
+        deleted, failed_keys = self._index._drop_keys(keys)
+        failed = set(failed_keys)
+        remaining = [ref for key, ref in keyed_references if key in failed]
+
+        if remaining:
+            route.references = remaining
+        else:
+            self.routes = [r for r in self.routes if r.name != route_name]
+        self._update_router_state()
+
+        if failed:
+            raise PartialDeletionError(
+                f"Failed to unlink {len(failed)} reference key(s) for route "
+                f"{route_name!r}, so the route was kept with those references. "
+                f"Retry to remove it.",
+                failed_keys=sorted(failed),
+                deleted=deleted,
+            )
 
     def delete(self) -> None:
         """Delete the semantic router index and its persisted route config.
@@ -908,6 +938,15 @@ class SemanticRouter(BaseModel):
         queries = []
 
         for id in ids:
+            if not id:
+                # `Tag(...) == ""` renders as the match-all `*`, so an empty id
+                # would match every reference in the index. Callers take the
+                # first row of each query's results, which turns this into
+                # returning -- and, from delete_route_references, deleting -- an
+                # arbitrary reference the caller never named.
+                raise ValueError(
+                    "reference ids must be non-empty strings; received an empty id"
+                )
             fe = Tag("reference_id") == id
             fq = FilterQuery(
                 return_fields=["reference_id", "route_name", "reference"],
@@ -920,8 +959,8 @@ class SemanticRouter(BaseModel):
     def get_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Get references for an existing route route.
 
@@ -956,8 +995,8 @@ class SemanticRouter(BaseModel):
     def delete_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> int:
         """Get references for an existing semantic router route.
 
@@ -968,6 +1007,27 @@ class SemanticRouter(BaseModel):
 
         Returns:
             int: Number of objects deleted
+
+        Raises:
+            ValueError: If no references match the given route/ids/keys.
+            PartialDeletionError: If some keys could not be unlinked. Raised only
+                after the surviving references have been reconciled and persisted,
+                so a retry picks up exactly what is left.
+
+        Note:
+            Deleting every reference of a route removes the route itself, matching
+            :meth:`remove_route`. A route with no references cannot match anything,
+            and :class:`~redisvl.extensions.router.schema.Route` rejects an empty
+            reference list, so persisting one would produce a config that
+            :meth:`from_existing` can no longer load.
+
+        Note:
+            On Redis Cluster keys are unlinked one at a time and a per-key failure
+            is logged rather than raised. References whose key failed to unlink are
+            deliberately *kept* in the persisted route config: the hash is still in
+            the index and the router would keep matching it, so dropping it from
+            the config would leave the router claiming a reference is gone while
+            still routing to it.
         """
 
         if reference_ids and not keys:
@@ -981,22 +1041,69 @@ class SemanticRouter(BaseModel):
         if not keys:
             raise ValueError(f"No references found for route {route_name}")
 
-        to_be_deleted = []
-        for key in keys:
-            route_name = key.split(":")[-2]
-            to_be_deleted.append(
-                (route_name, convert_bytes(self._index._redis_client.hgetall(key)))
+        # Read each hash before deleting, so the in-memory routes can be reconciled
+        # against whichever keys actually go away. The hash stores its own
+        # route_name, which beats recovering it from the key: route names may
+        # themselves contain the key separator. Keying by key also collapses a
+        # caller-supplied duplicate, which would otherwise be removed twice.
+        stored_by_key = {
+            key: convert_bytes(self._index._redis_client.hgetall(key))  # type: ignore
+            for key in convert_bytes(list(keys))
+        }
+
+        # A hash already gone (removed by another client, say) has nothing to read,
+        # so its reference is recovered from the config instead. Left in place, it
+        # could never be deleted: no index entry and no key would point to it.
+        configured_by_key = {
+            self._route_ref_key(self._index, route.name, hashify(reference)): (
+                route.name,
+                reference,
             )
+            for route in self.routes
+            for reference in route.references
+        }
 
-        deleted = self._index.drop_keys(keys)
+        deleted, failed_keys = self._index._drop_keys(list(stored_by_key))
+        failed = set(failed_keys)
 
-        for route_name, delete in to_be_deleted:
-            route = self.get(route_name)
-            if not route:
-                raise ValueError(f"Route {route_name} not found in the SemanticRouter")
-            route.references.remove(delete["reference"])
+        # Past this point the keys are gone, so nothing here may raise before the
+        # config is persisted -- that would leave the config advertising references
+        # whose hashes no longer exist, the very divergence this reconciles.
+        for key, stored in stored_by_key.items():
+            if key in failed:
+                continue
+            if not stored and key in configured_by_key:
+                ref_route_name, reference = configured_by_key[key]
+            else:
+                ref_route_name = stored.get("route_name", "")
+                reference = stored.get("reference")
+            route = self.get(ref_route_name)
+            if route is None or reference not in route.references:
+                logger.warning(
+                    f"Deleted route reference {key!r} but found no matching "
+                    f"reference in the router config; the config may be stale."
+                )
+                continue
+            # Duplicate references share one hash, so every copy went with it.
+            route.references = [ref for ref in route.references if ref != reference]
+
+        # A route whose last reference was just deleted has nothing left to match,
+        # and `Route` rejects an empty reference list -- persisting one would write a
+        # config that `from_existing`/`from_dict` can no longer load, bricking the
+        # router. Deleting every reference of a route removes the route, which is
+        # what `remove_route` does when all of its keys unlink.
+        self.routes = [route for route in self.routes if route.references]
 
         self._update_router_state()
+
+        if failed:
+            raise PartialDeletionError(
+                f"Unlinked {deleted} route reference(s) but {len(failed)} failed; "
+                f"those references remain both in the index and in the router "
+                f"config. Retry to remove them.",
+                failed_keys=sorted(failed),
+                deleted=deleted,
+            )
 
         return deleted
 

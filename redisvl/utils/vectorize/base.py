@@ -184,7 +184,7 @@ class BaseVectorizer(BaseModel):
         if cache_misses:
             cache_metadata = kwargs.pop("metadata", {})
             new_embeddings = self._embed_many(
-                contents=cache_misses, batch_size=batch_size, **kwargs
+                cache_misses, batch_size=batch_size, **kwargs
             )
 
             # Store new embeddings in cache
@@ -317,7 +317,7 @@ class BaseVectorizer(BaseModel):
         if cache_misses:
             cache_metadata = kwargs.pop("metadata", {})
             new_embeddings = await self._aembed_many(
-                contents=cache_misses, batch_size=batch_size, **kwargs
+                cache_misses, batch_size=batch_size, **kwargs
             )
 
             # Store new embeddings in cache
@@ -332,45 +332,36 @@ class BaseVectorizer(BaseModel):
         # Process and return results
         return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
 
-    @deprecated_argument("text", "content")
-    def _embed(self, text: Any = "", content: Any = "", **kwargs) -> list[float]:
+    # The four hooks below are the provider extension points. Every caller —
+    # the public embed/embed_many/aembed/aembed_many above, and each provider's
+    # own _set_model_dims probe — passes the content as the first positional
+    # argument. None passes the deprecated `text`/`texts` alias, because the
+    # public methods resolve it before dispatching here.
+    def _embed(self, content: Any, **kwargs) -> list[float]:
         """Generate a vector embedding for a single item."""
         raise NotImplementedError
 
-    @deprecated_argument("texts", "contents")
     def _embed_many(
-        self,
-        contents: list[Any] | None = None,
-        texts: list[Any] | None = None,
-        batch_size: int = 10,
-        **kwargs,
+        self, contents: list[Any], batch_size: int = 10, **kwargs
     ) -> list[list[float]]:
         """Generate vector embeddings for a batch of items."""
         raise NotImplementedError
 
-    @deprecated_argument("text", "content")
-    async def _aembed(self, content: Any = "", text: Any = "", **kwargs) -> list[float]:
+    async def _aembed(self, content: Any, **kwargs) -> list[float]:
         """Asynchronously generate a vector embedding for a single item."""
         logger.warning(
             "This vectorizer has no async embed method. Falling back to sync."
         )
-        return self._embed(content=content or text, **kwargs)
+        return self._embed(content, **kwargs)
 
-    @deprecated_argument("texts", "contents")
     async def _aembed_many(
-        self,
-        contents: list[Any] | None = None,
-        texts: list[Any] | None = None,
-        batch_size: int = 10,
-        **kwargs,
+        self, contents: list[Any], batch_size: int = 10, **kwargs
     ) -> list[list[float]]:
         """Asynchronously generate vector embeddings for a batch of items."""
         logger.warning(
             "This vectorizer has no async embed_many method. Falling back to sync."
         )
-        return self._embed_many(
-            contents=contents or texts, batch_size=batch_size, **kwargs
-        )
+        return self._embed_many(contents, batch_size=batch_size, **kwargs)
 
     def _get_from_cache_batch(
         self, contents: list[Any], skip_cache: bool

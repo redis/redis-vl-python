@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
-from redisvl.mcp.auth import ensure_tool_scope
+from redisvl.mcp.auth import ensure_read_scope
 from redisvl.mcp.runtime import BindingRuntime
 
 if TYPE_CHECKING:
@@ -103,9 +103,7 @@ def register_list_indexes_tool(server: "RedisVLMCPServer") -> None:
 
     async def list_indexes_tool():
         """FastMCP wrapper for the `list-indexes` tool."""
-        auth_config = getattr(server, "auth_config", None)
-        read_scope = auth_config.read_scope if auth_config is not None else None
-        ensure_tool_scope(server, read_scope)
+        ensure_read_scope(server)
         return list_indexes(server)
 
     server.tool(name="list-indexes", description=DEFAULT_LIST_INDEXES_DESCRIPTION)(

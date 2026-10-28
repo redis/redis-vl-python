@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import threading
 import time
 import warnings
@@ -11,6 +12,7 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
+    ClassVar,
     Generator,
     Iterable,
     Iterator,
@@ -25,6 +27,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
+from redis.exceptions import RedisClusterException
 
 from redisvl.query.hybrid import HybridQuery
 from redisvl.query.query import VectorQuery
@@ -39,7 +42,7 @@ from redisvl.redis.utils import (
     make_dict,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
-from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
+from redisvl.utils.utils import deprecated_argument, sync_wrapper
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -72,9 +75,11 @@ from redisvl.query import (
     TextQuery,
 )
 from redisvl.query.aggregate import AggregateHybridQuery
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, is_match_all_filter
 from redisvl.redis.connection import (
+    _REMOVED_INDEX_KWARGS,
     RedisConnectionFactory,
+    _reject_removed_kwargs,
     _split_from_existing_kwargs,
     convert_index_info_to_schema,
     supports_svs,
@@ -222,8 +227,12 @@ class BulkResult:
         matched (int): Documents matching the filter when the run started.
         processed (int): Documents actually deleted/updated (for ``dry_run``,
             the number that *would* be processed).
-        completed (bool): False if the run stopped early (e.g. a delete hit its
-            runaway backstop under heavy concurrent inserts); re-run to finish.
+        completed (bool): False if the run stopped early — a delete hit its
+            runaway backstop under heavy concurrent inserts, or a delete batch
+            twice removed nothing (its keys failed to delete, or the index is
+            listing documents whose keys are already gone). Re-run to finish;
+            check the logged warning first, since the second case will not
+            resolve itself.
         dry_run (bool): True if this was a preview and nothing was mutated.
     """
 
@@ -233,34 +242,78 @@ class BulkResult:
     dry_run: bool = False
 
 
-def _is_match_all_filter(filter_expression: str | FilterExpression | None) -> bool:
-    """Return True if the filter would match every document in the index.
-
-    Guards the bulk ``*_by_filter`` methods against an accidental full-index
-    wipe/update. ``None`` is treated as match-all because it defaults to
-    ``FilterExpression("*")`` downstream; a default/empty ``FilterExpression``
-    (whose ``str()`` raises) is likewise treated as match-all rather than
-    surfacing an opaque error.
-    """
-    if filter_expression is None:
-        return True
-    try:
-        rendered = str(filter_expression).strip()
-    except ValueError:
-        # Improperly initialized FilterExpression() - treat as the match-all sentinel
-        return True
-    return rendered in ("", "*")
-
-
 def _require_specific_filter(
     filter_expression: str | FilterExpression | None, allow_all: bool
 ) -> None:
     """Raise unless the filter is specific or the caller opted into match-all."""
-    if not allow_all and _is_match_all_filter(filter_expression):
+    if not allow_all and is_match_all_filter(filter_expression):
         raise ValueError(
             "Refusing to run a bulk operation that matches all documents. "
             "Pass a specific filter_expression, set allow_all=True to override, "
             "or use clear() to intentionally remove every document."
+        )
+
+
+# Per-key cluster failures that the batched delete helpers log and skip rather
+# than raise. redis-py's cluster-specific errors are NOT RedisError subclasses
+# (RedisClusterException derives straight from Exception), so catching RedisError
+# alone would let SlotNotCoveredError — a routine occurrence during resharding or
+# failover, and exactly the partial-failure case these helpers exist for — escape
+# and abort the whole batch.
+_PER_KEY_DELETE_ERRORS = (redis.exceptions.RedisError, RedisClusterException)
+
+
+def _stalled(unremovable: set[str], batch_keys: list[str]) -> bool:
+    """Record a batch that removed nothing, and say whether the run is stuck.
+
+    ``drop_by_filter`` re-queries from offset 0 and bounds itself by a count of
+    *deletions*, so a batch that removes nothing leaves it looping on the same
+    documents with the counter flat — an unterminating loop.
+
+    Bailing out the first time a batch removes nothing would be wrong, though:
+    another client may have deleted exactly those documents between the search and
+    the delete, in which case they leave the index and the run could have carried
+    on. So the keys are accumulated instead, and the run is only declared stuck
+    once a fruitless batch brings back nothing that has not already failed. That
+    terminates — ``unremovable`` only grows, and it is bounded by the match set —
+    while still finishing the batches a transient race would otherwise abandon.
+    """
+    if unremovable.issuperset(batch_keys):
+        return True
+    unremovable.update(batch_keys)
+    return False
+
+
+def _warn_removed_nothing(
+    operation: str, batch_keys: list[str], failed_keys: list[str]
+) -> None:
+    """Log why a batched delete stopped before exhausting its match set.
+
+    ``drop_by_filter`` re-queries from offset 0 and bounds itself by a count of
+    *deletions*, so a batch that removes nothing twice over would leave it
+    looping on the same documents forever. It stops instead, and this says why,
+    distinguishing the two causes because only one
+    of them is worth retrying: the deletes failed (on cluster they are issued per
+    key and logged rather than raised), or the index still lists documents whose
+    keys are already gone.
+    """
+    if failed_keys:
+        logger.warning(
+            "%s stopped after a batch removed nothing: %d of %d key(s) failed to "
+            "delete (e.g. %r). Re-run to continue once the cause is resolved.",
+            operation,
+            len(failed_keys),
+            len(batch_keys),
+            failed_keys[0],
+        )
+    else:
+        logger.warning(
+            "%s stopped after a batch removed nothing: none of the %d matched "
+            "key(s) still existed. The index is listing documents whose keys are "
+            "gone, so re-running will not clear them; rebuild the index to "
+            "reconcile it.",
+            operation,
+            len(batch_keys),
         )
 
 
@@ -625,8 +678,43 @@ class BaseSearchIndex:
 
     _client_finalizer: "weakref.finalize | None" = None
 
+    # Set per subclass: the client classes this index cannot use, what it
+    # needs instead, and where to send the caller.
+    _wrong_flavour_clients: ClassVar[tuple[type, ...]]
+    _wrong_flavour_needs: ClassVar[str]
+    _wrong_flavour_advice: ClassVar[str]
+
     def __init__(*args, **kwargs):
         pass
+
+    @classmethod
+    def _reject_wrong_client_flavour(cls, redis_client: Any) -> None:
+        """Reject a sync client on an async index, or the reverse.
+
+        Uses ``isinstance`` rather than ``issubclass(type(...))`` so a
+        ``Mock(spec=...)`` of the wrong flavour is caught, since it sets
+        ``__class__``, while an unspecced mock still passes. Rests on the sync
+        and async client hierarchies staying disjoint, which holds across the
+        supported redis-py range.
+
+        Deliberately one-sided: it rejects the wrong flavour but does not
+        assert the object is a Redis client at all, so a connection pool or
+        an unrelated object still gets through and fails later. A positive
+        check would reject the unspecced mocks the test suite relies on.
+
+        Called from ``__init__`` and, ahead of the broader
+        ``validate_sync_redis``/``validate_async_redis``, from
+        ``from_existing``, so this message wins on both paths.
+        """
+        if isinstance(redis_client, cls._wrong_flavour_clients):
+            wrong = type(redis_client)
+            # Qualified name because redis.Redis and redis.asyncio.Redis share
+            # a bare __name__, which would make the message useless here.
+            raise TypeError(
+                f"{cls.__name__} requires {cls._wrong_flavour_needs}, got "
+                f"{wrong.__module__}.{wrong.__qualname__}. "
+                f"{cls._wrong_flavour_advice}"
+            )
 
     def _register_client_finalizer(self, client: Any) -> None:
         """Register a finalizer that closes ``client`` once this index is
@@ -668,6 +756,23 @@ class BaseSearchIndex:
         return any(
             isinstance(field, SVSVectorField) for field in self.schema.fields.values()
         )
+
+    def _log_query_timing(self, query: Any, start: float, results: Any) -> None:
+        """Debug-log the query type, elapsed time and result count of a query.
+
+        Only the query class name is logged, never the query string or its
+        parameters, which may carry user text or vectors.
+        """
+        if logger.isEnabledFor(logging.DEBUG):
+            # A CountQuery resolves to the match count rather than a list.
+            num_results = results if isinstance(results, int) else len(results)
+            logger.debug(
+                "Index %s executed %s in %.2f ms (%d results)",
+                self.schema.index.name,
+                type(query).__name__,
+                (time.perf_counter() - start) * 1000,
+                num_results,
+            )
 
     def _validate_query(self, query: BaseQuery) -> None:
         """Validate a query."""
@@ -803,7 +908,12 @@ class BaseSearchIndex:
         return cls(schema=schema, **kwargs)
 
     def disconnect(self):
-        """Disconnect from the Redis database."""
+        """Close the Redis client if this index owns it.
+
+        Always invalidates the cached SQL schema. When the index does not own
+        the client (see ``owns_client``), the client is left open and the
+        index remains usable.
+        """
         raise NotImplementedError("This method should be implemented by subclasses.")
 
     def key(self, id: str) -> str:
@@ -861,9 +971,20 @@ class SearchIndex(BaseSearchIndex):
         # delete index and data
         index.delete(drop=True)
 
+    Pass ``redis_client`` to use a client you configured yourself. The index
+    leaves such a client open when it is disconnected or garbage collected;
+    pass ``owns_client=True`` to hand that responsibility over.
+
+    .. code-block:: python
+
+        from redis import Redis
+        from redisvl.index import SearchIndex
+
+        client = Redis.from_url("redis://localhost:6379", socket_timeout=5)
+        index = SearchIndex.from_yaml("schemas/schema.yaml", redis_client=client)
+
     """
 
-    @deprecated_argument("connection_args", "Use connection_kwargs instead.")
     def __init__(
         self,
         schema: IndexSchema,
@@ -871,11 +992,11 @@ class SearchIndex(BaseSearchIndex):
         redis_url: str | None = None,
         connection_kwargs: dict[str, Any] | None = None,
         validate_on_load: bool = False,
+        owns_client: bool | None = None,
         **kwargs,
     ):
-        """Initialize the RedisVL search index with a schema, Redis client
-        (or URL string with other connection args), connection_args, and other
-        kwargs.
+        """Initialize the RedisVL search index with a schema and either a Redis
+        client or a URL string with other connection kwargs.
 
         Args:
             schema (IndexSchema): Index schema object.
@@ -887,12 +1008,25 @@ class SearchIndex(BaseSearchIndex):
                 args.
             validate_on_load (bool, optional): Whether to validate data against schema
                 when loading. Defaults to False.
+            owns_client (Optional[bool], optional): Whether the index closes
+                the Redis client when the index is disconnected or garbage
+                collected. Defaults to None, meaning the index owns a client
+                only if it created one itself. Pass True to hand over a client
+                you created, or False to keep one the index would otherwise
+                close, in which case closing it becomes your responsibility.
+
+        Raises:
+            ValueError: If ``schema`` is not an IndexSchema.
+            TypeError: If ``redis_client`` is the wrong flavour, or if a
+                keyword that no longer exists is passed. ``connection_args``
+                and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        if "connection_args" in kwargs:
-            connection_kwargs = kwargs.pop("connection_args")
+        _reject_removed_kwargs(kwargs, _REMOVED_INDEX_KWARGS)
 
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
+
+        self._reject_wrong_client_flavour(redis_client)
 
         self.schema = schema
         self._validate_on_load = validate_on_load
@@ -906,20 +1040,37 @@ class SearchIndex(BaseSearchIndex):
         self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
+        # Must be assigned before _register_client_finalizer, which gates on
+        # this flag.
+        self._owns_redis_client = (
+            redis_client is None if owns_client is None else bool(owns_client)
+        )
         self._client_finalizer = None
+        # Whether the caller handed us a client. If they did and gave no URL,
+        # there is nothing to rebuild from once that client is closed.
+        self._client_was_injected = redis_client is not None
         # Close the owned client when this index is garbage collected. When
         # the client is created lazily, registration happens at creation time
         # instead (see the _redis_client property).
         self._register_client_finalizer(redis_client)
 
     _finalizer_close_client = staticmethod(_close_owned_sync_client)
+    _wrong_flavour_clients = (AsyncRedis, AsyncRedisCluster)
+    _wrong_flavour_needs = "a sync Redis client"
+    _wrong_flavour_advice = (
+        "Pass a sync client here, or use AsyncSearchIndex for async clients."
+    )
 
     def disconnect(self):
-        """Disconnect from the Redis database."""
+        """Close the Redis client if this index owns it.
+
+        Always invalidates the cached SQL schema. When the index does not own
+        the client (see ``owns_client``), the client is left open and the
+        index remains usable.
+        """
         self.invalidate_sql_schema_cache()
-        if self._owns_redis_client is False:
-            logger.info("Index does not own client, not disconnecting")
+        if not self._owns_redis_client:
+            logger.info("Index does not own its client; leaving it open")
             return
         self._detach_client_finalizer()
         if self.__redis_client:
@@ -943,18 +1094,24 @@ class SearchIndex(BaseSearchIndex):
                 instantiated redis client.
             redis_url (Optional[str]): The URL of the Redis server to
                 connect to.
+            owns_client (Optional[bool], optional): Whether the index closes
+                the client. Defaults to True when this method created the
+                client from `redis_url`, and False when you supplied one.
+            connection_kwargs (Optional[Dict[str, Any]]): Redis client
+                connection args, used only when this method creates the
+                client from ``redis_url``. Other keyword arguments are
+                treated the same way.
 
         Raises:
             ValueError: If redis_url or redis_client is not provided.
         """
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs", "connection_args"),
-        )
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
         lib_name = cast(str | None, init_kwargs.get("lib_name"))
         created_redis_client = False
 
         if redis_client:
+            # Ahead of validate_*_redis, whose message is generic.
+            cls._reject_wrong_client_flavour(redis_client)
             # Validate client type and set lib name
             RedisConnectionFactory.validate_sync_redis(redis_client, lib_name)
             # Mark that client was already validated to avoid duplicate calls
@@ -978,7 +1135,12 @@ class SearchIndex(BaseSearchIndex):
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
         if created_redis_client:
-            init_kwargs["_owns_redis_client"] = True
+            # An explicit owns_client=None means "infer", and __init__ infers
+            # from redis_client -- non-None here, so it would read as
+            # not-owned and leak the client this method just built. Treat an
+            # unanswered value as the documented default.
+            if init_kwargs.get("owns_client") is None:
+                init_kwargs["owns_client"] = True
             return cls(
                 schema,
                 redis_client=redis_client,
@@ -1001,6 +1163,13 @@ class SearchIndex(BaseSearchIndex):
         Lazily creates a Redis client instance if it doesn't exist.
         """
         if self.__redis_client is None:
+            if self._client_was_injected and self._redis_url is None:
+                raise RedisVLError(
+                    "This index was given a Redis client and that client has "
+                    "been closed, so there is nothing left to connect with. "
+                    "Build a new index, or pass redis_url so the index can "
+                    "manage its own connection."
+                )
             with self._lock:
                 if self.__redis_client is None:
                     # Pass lib_name to connection factory
@@ -1020,52 +1189,6 @@ class SearchIndex(BaseSearchIndex):
             )
             self._validated_client = True
         return self.__redis_client
-
-    @deprecated_function("connect", "Pass connection parameters in __init__.")
-    def connect(self, redis_url: str | None = None, **kwargs):
-        """Connect to a Redis instance using the provided `redis_url`, falling
-        back to the `REDIS_URL` environment variable (if available).
-
-        Note: Additional keyword arguments (`**kwargs`) can be used to provide
-        extra options specific to the Redis connection.
-
-        Args:
-            redis_url (Optional[str], optional): The URL of the Redis server to
-                connect to.
-
-        Raises:
-            redis.exceptions.ConnectionError: If the connection to the Redis
-                server fails.
-            ValueError: If the Redis URL is not provided nor accessible
-                through the `REDIS_URL` environment variable.
-            ModuleNotFoundError: If required Redis modules are not installed.
-        """
-        self.invalidate_sql_schema_cache()
-        self.__redis_client = RedisConnectionFactory.get_redis_connection(
-            redis_url=redis_url, **kwargs
-        )
-        self._register_client_finalizer(self.__redis_client)
-
-    @deprecated_function("set_client", "Pass connection parameters in __init__.")
-    def set_client(self, redis_client: SyncRedisClient, **kwargs):
-        """Manually set the Redis client to use with the search index.
-
-        This method configures the search index to use a specific Redis or
-        Async Redis client. It is useful for cases where an external,
-        custom-configured client is preferred instead of creating a new one.
-
-        Args:
-            redis_client (Redis): A Redis or Async Redis
-                client instance to be used for the connection.
-
-        Raises:
-            TypeError: If the provided client is not valid.
-        """
-        RedisConnectionFactory.validate_sync_redis(redis_client)
-        self.invalidate_sql_schema_cache()
-        self.__redis_client = redis_client
-        self._register_client_finalizer(redis_client)
-        return self
 
     def _check_svs_support(self) -> None:
         """Validate SVS-VAMANA support.
@@ -1194,31 +1317,39 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
-    def _delete_batch(self, batch_keys: list[str]) -> int:
+    def _delete_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Delete a batch of keys from Redis.
 
-        For Redis Cluster, keys are deleted individually due to potential
-        cross-slot limitations. For standalone Redis, keys are deleted in
-        a single operation for better performance.
+        On Redis Cluster, keys are deleted one at a time. redis-py would happily
+        accept a variadic cross-slot ``DELETE`` (it splits the keys by slot
+        itself), but it returns a single summed count, so one failing slot would
+        cost us the whole batch's count and any idea of which keys survived.
+        Standalone Redis deletes in one round-trip.
 
         Args:
             batch_keys (List[str]): List of Redis keys to delete.
 
         Returns:
-            int: Count of records deleted from Redis.
+            Tuple[int, List[str]]: Count of records deleted from Redis, and the
+            keys whose ``DELETE`` raised. Only the per-key cluster path reports
+            failures — it logs and continues so one bad key does not abort the
+            batch. On standalone Redis a failure propagates to the caller, so the
+            failed list is always empty there.
         """
         client = cast(SyncRedisClient, self._redis_client)
         is_cluster = isinstance(client, RedisCluster)
+        failed: list[str] = []
         if is_cluster:
             records_deleted_in_batch = 0
             for key_to_delete in batch_keys:
                 try:
                     records_deleted_in_batch += cast(int, client.delete(key_to_delete))
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to delete key {key_to_delete}: {e}")
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to delete key {key_to_delete!r}: {e}")
+                    failed.append(key_to_delete)
         else:
             records_deleted_in_batch = cast(int, client.delete(*batch_keys))
-        return records_deleted_in_batch
+        return records_deleted_in_batch, failed
 
     def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
@@ -1269,7 +1400,7 @@ class SearchIndex(BaseSearchIndex):
                 break
 
             batch_keys = [record["id"] for record in batch]
-            records_deleted = self._delete_batch(batch_keys)
+            records_deleted, _ = self._delete_batch(batch_keys)
             total_records_deleted += records_deleted
 
             if records_deleted:
@@ -1299,31 +1430,64 @@ class SearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    def _unlink_batch(self, batch_keys: list[str]) -> int:
+    def _unlink_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Unlink a batch of keys from Redis.
 
-        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
-        Cluster, keys are unlinked individually to avoid cross-slot errors;
-        for standalone Redis a single variadic ``UNLINK`` is used.
+        Mirrors ``_delete_batch``, including its per-key cluster loop and the
+        reason for it, but uses non-blocking ``UNLINK``.
 
         Args:
             batch_keys (List[str]): List of Redis keys to unlink.
 
         Returns:
-            int: Count of records unlinked from Redis.
+            Tuple[int, List[str]]: Count of records unlinked from Redis, and the
+            keys whose ``UNLINK`` raised. Only the per-key cluster path reports
+            failures — it logs and continues so one bad key does not abort the
+            batch. On standalone Redis a failure propagates to the caller, so
+            the failed list is always empty there.
         """
         client = cast(SyncRedisClient, self._redis_client)
 
         if isinstance(client, RedisCluster):
             unlinked = 0
+            failed: list[str] = []
             for key_to_unlink in batch_keys:
                 try:
                     unlinked += cast(int, client.unlink(key_to_unlink))
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
-            return unlinked
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to unlink key {key_to_unlink!r}: {e}")
+                    failed.append(key_to_unlink)
+            return unlinked, failed
 
-        return cast(int, client.unlink(*batch_keys))
+        return cast(int, client.unlink(*batch_keys)), []
+
+    def _drop_keys(
+        self, keys: list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> tuple[int, list[str]]:
+        """Unlink keys in batches, surfacing the ones that could not be unlinked.
+
+        Backs :meth:`drop_keys` for callers that mirror the keyspace in their own
+        state and must not record a key as gone when its ``UNLINK`` failed — for
+        example ``SemanticRouter``, which persists a route config listing the
+        references it holds. On Redis Cluster a per-key ``RedisError`` is logged
+        rather than raised, so without the failed-key list a partial failure is
+        indistinguishable from keys that simply did not exist.
+
+        Args:
+            keys (List[str]): Redis keys to unlink.
+            batch_size (int): Number of keys to unlink per round-trip.
+
+        Returns:
+            Tuple[int, List[str]]: Count of records unlinked, and the keys that
+            failed to unlink.
+        """
+        total = 0
+        failed: list[str] = []
+        for i in range(0, len(keys), batch_size):
+            unlinked, batch_failed = self._unlink_batch(keys[i : i + batch_size])
+            total += unlinked
+            failed.extend(batch_failed)
+        return total, failed
 
     def drop_keys(
         self, keys: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
@@ -1345,6 +1509,14 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Note:
+            The returned count can be lower than the number of keys requested,
+            either because a key did not exist or, on Redis Cluster, because its
+            ``UNLINK`` failed — a per-key cluster failure is logged rather than
+            raised so one bad key does not abort the batch, and the count alone
+            cannot tell the two cases apart. A single key passed as a ``str`` is
+            not batched, so a failure there does propagate to the caller.
         """
         if not isinstance(keys, list):
             return self._redis_client.unlink(keys)  # type: ignore
@@ -1352,9 +1524,7 @@ class SearchIndex(BaseSearchIndex):
         if not keys:
             return 0
 
-        total = 0
-        for i in range(0, len(keys), batch_size):
-            total += self._unlink_batch(keys[i : i + batch_size])
+        total, _ = self._drop_keys(keys, batch_size)
         return total
 
     def drop_documents(
@@ -1461,8 +1631,9 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             BulkResult: ``matched``/``processed`` counts, plus ``completed``
-            (False if the runaway backstop tripped) and ``dry_run``. Read the
-            fields explicitly (``result.processed``, ``result.completed``).
+            (False if the runaway backstop tripped, or if the run stopped on a
+            batch it could not remove) and ``dry_run``. Read the fields
+            explicitly (``result.processed``, ``result.completed``).
 
         See Also:
             :meth:`update_by_filter` (bulk partial update), :meth:`drop_documents`
@@ -1489,6 +1660,7 @@ class SearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
         total_deleted = 0
         completed = True
+        unremovable: set[str] = set()
         query = FilterQuery(filter_expression, return_fields=["id"])
         query.paging(0, batch_size)
 
@@ -1506,7 +1678,14 @@ class SearchIndex(BaseSearchIndex):
             if not batch:
                 break
             batch_keys = [record["id"] for record in batch]
-            total_deleted += self._unlink_batch(batch_keys)
+            unlinked, failed_keys = self._unlink_batch(batch_keys)
+            total_deleted += unlinked
+            if not unlinked:
+                if _stalled(unremovable, batch_keys):
+                    _warn_removed_nothing("drop_by_filter", batch_keys, failed_keys)
+                    completed = False
+                    break
+                continue
             if on_progress is not None:
                 on_progress(total_deleted, matched)
 
@@ -2059,14 +2238,17 @@ class SearchIndex(BaseSearchIndex):
             results = index.query(query)
 
         """
+        start = time.perf_counter()
         if isinstance(query, AggregationQuery):
-            return self._aggregate(query)
+            results = self._aggregate(query)
         elif isinstance(query, SQLQuery):
-            return self._sql_query(query)
+            results = self._sql_query(query)
         elif isinstance(query, HybridQuery):
-            return self._hybrid_search(query)
+            results = self._hybrid_search(query)
         else:
-            return self._query(query)
+            results = self._query(query)
+        self._log_query_timing(query, start, results)
+        return results
 
     def paginate(self, query: BaseQuery, page_size: int = 30) -> Generator:
         """Execute a given query against the index and return results in
@@ -2245,9 +2427,20 @@ class AsyncSearchIndex(BaseSearchIndex):
         # delete index and data
         await index.delete(drop=True)
 
+    Pass ``redis_client`` to use a client you configured yourself. The index
+    leaves such a client open when it is disconnected or garbage collected;
+    pass ``owns_client=True`` to hand that responsibility over.
+
+    .. code-block:: python
+
+        from redis.asyncio import Redis
+        from redisvl.index import AsyncSearchIndex
+
+        client = Redis.from_url("redis://localhost:6379", socket_timeout=5)
+        index = AsyncSearchIndex.from_yaml("schemas/schema.yaml", redis_client=client)
+
     """
 
-    @deprecated_argument("redis_kwargs", "Use connection_kwargs instead.")
     def __init__(
         self,
         schema: IndexSchema,
@@ -2256,6 +2449,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         redis_client: AsyncRedisClient | None = None,
         connection_kwargs: dict[str, Any] | None = None,
         validate_on_load: bool = False,
+        owns_client: bool | None = None,
         **kwargs,
     ):
         """Initialize the RedisVL async search index with a schema.
@@ -2270,19 +2464,36 @@ class AsyncSearchIndex(BaseSearchIndex):
                 args.
             validate_on_load (bool, optional): Whether to validate data against schema
                 when loading. Defaults to False.
+            owns_client (Optional[bool], optional): Whether the index closes
+                the Redis client when the index is disconnected or garbage
+                collected. Defaults to None, meaning the index owns a client
+                only if it created one itself. Pass True to hand over a client
+                you created, or False to keep one the index would otherwise
+                close, in which case closing it becomes your responsibility.
+
+        Raises:
+            ValueError: If ``schema`` is not an IndexSchema.
+            TypeError: If ``redis_client`` is the wrong flavour, or if a
+                keyword that no longer exists is passed. ``connection_args``
+                and ``redis_kwargs`` are both now ``connection_kwargs``.
         """
-        if "redis_kwargs" in kwargs:
-            connection_kwargs = kwargs.pop("redis_kwargs")
+        _reject_removed_kwargs(kwargs, _REMOVED_INDEX_KWARGS)
 
         # final validation on schema object
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
 
+        self._reject_wrong_client_flavour(redis_client)
+
         self.schema = schema
         self._validate_on_load = validate_on_load
         self._lib_name: str | None = kwargs.pop("lib_name", None)
 
-        # Store connection parameters
+        # Store connection parameters. Note the asymmetry with SearchIndex:
+        # there, _redis_client is a property that lazily creates the client,
+        # whereas here it is a plain attribute that stays None until
+        # _get_client() creates one. Read it through _get_client(), not
+        # directly.
         self._redis_client = redis_client
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
@@ -2290,14 +2501,27 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
+        # Must be assigned before _register_client_finalizer, which gates on
+        # this flag.
+        self._owns_redis_client = (
+            redis_client is None if owns_client is None else bool(owns_client)
+        )
         self._client_finalizer = None
+        # See the note in SearchIndex.__init__.
+        self._client_was_injected = redis_client is not None
         # Close the owned client when this index is garbage collected. When
         # the client is created lazily, registration happens at creation time
         # instead (see _get_client).
         self._register_client_finalizer(redis_client)
 
     _finalizer_close_client = staticmethod(_close_owned_async_client)
+    _wrong_flavour_clients = (Redis, RedisCluster)
+    _wrong_flavour_needs = "an async Redis client"
+    _wrong_flavour_advice = (
+        "Pass an async client here, use SearchIndex for sync clients, or "
+        "convert a non-cluster client with "
+        "RedisConnectionFactory.sync_to_async_redis()."
+    )
 
     @classmethod
     async def from_existing(
@@ -2316,20 +2540,29 @@ class AsyncSearchIndex(BaseSearchIndex):
                 instantiated redis client.
             redis_url (Optional[str]): The URL of the Redis server to
                 connect to.
+            owns_client (Optional[bool], optional): Whether the index closes
+                the client. Defaults to True when this method created the
+                client from `redis_url`, and False when you supplied one.
+            connection_kwargs (Optional[Dict[str, Any]]): Redis client
+                connection args, used only when this method creates the
+                client from ``redis_url``. Other keyword arguments are
+                treated the same way.
         """
+        # Split before the presence check below: redis_kwargs was the async
+        # alias, so a caller passing it with no client would otherwise get the
+        # generic ValueError rather than being told the current spelling.
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
+
         if not redis_url and not redis_client:
             raise ValueError(
                 "Must provide either a redis_url or redis_client to fetch Redis index info."
             )
-
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs", "redis_kwargs"),
-        )
         lib_name = cast(str | None, init_kwargs.get("lib_name"))
         created_redis_client = False
 
         if redis_client:
+            # Ahead of validate_*_redis, whose message is generic.
+            cls._reject_wrong_client_flavour(redis_client)
             # Validate client type and set lib name
             await RedisConnectionFactory.validate_async_redis(redis_client, lib_name)
             # Mark that client was already validated to avoid duplicate calls
@@ -2356,7 +2589,12 @@ class AsyncSearchIndex(BaseSearchIndex):
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
         if created_redis_client:
-            init_kwargs["_owns_redis_client"] = True
+            # An explicit owns_client=None means "infer", and __init__ infers
+            # from redis_client -- non-None here, so it would read as
+            # not-owned and leak the client this method just built. Treat an
+            # unanswered value as the documented default.
+            if init_kwargs.get("owns_client") is None:
+                init_kwargs["owns_client"] = True
             return cls(
                 schema,
                 redis_client=redis_client,
@@ -2371,36 +2609,16 @@ class AsyncSearchIndex(BaseSearchIndex):
         """The underlying redis-py client object."""
         return self._redis_client
 
-    @deprecated_function("connect", "Pass connection parameters in __init__.")
-    async def connect(self, redis_url: str | None = None, **kwargs):
-        """[DEPRECATED] Connect to a Redis instance. Use connection parameters in __init__."""
-        warnings.warn(
-            "connect() is deprecated; pass connection parameters in __init__",
-            DeprecationWarning,
-        )
-        self.invalidate_sql_schema_cache()
-        client = await RedisConnectionFactory._get_aredis_connection(
-            redis_url=redis_url, **kwargs
-        )
-        await self.set_client(client)
-
-    @deprecated_function("set_client", "Pass connection parameters in __init__.")
-    async def set_client(self, redis_client: AsyncRedisClient | SyncRedisClient):
-        """
-        [DEPRECATED] Manually set the Redis client to use with the search index.
-        This method is deprecated; please provide connection parameters in __init__.
-        """
-        redis_client = await self._validate_client(redis_client)
-        self.invalidate_sql_schema_cache()
-        await self.disconnect()
-        async with self._lock:
-            self._redis_client = redis_client
-        self._register_client_finalizer(redis_client)
-        return self
-
     async def _get_client(self) -> AsyncRedisClient:
         """Lazily instantiate and return the async Redis client."""
         if self._redis_client is None:
+            if self._client_was_injected and self._redis_url is None:
+                raise RedisVLError(
+                    "This index was given a Redis client and that client has "
+                    "been closed, so there is nothing left to connect with. "
+                    "Build a new index, or pass redis_url so the index can "
+                    "manage its own connection."
+                )
             async with self._lock:
                 # Double-check to protect against concurrent access
                 if self._redis_client is None:
@@ -2422,30 +2640,6 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
             self._validated_client = True
         return self._redis_client
-
-    async def _validate_client(
-        self, redis_client: AsyncRedisClient | SyncRedisClient
-    ) -> AsyncRedisClient:
-        # Handle deprecated sync client conversion
-        if isinstance(redis_client, (Redis, RedisCluster)):
-            warnings.warn(
-                "Passing a sync Redis client to AsyncSearchIndex is deprecated "
-                "and will be removed in the next major version. Please use an "
-                "async Redis client instead.",
-                DeprecationWarning,
-            )
-            # Use a new variable name
-            async_redis_client: AsyncRedisClient = (
-                RedisConnectionFactory.sync_to_async_redis(redis_client)
-            )
-            return async_redis_client  # Return the converted client
-        # Check if it's a valid async client (standard or cluster)
-        elif not isinstance(redis_client, (AsyncRedis, AsyncRedisCluster)):
-            raise ValueError(
-                "Invalid async client type: must be AsyncRedis or AsyncRedisCluster"
-            )
-        # If it passed the elif, it's already an AsyncRedisClient
-        return redis_client
 
     @staticmethod
     async def _info(name: str, redis_client: AsyncRedisClient) -> dict[str, Any]:
@@ -2594,21 +2788,22 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
-    async def _delete_batch(self, batch_keys: list[str]) -> int:
+    async def _delete_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Delete a batch of keys from Redis.
 
-        For Redis Cluster, keys are deleted individually due to potential
-        cross-slot limitations. For standalone Redis, keys are deleted in
-        a single operation for better performance.
+        See :meth:`SearchIndex._delete_batch` for the per-key cluster rationale
+        and the return contract.
 
         Args:
             batch_keys (List[str]): List of Redis keys to delete.
 
         Returns:
-            int: Count of records deleted from Redis.
+            Tuple[int, List[str]]: Count of records deleted, and the keys whose
+            ``DELETE`` raised.
         """
         client = await self._get_client()
         is_cluster = isinstance(client, AsyncRedisCluster)
+        failed: list[str] = []
         if is_cluster:
             records_deleted_in_batch = 0
             for key_to_delete in batch_keys:
@@ -2616,11 +2811,12 @@ class AsyncSearchIndex(BaseSearchIndex):
                     records_deleted_in_batch += cast(
                         int, await client.delete(key_to_delete)
                     )
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to delete key {key_to_delete}: {e}")
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to delete key {key_to_delete!r}: {e}")
+                    failed.append(key_to_delete)
         else:
             records_deleted_in_batch = await client.delete(*batch_keys)
-        return records_deleted_in_batch
+        return records_deleted_in_batch, failed
 
     async def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
@@ -2668,7 +2864,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 break
 
             batch_keys = [record["id"] for record in batch]
-            records_deleted = await self._delete_batch(batch_keys)
+            records_deleted, _ = await self._delete_batch(batch_keys)
             total_records_deleted += records_deleted
 
             if records_deleted:
@@ -2698,24 +2894,41 @@ class AsyncSearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    async def _unlink_batch(self, batch_keys: list[str]) -> int:
+    async def _unlink_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Unlink a batch of keys from Redis (async).
 
-        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
-        Cluster, keys are unlinked individually to avoid cross-slot errors.
+        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. See
+        :meth:`SearchIndex._unlink_batch` for the return contract.
         """
         client = await self._get_client()
 
         if isinstance(client, AsyncRedisCluster):
             unlinked = 0
+            failed: list[str] = []
             for key_to_unlink in batch_keys:
                 try:
                     unlinked += cast(int, await client.unlink(key_to_unlink))
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
-            return unlinked
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to unlink key {key_to_unlink!r}: {e}")
+                    failed.append(key_to_unlink)
+            return unlinked, failed
 
-        return cast(int, await client.unlink(*batch_keys))
+        return cast(int, await client.unlink(*batch_keys)), []
+
+    async def _drop_keys(
+        self, keys: list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> tuple[int, list[str]]:
+        """Unlink keys in batches, surfacing the ones that could not be unlinked.
+
+        See :meth:`SearchIndex._drop_keys` for full semantics.
+        """
+        total = 0
+        failed: list[str] = []
+        for i in range(0, len(keys), batch_size):
+            unlinked, batch_failed = await self._unlink_batch(keys[i : i + batch_size])
+            total += unlinked
+            failed.extend(batch_failed)
+        return total, failed
 
     async def drop_keys(
         self, keys: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
@@ -2737,6 +2950,14 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Note:
+            The returned count can be lower than the number of keys requested,
+            either because a key did not exist or, on Redis Cluster, because its
+            ``UNLINK`` failed — a per-key cluster failure is logged rather than
+            raised so one bad key does not abort the batch, and the count alone
+            cannot tell the two cases apart. A single key passed as a ``str`` is
+            not batched, so a failure there does propagate to the caller.
         """
         client = await self._get_client()
 
@@ -2746,9 +2967,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         if not keys:
             return 0
 
-        total = 0
-        for i in range(0, len(keys), batch_size):
-            total += await self._unlink_batch(keys[i : i + batch_size])
+        total, _ = await self._drop_keys(keys, batch_size)
         return total
 
     async def drop_documents(
@@ -2843,6 +3062,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
         total_deleted = 0
         completed = True
+        unremovable: set[str] = set()
         query = FilterQuery(filter_expression, return_fields=["id"])
         query.paging(0, batch_size)
 
@@ -2860,7 +3080,14 @@ class AsyncSearchIndex(BaseSearchIndex):
             if not batch:
                 break
             batch_keys = [record["id"] for record in batch]
-            total_deleted += await self._unlink_batch(batch_keys)
+            unlinked, failed_keys = await self._unlink_batch(batch_keys)
+            total_deleted += unlinked
+            if not unlinked:
+                if _stalled(unremovable, batch_keys):
+                    _warn_removed_nothing("drop_by_filter", batch_keys, failed_keys)
+                    completed = False
+                    break
+                continue
             if on_progress is not None:
                 on_progress(total_deleted, matched)
 
@@ -3368,14 +3595,17 @@ class AsyncSearchIndex(BaseSearchIndex):
 
             results = await index.query(query)
         """
+        start = time.perf_counter()
         if isinstance(query, AggregationQuery):
-            return await self._aggregate(query)
+            results = await self._aggregate(query)
         elif isinstance(query, SQLQuery):
-            return await self._sql_query(query)
+            results = await self._sql_query(query)
         elif isinstance(query, HybridQuery):
-            return await self._hybrid_search(query)
+            results = await self._hybrid_search(query)
         else:
-            return await self._query(query)
+            results = await self._query(query)
+        self._log_query_timing(query, start, results)
+        return results
 
     async def paginate(self, query: BaseQuery, page_size: int = 30) -> AsyncGenerator:
         """Execute a given query against the index and return results in
@@ -3509,8 +3739,14 @@ class AsyncSearchIndex(BaseSearchIndex):
         return await self._info(index_name, client)
 
     async def disconnect(self):
+        """Close the Redis client if this index owns it.
+
+        Always invalidates the cached SQL schema. When the index does not own
+        the client (see ``owns_client``), the client is left open and the
+        index remains usable.
+        """
         self.invalidate_sql_schema_cache()
-        if self._owns_redis_client is False:
+        if not self._owns_redis_client:
             return
         self._detach_client_finalizer()
         if self._redis_client is not None:
@@ -3518,7 +3754,15 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._redis_client = None
 
     def disconnect_sync(self):
-        if self._redis_client is None or self._owns_redis_client is False:
+        """Close an owned Redis client from synchronous code.
+
+        For callers outside an event loop, such as ``__del__`` or a shutdown
+        hook. Honours ``owns_client`` exactly as :meth:`disconnect` does.
+
+        Does nothing if a loop is already running, since it cannot await the
+        close from inside one. Use :meth:`disconnect` there.
+        """
+        if self._redis_client is None or not self._owns_redis_client:
             return
         sync_wrapper(self.disconnect)()
 

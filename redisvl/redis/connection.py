@@ -1,5 +1,6 @@
 import os
-from typing import Any, Sequence, TypeVar, overload
+from collections.abc import Mapping
+from typing import Any, TypeVar, overload
 from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 from warnings import warn
 
@@ -22,20 +23,73 @@ from redisvl.redis.constants import (
     SVS_MIN_SEARCH_VERSION,
 )
 from redisvl.redis.utils import convert_bytes, is_cluster_url, make_dict
-from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
+from redisvl.types import AsyncRedisClient, SyncRedisClient
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_argument, deprecated_function
 
 logger = get_logger(__name__)
 
 
+# Old spellings and their current equivalents. Kept as tables so **kwargs
+# cannot swallow one in silence: a caller who passes an old name is told the
+# current one, rather than having it ignored or forwarded to redis-py as an
+# unexpected argument.
+#
+# One table per entry point, so a caller is only told about keywords its own
+# door ever accepted. Add a new entry to the table for the door that used to
+# accept it: _REMOVED_INDEX_KWARGS for the SearchIndex and AsyncSearchIndex
+# constructors and their from_existing, _REMOVED_FACTORY_KWARGS for the
+# RedisConnectionFactory.get_*_connection functions. A keyword both doors
+# accepted belongs in both. Entries are safe to drop once no supported
+# caller still passes them; until then they cost nothing.
+_REMOVED_INDEX_KWARGS = {
+    "connection_args": "connection_kwargs",
+    "redis_kwargs": "connection_kwargs",
+    "_owns_redis_client": "owns_client",
+}
+
+_REMOVED_FACTORY_KWARGS = {"url": "redis_url"}
+
+
+def _reject_removed_kwargs(
+    kwargs: Mapping[str, Any], removed: Mapping[str, str]
+) -> None:
+    """Raise if a caller passed a keyword that no longer exists.
+
+    The message names the keyword and its replacement only. Connection
+    keywords carry passwords, so echoing a rejected value would put a live
+    credential into an exception string and from there into logs.
+
+    It says "not a supported keyword" rather than "no longer supported"
+    because even within one table a name need not have been accepted
+    everywhere: ``url`` reached the two async factories but never
+    ``get_redis_connection``.
+
+    Args:
+        kwargs: The caller's leftover keyword arguments.
+        removed: The table for this entry point, either
+            ``_REMOVED_INDEX_KWARGS`` or ``_REMOVED_FACTORY_KWARGS``.
+    """
+    for name, replacement in removed.items():
+        if name in kwargs:
+            raise TypeError(f"{name} is not a supported keyword; use {replacement}")
+
+
 def _split_from_existing_kwargs(
-    kwargs: dict[str, Any], *, nested_connection_keys: Sequence[str]
+    kwargs: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split ``from_existing`` kwargs into constructor and connection halves.
+
+    Consumes ``kwargs`` in place. ``connection_kwargs`` is merged flat into
+    the connection half, so a caller may either nest or spread it. Removed
+    keywords are rejected first, so a stale spelling fails here rather than
+    reaching redis-py as an unexpected argument.
+    """
+    _reject_removed_kwargs(kwargs, _REMOVED_INDEX_KWARGS)
+
     init_kwargs: dict[str, Any] = {}
     connection_kwargs: dict[str, Any] = {}
 
-    for key in ("validate_on_load", "lib_name"):
+    for key in ("validate_on_load", "lib_name", "owns_client"):
         if key in kwargs:
             init_kwargs[key] = kwargs.pop(key)
 
@@ -43,10 +97,9 @@ def _split_from_existing_kwargs(
         if key.startswith("_"):
             init_kwargs[key] = kwargs.pop(key)
 
-    for key in nested_connection_keys:
-        nested_kwargs = kwargs.pop(key, None)
-        if nested_kwargs is not None:
-            connection_kwargs.update(nested_kwargs)
+    nested_kwargs = kwargs.pop("connection_kwargs", None)
+    if nested_kwargs is not None:
+        connection_kwargs.update(nested_kwargs)
 
     connection_kwargs.update(kwargs)
     return init_kwargs, connection_kwargs
@@ -265,6 +318,34 @@ def normalize_index_definition(index_info: dict[str, Any]) -> dict[str, Any]:
     return _normalize_index_info_mapping(index_info.get("index_definition"))
 
 
+# Vector parameter names that parse_vector_attrs reads from FT.INFO. In a
+# RESP2 unified ``flags`` list, only these are paired with the next token, so
+# an unknown bare token costs one position instead of shifting every pair.
+_VECTOR_PARAM_KEYS = frozenset(
+    {
+        "algorithm",
+        "data_type",
+        "datatype",
+        "type",
+        "dim",
+        "dims",
+        "distance_metric",
+        "initial_cap",
+        "block_size",
+        "m",
+        "ef_construction",
+        "ef_runtime",
+        "epsilon",
+        "compression",
+        "reduce",
+        "graph_max_degree",
+        "construction_window_size",
+        "search_window_size",
+        "training_threshold",
+    }
+)
+
+
 def normalize_index_fields(index_info: dict[str, Any]) -> list[dict[str, Any]]:
     """Return FT.INFO field entries in mapping form."""
     return [
@@ -320,6 +401,18 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                 for key, value in attrs.items()
                 if key not in {"identifier", "attribute", "type", "flags"}
             }
+            # redis-py 8 on RESP2 with legacy_responses=False puts the vector
+            # params in "flags" as key/value pairs, possibly followed by
+            # valueless modifiers: ["algorithm", "FLAT", "dim", 4, "INDEXMISSING"]
+            flags = attrs.get("flags") or []
+            i = 0
+            while i < len(flags):
+                key = str(flags[i]).lower()
+                if key not in _VECTOR_PARAM_KEYS or i + 1 >= len(flags):
+                    i += 1
+                    continue
+                vector_attrs.setdefault(key, flags[i + 1])
+                i += 2
         else:
             # Check if we have any attributes beyond the type declaration
             if len(attrs) <= 6:
@@ -355,10 +448,18 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         normalized = {}
 
         # Handle dims/dim field - REQUIRED for vector fields
-        if "dim" in vector_attrs:
-            normalized["dims"] = int(vector_attrs.pop("dim"))
-        elif "dims" in vector_attrs:
-            normalized["dims"] = int(vector_attrs["dims"])
+        if "dim" in vector_attrs or "dims" in vector_attrs:
+            raw_dims = (
+                vector_attrs.pop("dim")
+                if "dim" in vector_attrs
+                else vector_attrs["dims"]
+            )
+            try:
+                normalized["dims"] = int(raw_dims)
+            except (ValueError, TypeError):
+                # Unparseable dims: fall through to the required-dims check
+                # below, which skips the field with a warning.
+                pass
         else:
             # If dims is missing from normal parsing, try scanning the raw attrs
             # This handles edge cases where the format is unexpected
@@ -551,6 +652,14 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             if attrs is None:
                 # Vector field attributes cannot be parsed on this Redis version
                 # Skip this field - it cannot be properly reconstructed
+                logger.warning(
+                    "Skipping vector field %r of index %r: could not parse its "
+                    "attributes from FT.INFO. The recovered schema is incomplete, "
+                    "and recreating the index from it (e.g. create(overwrite=True)) "
+                    "drops this field.",
+                    name,
+                    index_name,
+                )
                 continue
             field["attrs"] = attrs
         else:
@@ -583,37 +692,6 @@ class RedisConnectionFactory:
     configuration.
     """
 
-    @classmethod
-    @deprecated_function(
-        "connect", "Please use `get_redis_connection` or `get_async_redis_connection`."
-    )
-    def connect(
-        cls, redis_url: str | None = None, use_async: bool = False, **kwargs
-    ) -> RedisClient:
-        """Create a connection to the Redis database based on a URL and some
-        connection kwargs.
-
-        This method sets up either a synchronous or asynchronous Redis client
-        based on the provided parameters.
-
-        Args:
-            redis_url (Optional[str]): The URL of the Redis server to connect
-                to. If not provided, the environment variable REDIS_URL is used.
-            use_async (bool): If True, an asynchronous client is created.
-                Defaults to False.
-            **kwargs: Additional keyword arguments to be passed to the Redis
-                client constructor.
-
-        Raises:
-            ValueError: If redis_url is not provided and REDIS_URL environment
-                variable is not set.
-        """
-        redis_url = redis_url or get_address_from_env()
-        connection_func = (
-            cls.get_async_redis_connection if use_async else cls.get_redis_connection
-        )
-        return connection_func(redis_url, **kwargs)  # type: ignore
-
     @staticmethod
     def get_redis_connection(
         redis_url: str | None = None,
@@ -622,18 +700,22 @@ class RedisConnectionFactory:
         """Creates and returns a synchronous Redis client.
 
         Args:
-            url (Optional[str]): The URL of the Redis server. If not provided,
-                the environment variable REDIS_URL is used.
+            redis_url (Optional[str]): The URL of the Redis server. If not
+                provided, the environment variable REDIS_URL is used.
             **kwargs: Additional keyword arguments to be passed to the Redis
                 client constructor.
 
         Returns:
-            Redis: A synchronous Redis client instance.
+            SyncRedisClient: A Redis or RedisCluster client, depending on the
+                URL.
 
         Raises:
-            ValueError: If url is not provided and REDIS_URL environment
-                variable is not set.
+            ValueError: If ``redis_url`` is not provided and the REDIS_URL
+                environment variable is not set.
+            TypeError: If a keyword that no longer exists is passed. ``url``
+                is now ``redis_url``.
         """
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         # redis-py 8 defaults to RESP3, which changes raw Search command reply
         # shapes. Keep RedisVL's existing RESP2 behavior unless requested.
@@ -649,7 +731,6 @@ class RedisConnectionFactory:
         return client
 
     @staticmethod
-    @deprecated_argument("url", "redis_url")
     async def _get_aredis_connection(
         redis_url: str | None = None,
         **kwargs,
@@ -660,23 +741,23 @@ class RedisConnectionFactory:
         only used internally by the library now.
 
         Args:
-            redis_url (Optional[str]): The URL of the Redis server. If neither
-                `redis_url` nor `url` are provided, the environment variable
-                REDIS_URL is used.
-            url (Optional[str]): Former parameter for the URL of the Redis
-                server. Use `redis_url` instead. (Deprecated)
+            redis_url (Optional[str]): The URL of the Redis server. If not
+                provided, the environment variable REDIS_URL is used.
             **kwargs: Additional keyword arguments to be passed to the async
                 Redis client constructor.
 
         Returns:
-            AsyncRedisClient: An asynchronous Redis client instance (either AsyncRedis or AsyncRedisCluster).
+            AsyncRedisClient: An AsyncRedis or AsyncRedisCluster client,
+                depending on the URL.
 
         Raises:
-            ValueError: If url is not provided and REDIS_URL environment
-                variable is not set.
+            ValueError: If ``redis_url`` is not provided and the REDIS_URL
+                environment variable is not set.
+            TypeError: If a keyword that no longer exists is passed. ``url``
+                is now ``redis_url``.
         """
-        _deprecated_url = kwargs.pop("url", None)
-        url = _deprecated_url or redis_url or get_address_from_env()
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
+        url = redis_url or get_address_from_env()
         # Keep sync and async clients on the same backward-compatible default.
         kwargs.setdefault("protocol", 2)
 
@@ -702,35 +783,51 @@ class RedisConnectionFactory:
         return client
 
     @staticmethod
-    @deprecated_argument("url", "redis_url")
     def get_async_redis_connection(
         redis_url: str | None = None,
         **kwargs,
     ) -> AsyncRedisClient:
         """Creates and returns an asynchronous Redis client.
 
+        Synchronous today; it will become a coroutine in a future major
+        release, at which point callers will have to await it. It warns on
+        every call as notice of that change. It is not being removed, and
+        there is no replacement to migrate to.
+
+        Unlike the client the index builds for itself, the client returned
+        here has not been identified to the server with CLIENT SETINFO, so
+        it reports no library name and defers its first connection to the
+        first command. To avoid managing a client at all, pass ``redis_url``
+        to :class:`~redisvl.index.AsyncSearchIndex` and let it build one.
+
         Args:
-            redis_url (Optional[str]): The URL of the Redis server. If neither
-                `redis_url` nor `url` are provided, the environment variable
-                REDIS_URL is used.
-            url (Optional[str]): Former parameter for the URL of the Redis
-                server. Use `redis_url` instead. (Deprecated)
+            redis_url (Optional[str]): The URL of the Redis server. If not
+                provided, the environment variable REDIS_URL is used.
             **kwargs: Additional keyword arguments to be passed to the async
                 Redis client constructor.
 
         Returns:
-            AsyncRedis: An asynchronous Redis client instance.
+            AsyncRedisClient: An AsyncRedis or AsyncRedisCluster client,
+                depending on the URL.
 
         Raises:
-            ValueError: If url is not provided and REDIS_URL environment
-                variable is not set.
+            ValueError: If ``redis_url`` is not provided and the REDIS_URL
+                environment variable is not set.
+            TypeError: If a keyword that no longer exists is passed. ``url``
+                is now ``redis_url``.
+
+        Warns:
+            DeprecationWarning: Always, as notice of the coming signature
+                change. This function is not being removed.
         """
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         warn(
-            "get_async_redis_connection will become async in the next major release.",
+            "get_async_redis_connection will become a coroutine in a future "
+            "major release and will then need to be awaited.",
             DeprecationWarning,
+            stacklevel=2,
         )
-        _deprecated_url = kwargs.pop("url", None)
-        url = _deprecated_url or redis_url or get_address_from_env()
+        url = redis_url or get_address_from_env()
         kwargs.setdefault("protocol", 2)
 
         if url.startswith("redis+sentinel"):
@@ -756,6 +853,7 @@ class RedisConnectionFactory:
         **kwargs,
     ) -> RedisCluster:
         """Creates and returns a synchronous Redis client for a Redis cluster."""
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         kwargs.setdefault("protocol", 2)
         return RedisCluster.from_url(url, **kwargs)
@@ -766,6 +864,7 @@ class RedisConnectionFactory:
         **kwargs,
     ) -> AsyncRedisCluster:
         """Creates and returns an asynchronous Redis client for a Redis cluster."""
+        _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         kwargs.setdefault("protocol", 2)
         # Strip 'cluster' parameter as AsyncRedisCluster doesn't accept it

@@ -918,3 +918,138 @@ async def test_profile_tool_threads_the_locked_filter_into_every_search_mode(
     # branch would leave vector and hybrid profiles silently unscoped.
     assert mode == expected_mode
     assert str(kwargs["filter_expression"]) == "(@category:{resolved} @rating:[4 +inf])"
+
+
+# --------------------------------------------------------------------------
+# Claim injection
+# --------------------------------------------------------------------------
+
+INJECT_CATEGORY = [{"field": "category", "from": "claim", "claim": "org"}]
+
+
+def _as_caller(monkeypatch, claims):
+    """Make the current request carry these claims, or no token when None."""
+    pytest.importorskip(
+        "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
+    )
+    token = None if claims is None else SimpleNamespace(claims=claims)
+    monkeypatch.setattr(
+        "fastmcp.server.dependencies.get_access_token", lambda: token, raising=False
+    )
+
+
+def test_description_hints_omit_the_injected_field_and_keep_the_rest():
+    description = build_profile_description(
+        _profile(lock={"inject": INJECT_CATEGORY}), _schema()
+    )
+
+    # Narrower than suppressing the hints: the model still learns what it may
+    # filter and return on, and only the tenant field is withheld.
+    assert "Object filter fields: content(text), rating(numeric)." in description
+    assert "Allowed return_fields: content, rating." in description
+    assert "category" not in description
+
+
+@pytest.mark.asyncio
+async def test_profile_tool_scopes_every_query_to_the_callers_claim(monkeypatch):
+    built = _capture_text_queries(monkeypatch)
+    _as_caller(monkeypatch, {"org": "acme"})
+    fn = _register(FakeServer(), _profile(lock={"inject": INJECT_CATEGORY}))
+
+    await fn(query="jam")
+
+    assert str(built[0]["filter_expression"]) == "@category:{acme}"
+
+
+@pytest.mark.asyncio
+async def test_profile_tool_ands_the_injected_clause_with_a_static_lock(monkeypatch):
+    built = _capture_text_queries(monkeypatch)
+    _as_caller(monkeypatch, {"org": "acme"})
+    locked = {"field": "rating", "op": "gte", "value": 4}
+    fn = _register(
+        FakeServer(), _profile(lock={"filter": locked, "inject": INJECT_CATEGORY})
+    )
+
+    await fn(query="jam")
+
+    assert str(built[0]["filter_expression"]) == "(@rating:[4 +inf] @category:{acme})"
+
+
+@pytest.mark.asyncio
+async def test_injection_alone_still_routes_the_caller_filter_through_the_backstop(
+    monkeypatch,
+):
+    # The pre-fold seam. `merge_locked_filter` returns the caller's filter
+    # untouched when nothing is locked, so if the injected expression travelled
+    # beside the locked side instead of becoming it, a profile with no static
+    # lock would AND the tenant clause and skip the escape check entirely.
+    _capture_text_queries(monkeypatch)
+    _as_caller(monkeypatch, {"org": "acme"})
+    checked: list[str] = []
+    monkeypatch.setattr(
+        "redisvl.mcp.tools.search._reject_escapable_filter",
+        lambda caller: checked.append(str(caller)),
+    )
+    fn = _register(FakeServer(), _profile(lock={"inject": INJECT_CATEGORY}))
+
+    await fn(query="jam", filter={"field": "rating", "op": "gte", "value": 4})
+
+    assert checked == ["@rating:[4 +inf]"]
+
+
+@pytest.mark.asyncio
+async def test_profile_tool_runs_no_query_without_a_verified_token(monkeypatch):
+    built = _capture_text_queries(monkeypatch)
+    _as_caller(monkeypatch, None)
+    fn = _register(FakeServer(), _profile(lock={"inject": INJECT_CATEGORY}))
+
+    with pytest.raises(RedisVLMCPError) as exc:
+        await fn(query="jam")
+
+    assert exc.value.code == MCPErrorCode.FORBIDDEN
+    assert built == []
+
+
+def test_startup_validation_rejects_injecting_into_a_non_tag_field():
+    profile = _profile(
+        lock={"inject": [{"field": "content", "from": "claim", "claim": "org"}]}
+    )
+    with pytest.raises(ValueError, match="requires a tag field"):
+        validate_profile_against_schema(profile, _schema())
+
+
+@pytest.mark.asyncio
+async def test_a_client_cannot_pass_the_injected_field_over_the_wire(monkeypatch):
+    # The real `tools/call` path, on a real FastMCP server with a real client,
+    # rather than the wrapper called directly. FastMCP validates arguments
+    # against the narrowed signature, so a field the profile does not expose is
+    # rejected before the wrapper runs -- not dropped, and not passed through.
+    fastmcp = pytest.importorskip(
+        "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
+    )
+    _as_caller(monkeypatch, {"org": "acme"})
+    searched: list[dict[str, Any]] = []
+
+    async def record_search(server, **kwargs):
+        searched.append(kwargs)
+        return {"results": []}
+
+    monkeypatch.setattr("redisvl.mcp.tools.profiles.search_records", record_search)
+    mcp = fastmcp.FastMCP("tenant-test")
+    register_profile_tool(
+        mcp, _profile(lock={"inject": INJECT_CATEGORY}), "knowledge", _schema()
+    )
+
+    async with fastmcp.Client(mcp) as client:
+        (tool,) = await client.list_tools()
+        assert "category" not in tool.inputSchema["properties"]
+        assert tool.inputSchema["additionalProperties"] is False
+
+        refused = await client.call_tool(
+            tool.name, {"query": "jam", "category": "victim"}, raise_on_error=False
+        )
+        assert refused.is_error
+        assert searched == []
+
+        await client.call_tool(tool.name, {"query": "jam"})
+        assert str(searched[0]["locked_filter"]) == "@category:{acme}"

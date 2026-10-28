@@ -31,6 +31,12 @@ concurrently. So the rules here are:
   ``store()``, so it has to be passed per call -- do not hoist it into the
   fixtures until that is fixed.
 
+Because the service is managed and shared, it can also simply be down. When it
+says so -- HTTP 424, see ``_is_service_unavailable`` -- these tests skip instead
+of failing: an unhealthy cache database is an environment condition, not a
+regression in this library. Every other error, including every other 4xx, still
+fails.
+
 Env vars (loaded from .env locally, injected via CI):
 - LANGCACHE_WITH_ATTRIBUTES_API_KEY
 - LANGCACHE_WITH_ATTRIBUTES_CACHE_ID
@@ -41,6 +47,9 @@ Env vars (loaded from .env locally, injected via CI):
 """
 
 import asyncio
+import functools
+import importlib.util
+import inspect
 import os
 import time
 import uuid
@@ -88,11 +97,17 @@ def scope() -> str:
     return uuid.uuid4().hex[:12]
 
 
+# Whole-cache flushes are banned outright; see the module docstring. Named here
+# because two fixtures need the same list: one bans these, the other wraps
+# everything else.
+FLUSH_METHODS = ("delete", "adelete", "clear", "aclear")
+
+
 @pytest.fixture(autouse=True)
 def _ban_whole_cache_flush(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the no-flush rule mechanical rather than a convention."""
 
-    for method in ("delete", "adelete", "clear", "aclear"):
+    for method in FLUSH_METHODS:
         monkeypatch.setattr(
             LangCacheSemanticCache,
             method,
@@ -100,6 +115,154 @@ def _ban_whole_cache_flush(monkeypatch: pytest.MonkeyPatch) -> None:
                 "Whole-cache flush is banned in this suite -- it wipes other "
                 "workers' and other CI runs' entries. See the module docstring."
             ),
+        )
+
+
+# LangCache answers 424 when a resource it depends on -- notably the cache
+# database behind ``cache_id`` -- is unavailable or unhealthy.
+SERVICE_UNAVAILABLE_STATUS = 424
+
+
+def _service_methods() -> tuple[str, ...]:
+    """Public cache methods to wrap: everything except the banned flushes.
+
+    Derived rather than listed, so a method added to the cache is covered
+    without anyone remembering a tuple in this file. Listing them invited a
+    worse failure than over-wrapping does: a method left out would produce one
+    red test among thirteen skips during an outage, which is a more confusing
+    signal than either all-red or all-skipped. Over-wrapping costs nothing,
+    because a 424 is always a statement about the service and never about the
+    call that provoked it.
+    """
+
+    return tuple(
+        name
+        for name, attr in vars(LangCacheSemanticCache).items()
+        if not name.startswith("_")
+        and inspect.isfunction(attr)
+        and name not in FLUSH_METHODS
+    )
+
+
+def _is_service_unavailable(exc: BaseException) -> bool:
+    """Is *exc* LangCache reporting itself unhealthy, rather than rejecting us?
+
+    Matched on the HTTP status rather than on a concrete SDK error class. The
+    SDK reshuffles those classes between versions our constraints allow -- the
+    424 arrived as ``ResourceUnavailableErrorResponseContent`` in 0.9 and is
+    ``FailedDependencyErrorResponseContent`` in the 0.12 the lockfile currently
+    pins -- while the status and the ``status_code`` attribute on the shared
+    ``LangCacheError`` base stay put. Both 424 problem types,
+    ``/errors/resource-unavailable`` and ``/errors/database-out-of-memory``,
+    are states of the service and not of the request.
+
+    Deliberately narrow: a 400 means this suite sent something wrong, which is
+    precisely what it exists to catch, so it must keep failing. So must a 500,
+    which can mean the service choked on something we sent.
+    """
+
+    try:
+        # Imported lazily, as the library itself does: ``langcache`` is an
+        # optional extra, and this module is collected even when it is absent.
+        from langcache.errors import LangCacheError
+    except Exception:
+        # This runs inside an exception handler, so a base class renamed out
+        # from under us must not bury the real error under an ImportError.
+        # Returning False re-raises it instead, which is the direction this
+        # file wants to be wrong in.
+        return False
+
+    return (
+        isinstance(exc, LangCacheError)
+        and getattr(exc, "status_code", None) == SERVICE_UNAVAILABLE_STATUS
+    )
+
+
+def _skip_if_service_unavailable(exc: Exception) -> None:
+    """Skip on an outage; return so the caller can re-raise anything else."""
+
+    if _is_service_unavailable(exc):
+        pytest.skip(f"LangCache reported itself unavailable: {exc}")
+
+
+# Runs under plain ``make test``: no API keys, no service, no Redis. It guards
+# the one decision in this file that can silently turn a regression green, and
+# it is also what catches a rename of ``LangCacheError`` itself, which
+# ``_is_service_unavailable`` imports lazily and swallows.
+@pytest.mark.skipif(
+    importlib.util.find_spec("langcache") is None,
+    reason="langcache package not installed",
+)
+@pytest.mark.parametrize(
+    ("status", "unavailable"),
+    [
+        (424, True),
+        (400, False),
+        (401, False),
+        (403, False),
+        (404, False),
+        (429, False),
+        (500, False),
+        (503, False),
+    ],
+)
+def test_only_424_is_treated_as_service_unavailable(
+    status: int, unavailable: bool
+) -> None:
+    import httpx
+    from langcache.errors import LangCacheError
+
+    exc = LangCacheError(
+        "boom",
+        httpx.Response(
+            status, request=httpx.Request("POST", "http://langcache.invalid/search")
+        ),
+    )
+
+    assert _is_service_unavailable(exc) is unavailable
+
+
+def test_non_sdk_exception_is_not_treated_as_service_unavailable() -> None:
+    assert _is_service_unavailable(ValueError("unrelated")) is False
+
+
+@pytest.fixture(autouse=True)
+def _skip_when_service_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Translate a provider-side outage into a skip rather than 14 failures.
+
+    Applied at the cache methods rather than per test, so that an outage is
+    caught wherever it surfaces -- including mid-test, after an earlier call in
+    the same test already succeeded.
+    """
+
+    def translating(method):
+        if inspect.iscoroutinefunction(method):
+
+            @functools.wraps(method)
+            async def awrapper(*args, **kwargs):
+                try:
+                    return await method(*args, **kwargs)
+                except Exception as exc:
+                    _skip_if_service_unavailable(exc)
+                    raise
+
+            return awrapper
+
+        @functools.wraps(method)
+        def wrapper(*args, **kwargs):
+            try:
+                return method(*args, **kwargs)
+            except Exception as exc:
+                _skip_if_service_unavailable(exc)
+                raise
+
+        return wrapper
+
+    for name in _service_methods():
+        monkeypatch.setattr(
+            LangCacheSemanticCache,
+            name,
+            translating(getattr(LangCacheSemanticCache, name)),
         )
 
 
