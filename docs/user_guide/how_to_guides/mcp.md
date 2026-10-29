@@ -453,7 +453,7 @@ server.run(transport="streamable-http", host="127.0.0.1", port=8000)
 What the client sees:
 
 - `open-tickets-for-product`, taking `product` (required) and `limit`, described by its docstring.
-- `delete-spam-ticket`, taking `ticket_id`. With authentication configured, a caller needs the server's write scope and `tickets.triage`; without it, no scope is checked. Either way, the tool deletes nothing that is not already marked as spam.
+- `delete-spam-ticket`, taking `ticket_id`. With authentication configured, a caller needs the server's read and write scopes and `tickets.triage`; without it, no scope is checked. Either way, the tool deletes nothing that is not already marked as spam.
 - No argument for the context or the index, in either tool.
 
 Rules worth knowing:

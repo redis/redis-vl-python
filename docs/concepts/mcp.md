@@ -309,7 +309,7 @@ The server applies the same rails as for a built-in, without the author asking f
 
 - Every `ctx.index` call takes a slot under the server-wide concurrency cap and is bounded by the binding's `runtime.request_timeout_seconds`. The cap is taken per call, so a tool that queries several times never blocks itself.
 - The whole tool call is bounded by the same timeout, so a tool cannot hold a request open indefinitely. A timeout returns a retryable `backend_unavailable` error.
-- A caller needs the server's read scope, or the write scope for a tool declared with `writes=True`. A tool can require an extra scope with `scope=`, which a caller must hold as well, so a code tool can be stricter than the built-ins but never looser. Like every scope, it is enforced only when the server has authentication configured.
+- A caller needs the server's read scope, and the write scope as well for a tool declared with `writes=True`, whose handle can both read and write. A tool can require an extra scope with `scope=`, which a caller must hold as well, so a code tool can be stricter than the built-ins but never looser. Like every scope, it is enforced only when the server has authentication configured.
 - An exception the tool raises becomes a stable MCP error: `ValueError` becomes `invalid_request`, a Redis error a retryable `backend_unavailable`, most other exceptions `internal_error`. Raise `RedisVLMCPError` to choose the code and message yourself.
 
 The handle is a guardrail, not a sandbox. A code tool is your own code, running with the privileges of the process that started the server, and Python can still reach private attributes. What the handle does is make the bounded, policy-checked path the only obvious one.

@@ -243,10 +243,10 @@ class RedisVLMCPServer(FastMCP):
         the model's arguments after it; its docstring is the tool description
         unless ``description`` is given. ``index`` pins the binding (required
         when several are configured), ``writes`` grants the write methods and
-        requires the write scope, and ``scope`` is an extra scope a caller must
-        hold on top of the server-wide one; like every scope, it is enforced
-        only when authentication is configured. The function is returned
-        unchanged.
+        requires the write scope on top of the read scope, and ``scope`` is an
+        extra scope a caller must hold on top of the server-wide ones; like
+        every scope, it is enforced only when authentication is configured.
+        The function is returned unchanged.
 
         The function is checked here; whether its binding exists and permits it
         is checked at startup, where the config is known.
