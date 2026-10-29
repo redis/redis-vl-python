@@ -182,11 +182,11 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
     async def code_tool(**kwargs: Any) -> Any:
         # Before anything else, so a caller without the scope never reaches the
         # binding or the function. The tool's own scope is required on top of
-        # the server-wide one, so it can only make a tool stricter.
+        # the server-wide one, so it can only make a tool stricter. A writing
+        # tool needs the read scope too, because its handle can also read.
+        ensure_read_scope(server)
         if spec.writes:
             ensure_write_scope(server)
-        else:
-            ensure_read_scope(server)
         ensure_tool_scope(server, spec.scope)
 
         try:

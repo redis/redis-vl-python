@@ -64,7 +64,8 @@ def validate_tool_name(name: str, *, kind: str) -> None:
     tool may be called. ``kind`` names the source in the message, so an error
     points at the config section or decorator that produced the name.
     """
-    if not _TOOL_NAME_PATTERN.match(name):
+    # fullmatch, because `$` also matches before a trailing newline.
+    if not _TOOL_NAME_PATTERN.fullmatch(name):
         raise ValueError(
             f"{kind} name '{name}' is invalid; names must start with a "
             "lowercase letter and contain only lowercase letters, digits, "

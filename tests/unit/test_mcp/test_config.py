@@ -693,6 +693,8 @@ def test_mcp_config_custom_tool_defaults():
         # character, and the body character class.
         "1foo",
         "shop.foo",
+        # `$` alone would accept this.
+        "foo\n",
     ],
 )
 def test_mcp_config_rejects_invalid_custom_tool_names(name):

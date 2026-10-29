@@ -239,13 +239,14 @@ def test_the_name_comes_from_the_function_unless_given(options, expected):
     "options, message",
     [
         ({"name": "Recent.Tickets"}, "is invalid"),
+        ({"name": "recent-tickets\n"}, "is invalid"),
         # The namespace is applied before the name is checked.
         ({"namespace": "redisvl"}, "uses a reserved prefix"),
     ],
 )
 def test_a_name_the_profile_rules_refuse_is_refused_here_too(options, message):
     with pytest.raises(
-        ValueError, match=f"code tool .*recent_tickets name .* {message}"
+        ValueError, match=f"(?s)code tool .*recent_tickets name .* {message}"
     ):
         build_code_tool_spec(recent_tickets, **options)
 
@@ -336,8 +337,9 @@ async def test_a_writing_tool_is_refused_on_an_index_now_read_only(monkeypatch):
     [
         pytest.param(False, ["kb.write", "tickets.read"], id="read-without-read-scope"),
         pytest.param(True, ["kb.read", "tickets.read"], id="write-without-write-scope"),
+        pytest.param(True, ["kb.write", "tickets.read"], id="write-without-read-scope"),
         pytest.param(False, ["kb.read"], id="read-without-tool-scope"),
-        pytest.param(True, ["kb.write"], id="write-without-tool-scope"),
+        pytest.param(True, ["kb.read", "kb.write"], id="write-without-tool-scope"),
     ],
 )
 async def test_a_token_missing_a_required_scope_never_reaches_the_tool(
@@ -364,7 +366,10 @@ async def test_a_token_missing_a_required_scope_never_reaches_the_tool(
 
 @pytest.mark.parametrize(
     "writes, scopes",
-    [(False, ["kb.read", "tickets.read"]), (True, ["kb.write", "tickets.read"])],
+    [
+        (False, ["kb.read", "tickets.read"]),
+        (True, ["kb.read", "kb.write", "tickets.read"]),
+    ],
 )
 async def test_the_server_scope_and_the_tool_scope_together_admit_the_caller(
     monkeypatch, writes, scopes
