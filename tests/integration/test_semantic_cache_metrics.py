@@ -1,5 +1,7 @@
 """SemanticCache metrics, read back through an in-memory OpenTelemetry reader."""
 
+import asyncio
+
 import pytest
 
 from redisvl.extensions.cache.llm import SemanticCache
@@ -113,3 +115,30 @@ async def test_nearest_distance_is_recorded_whenever_there_is_a_candidate(
     assert points == {}
     assert hit == (1, pytest.approx(0.02, abs=0.005))
     assert miss == (1, pytest.approx(1.0, abs=1e-6))
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_a_lookup_interrupted_during_the_ttl_refresh_records_nothing(
+    cache, otel_sdk, monkeypatch, use_async
+):
+    _, reader = otel_sdk
+    await _call(cache, "store", use_async, "paris", "Paris")
+
+    def interrupt(*args):
+        raise asyncio.CancelledError
+
+    async def ainterrupt(*args):
+        raise asyncio.CancelledError
+
+    if use_async:
+        monkeypatch.setattr(cache, "_aexpire_many", ainterrupt)
+    else:
+        monkeypatch.setattr(cache, "_expire_many", interrupt)
+    with pytest.raises(asyncio.CancelledError):
+        await _call(cache, "check", use_async, "paris")
+
+    assert _points(reader, otel.SEMANTIC_CACHE_DISTANCE) == {}
+    durations = _points(reader, otel.SEMANTIC_CACHE_OPERATION_DURATION)
+    assert [dict(attributes)[otel.CACHE_OPERATION] for attributes in durations] == [
+        "store"
+    ]
