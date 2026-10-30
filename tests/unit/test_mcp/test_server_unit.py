@@ -4,9 +4,11 @@ from types import SimpleNamespace
 import pytest
 
 from redisvl.mcp.config import MCPConfig, builtin_tool_names
+from redisvl.mcp.context import ToolContext
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.server import RedisVLMCPServer
+from redisvl.mcp.tools.code import build_code_tool_spec
 
 
 class FakeClient:
@@ -146,9 +148,26 @@ async def test_teardown_continues_when_a_binding_fails_to_close(monkeypatch):
     assert server._tools_registered is True
 
 
-def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[str]:
+def _register_tools_with(
+    monkeypatch, bindings: dict, *, config=None, code_tools=()
+) -> list[str]:
     """Run _register_tools against the given bindings, returning registered names."""
+    server, registered = _registration_server(
+        monkeypatch, bindings, config=config, code_tools=code_tools
+    )
+    server._register_tools()
+    return registered
+
+
+def _registration_server(
+    monkeypatch, bindings: dict, *, config=None, code_tools=()
+) -> tuple[RedisVLMCPServer, list[str]]:
+    """A server ready for _register_tools, recording every name it registers."""
     registered: list[str] = []
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_code_tool",
+        lambda server, spec, binding_id: registered.append(spec.name),
+    )
     monkeypatch.setattr(
         "redisvl.mcp.server.register_list_indexes_tool",
         lambda server: registered.append("list-indexes"),
@@ -185,9 +204,8 @@ def _register_tools_with(monkeypatch, bindings: dict, *, config=None) -> list[st
     server.tool = object()
     server.config = config
     server.mcp_settings = SimpleNamespace(read_only=False)
-
-    server._register_tools()
-    return registered
+    server._resolved_code_tools = tuple(code_tools)
+    return server, registered
 
 
 def _config_with(*, builtin_tools=None, custom_tools=None) -> MCPConfig:
@@ -1042,3 +1060,270 @@ def test_tools_injecting_the_same_scope_share_an_index():
             },
         ],
     )
+
+
+# --------------------------------------------------------------------------
+# Code tools registered with server.code_tool
+# --------------------------------------------------------------------------
+
+
+async def recent_tickets(ctx: ToolContext, query: str) -> dict:
+    """Find recent tickets."""
+    return {}
+
+
+def _code_tool_server(*, read_only=False) -> RedisVLMCPServer:
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._code_tools = []
+    server._tools_registered = False
+    server._lifecycle_state = server._LifecycleState.INITIAL
+    server.mcp_settings = SimpleNamespace(read_only=read_only)
+    return server
+
+
+def _two_index_config(*, custom_tools=None, **knowledge_overrides) -> MCPConfig:
+    return MCPConfig.model_validate(
+        {
+            "server": {"redis_url": "redis://localhost:6379"},
+            "indexes": {
+                "knowledge": {
+                    "redis_name": "docs-index",
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                    **knowledge_overrides,
+                },
+                "tickets": {
+                    "redis_name": "tickets-index",
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                },
+            },
+            "custom_tools": [
+                {**tool, "index": tool.get("index", "knowledge")}
+                for tool in custom_tools or []
+            ],
+        }
+    )
+
+
+def test_custom_tool_records_the_tool_and_returns_the_function():
+    server = _code_tool_server()
+
+    decorated = server.code_tool(namespace="support")(recent_tickets)
+
+    assert decorated is recent_tickets
+    assert [spec.name for spec in server._code_tools] == ["support-recent-tickets"]
+
+
+def test_custom_tool_checks_the_function_where_it_is_declared():
+    server = _code_tool_server()
+
+    def sync_tool(ctx: ToolContext, query: str) -> dict:
+        """Search."""
+        return {}
+
+    with pytest.raises(TypeError, match="must be an async function"):
+        server.code_tool()(sync_tool)
+    assert server._code_tools == []
+
+
+@pytest.mark.parametrize("moment", ["registered", "starting"])
+def test_custom_tool_after_registration_is_refused(moment):
+    server = _code_tool_server()
+    if moment == "registered":
+        server._tools_registered = True
+    else:
+        # Startup has read the code tools but not yet registered them.
+        server._lifecycle_state = server._LifecycleState.STARTING
+
+    with pytest.raises(RuntimeError, match="register code tools before starting"):
+        server.code_tool()(recent_tickets)
+    assert server._code_tools == []
+
+
+def test_a_code_tool_on_a_single_index_server_binds_to_it():
+    server = _code_tool_server()
+    server.code_tool()(recent_tickets)
+
+    ((spec, binding_id),) = server._resolve_code_tools(_config_with())
+
+    assert (spec.name, binding_id) == ("recent-tickets", "knowledge")
+
+
+def test_a_code_tool_binds_to_the_index_it_names():
+    server = _code_tool_server()
+    server.code_tool(index="tickets")(recent_tickets)
+
+    ((_, binding_id),) = server._resolve_code_tools(_two_index_config())
+
+    assert binding_id == "tickets"
+
+
+@pytest.mark.parametrize(
+    "options, config, expected",
+    [
+        pytest.param(
+            {},
+            _two_index_config(),
+            "must name its index because several are configured: knowledge, tickets",
+            id="index-required",
+        ),
+        pytest.param(
+            {"index": "archive"},
+            _two_index_config(),
+            "unknown index 'archive'; configured: knowledge, tickets",
+            id="unknown-index",
+        ),
+        pytest.param(
+            {"index": "knowledge", "name": "resolved-search"},
+            _two_index_config(
+                custom_tools=[{"name": "resolved-search", "description": "Search."}]
+            ),
+            "'resolved-search' is already used by another custom tool",
+            id="profile-name",
+        ),
+        pytest.param(
+            {"index": "knowledge", "writes": True},
+            _two_index_config(read_only=True),
+            "'recent-tickets' writes, but index 'knowledge' is read-only",
+            id="binding-read-only",
+        ),
+    ],
+)
+def test_a_code_tool_its_config_cannot_hold_fails_startup(options, config, expected):
+    server = _code_tool_server()
+    server.code_tool(**options)(recent_tickets)
+
+    with pytest.raises(ValueError, match=expected):
+        server._resolve_code_tools(config)
+
+
+def test_two_code_tools_cannot_share_a_name():
+    server = _code_tool_server()
+    server.code_tool()(recent_tickets)
+    server.code_tool()(recent_tickets)
+
+    with pytest.raises(ValueError, match="'recent-tickets' is already used"):
+        server._resolve_code_tools(_config_with())
+
+
+def test_a_writing_code_tool_is_refused_on_a_read_only_server():
+    server = _code_tool_server(read_only=True)
+    server.code_tool(writes=True)(recent_tickets)
+
+    with pytest.raises(ValueError, match="writes, but the server runs read-only"):
+        server._resolve_code_tools(_config_with())
+
+
+def test_a_reading_code_tool_may_run_on_a_read_only_server():
+    server = _code_tool_server(read_only=True)
+    server.code_tool()(recent_tickets)
+
+    assert len(server._resolve_code_tools(_config_with())) == 1
+
+
+def _code_tool_route_check(*, index, indexes):
+    server = _code_tool_server()
+    server.code_tool(index=index)(recent_tickets)
+    config = MCPConfig.model_validate(
+        {
+            "server": {
+                "redis_url": "redis://localhost:6379",
+                "builtin_tools": _BUILTINS_OFF,
+            },
+            "indexes": {
+                index_id: {
+                    "search": {"type": "fulltext"},
+                    "runtime": {"text_field_name": "content"},
+                    **overrides,
+                }
+                for index_id, overrides in indexes.items()
+            },
+            "custom_tools": [{**_INJECTING, "index": "kb_semantic"}],
+        }
+    )
+    server._verify_no_unscoped_route_to_injected_indexes(
+        config, server._resolve_code_tools(config)
+    )
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        pytest.param("kb_semantic", id="same-binding"),
+        # A second binding over the same Redis index reaches the same documents.
+        pytest.param("kb_keyword", id="sibling-binding"),
+    ],
+)
+def test_a_code_tool_on_a_tenant_scoped_index_is_refused(index):
+    with pytest.raises(ValueError, match="code tools 'recent-tickets' reach it"):
+        _code_tool_route_check(
+            index=index,
+            indexes={
+                "kb_semantic": {"redis_name": "customer-kb"},
+                "kb_keyword": {"redis_name": "customer-kb"},
+            },
+        )
+
+
+def test_a_code_tool_on_another_index_is_no_route():
+    _code_tool_route_check(
+        index="public",
+        indexes={
+            "kb_semantic": {"redis_name": "customer-kb"},
+            "public": {"redis_name": "public-kb"},
+        },
+    )
+
+
+def test_register_tools_registers_code_tools_after_profiles(monkeypatch):
+    server = _code_tool_server()
+    server.code_tool()(recent_tickets)
+    config = _config_with(
+        custom_tools=[{"name": "resolved-search", "description": "Search."}]
+    )
+
+    registered = _register_tools_with(
+        monkeypatch,
+        {"knowledge": _binding_runtime("knowledge")},
+        config=config,
+        code_tools=server._resolve_code_tools(config),
+    )
+
+    assert registered[-2:] == ["resolved-search", "recent-tickets"]
+
+
+def _restart_with(monkeypatch, *, registered_on, restarted_on):
+    """Register a code tool on one binding, then restart pairing it with another."""
+    spec = build_code_tool_spec(recent_tickets)
+    # The first startup records the pairing itself, as a real server does.
+    server, _ = _registration_server(
+        monkeypatch, {}, code_tools=[(spec, registered_on)]
+    )
+    server._register_tools()
+    server._resolved_code_tools = ((spec, restarted_on),)
+    server._register_tools()
+
+
+def test_a_restart_that_moves_a_code_tool_is_fatal(monkeypatch):
+    with pytest.raises(RuntimeError, match="code tools, or the indexes they are"):
+        _restart_with(monkeypatch, registered_on="knowledge", restarted_on="tickets")
+
+
+def test_a_restart_with_the_same_code_tools_proceeds(monkeypatch):
+    _restart_with(monkeypatch, registered_on="knowledge", restarted_on="knowledge")
+
+
+def test_loaded_code_tools_are_resolved_with_registered_ones():
+    server = _code_tool_server()
+    server.code_tool()(recent_tickets)
+
+    async def close_ticket(ctx: ToolContext, ticket_id: str) -> dict:
+        """Close a ticket."""
+        return {}
+
+    loaded = [build_code_tool_spec(close_ticket)]
+
+    resolved = server._resolve_code_tools(_config_with(), loaded)
+
+    assert [spec.name for spec, _ in resolved] == ["recent-tickets", "close-ticket"]

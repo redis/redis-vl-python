@@ -247,7 +247,6 @@ class InjectSpec(Protocol):
 
     A protocol rather than an import of the configuration model, so the
     security core has no dependency on the shape of the YAML that reaches it.
-    A v1.1 code tool assembles its own specs and gets the same guarantees.
     """
 
     @property

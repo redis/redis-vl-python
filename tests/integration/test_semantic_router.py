@@ -617,6 +617,39 @@ def test_routes_different_distance_thresholds_get_one(
                 router.delete()
 
 
+def test_threshold_filter_applies_before_max_k_truncation(
+    client, routes, hf_vectorizer, redis_test_name
+):
+    """A closer route that misses its own threshold must not crowd out a
+    farther one that meets its threshold."""
+    skip_if_no_redis_search(client)
+    # With all-mpnet-base-v2 and avg aggregation, "hello" sits ~0.07 from
+    # greeting and ~0.60 from farewell. (Under min, greeting would be ~0.)
+    routes[0].distance_threshold = 0.01
+    routes[1].distance_threshold = 0.8
+
+    router = SemanticRouter(
+        name=redis_test_name("test_threshold_filter_before_max_k"),
+        routes=routes,
+        routing_config=RoutingConfig(
+            max_k=1, aggregation_method=DistanceAggregationMethod.avg
+        ),
+        redis_client=client,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    try:
+        assert router("hello").name == "farewell"
+
+        # max_k comes from the routing config; route() always uses max_k=1.
+        assert [match.name for match in router.route_many("hello")] == ["farewell"]
+    finally:
+        with suppress(Exception):
+            router.clear()
+        with suppress(Exception):
+            router.delete()
+
+
 def test_distance_threshold_is_inclusive(semantic_router):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
@@ -817,3 +850,55 @@ def test_delete_route_references(semantic_router):
     # the way back in, so from_existing could not reload the config.
     router_dict = semantic_router.to_dict()
     assert [r["name"] for r in router_dict["routes"]] == ["farewell"]
+
+
+async def test_async_routing_matches_sync(semantic_router, monkeypatch):
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
+    # Loose enough that both routes match, so the max_k default is observable.
+    semantic_router.update_route_thresholds({"greeting": 2.0, "farewell": 2.0})
+    vector = semantic_router.vectorizer.embed("goodbye")
+    inputs = [{"statement": s} for s in ("hello", "unknown_phrase")]
+    inputs.append({"vector": vector})
+    expected = [(semantic_router(**i), semantic_router.route_many(**i)) for i in inputs]
+
+    def blocking(*args, **kwargs):
+        raise AssertionError("the async path made a blocking call")
+
+    # The async path must embed with aembed and query the async index.
+    monkeypatch.setattr(type(semantic_router.vectorizer), "embed", blocking)
+    monkeypatch.setattr(semantic_router._index, "aggregate", blocking)
+    try:
+        actual = [
+            (await semantic_router.aroute(**i), await semantic_router.aroute_many(**i))
+            for i in inputs
+        ]
+        with pytest.raises(ValueError, match="Must provide a vector or statement"):
+            await semantic_router.aroute()
+    finally:
+        await semantic_router.adisconnect()
+    assert actual == expected
+    assert semantic_router.aindex is None
+
+
+async def test_aroute_from_existing_url_connects_from_url(
+    redis_url, routes, hf_vectorizer, redis_test_name
+):
+    name = redis_test_name("test_router_async_from_existing")
+    router = SemanticRouter(
+        name=name,
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    loaded = SemanticRouter.from_existing(name, redis_url=redis_url)
+    try:
+        skip_if_no_redis_search(router._index.client)
+        skip_if_redis_version_below(router._index.client, "7.0.0")
+        assert (await loaded.aroute("hello")).name == "greeting"
+        # Built from the caller's URL, not converted from the client that
+        # from_existing created, so URL-only setups (unix, sentinel) work too.
+        assert loaded.aindex._redis_url == redis_url
+    finally:
+        await loaded.adisconnect()
+        router.delete()

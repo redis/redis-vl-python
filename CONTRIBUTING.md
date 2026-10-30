@@ -284,6 +284,16 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
+### CI for fork and Dependabot PRs
+
+GitHub withholds repository secrets from PRs opened from forks and from runs that Dependabot triggers, so the **Service Tests** and **Notebook Validation** jobs are skipped on those PRs, and a skipped job shows as passing. Before merging one, a maintainer should read the change and then run the service tests with secrets:
+
+```bash
+gh workflow run test-fork-pr.yml -f pr_number=<PR number>
+```
+
+The result appears on the PR as the **Fork PR - Service Tests** check. Notebook Validation has no manual equivalent; it runs on `main` after merge and nightly.
+
 ### Reviewer Brief
 
 Maintainer PRs, and any PR written with a coding agent, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Outside contributors are welcome to add one but don't have to.
@@ -309,7 +319,7 @@ The brief is the author's account of their own review. It isn't an approval and 
 1. Read the summary Bugbot adds to the PR description for what the change does and how risky it is.
 2. Check that the commit in the brief's footer matches the PR's head commit, or that a "Since the last brief" line covers the later commits. If it doesn't, ask the author to re-run the review.
 3. Start reading where the brief says, then look at each spot under "Where it could fail".
-4. Decide whether anything under "Not verified" matters for this change, and read the Notes section for trade-offs the author made on purpose.
+4. Decide whether anything under "Not verified" matters for this change, and read the Notes section, if there is one, for trade-offs the author made on purpose.
 5. Check that every open Bugbot or reviewer thread has a reply giving its outcome.
 
 If the brief, Bugbot and what you see in the diff agree, approve. Where they disagree is where to review in depth.
