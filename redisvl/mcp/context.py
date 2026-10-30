@@ -13,8 +13,10 @@ against its name, and records are addressed by document id, which the index
 turns into a key under its own prefix. Nothing accepts a full Redis key or a
 query that names its own target, because either could reach another index's
 documents, including a tenant-scoped one. An index whose prefix overlaps
-another's shares keys with it, which no handle can tell apart; an index with
-an empty prefix covers every key, so its document ids are full Redis keys.
+another's shares keys with it, which no handle can tell apart. A prefix that
+is empty, or made only of separator characters, turns document ids into full
+Redis keys, so every key is in reach. On an index with several prefixes,
+document ids address records under the first one only.
 
 This is a guardrail, not a sandbox: Python can still reach private attributes.
 It makes the safe path the only obvious one.
@@ -118,13 +120,18 @@ class IndexHandle:
         result back to ``fetch`` or a write. One exception: on JSON storage, a
         ``FilterQuery`` without ``return_fields`` returns whole documents, and
         a document's own ``id`` field replaces the key; set ``return_fields``
-        to keep it. Raises ``ValueError`` for a key outside the prefix.
+        to keep it. On an index with several prefixes, ids address records
+        under the first prefix, the same one ``fetch`` and the writes use.
+        Raises ``ValueError`` for a key outside it.
         """
         prefix = self._index.key("")
         if not prefix:
             return key
         if not key.startswith(prefix) or key == prefix:
-            raise ValueError(f"key {key!r} is not a document of this index")
+            raise ValueError(
+                f"key {key!r} is not under {prefix!r}, the key prefix this "
+                "index's document ids address"
+            )
         return key[len(prefix) :]
 
 

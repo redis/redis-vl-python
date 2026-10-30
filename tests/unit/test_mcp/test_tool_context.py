@@ -243,7 +243,7 @@ async def test_a_handle_never_takes_another_target(call):
         await call(handle)
 
 
-def _real_index(prefix: str) -> AsyncSearchIndex:
+def _real_index(prefix: str | list[str]) -> AsyncSearchIndex:
     return AsyncSearchIndex.from_dict(
         {
             "index": {"name": "tickets", "prefix": prefix},
@@ -252,7 +252,7 @@ def _real_index(prefix: str) -> AsyncSearchIndex:
     )
 
 
-@pytest.mark.parametrize("prefix", ["ticket", "ticket:", ""])
+@pytest.mark.parametrize("prefix", ["ticket", "ticket:", "", ["ticket", "archive"]])
 def test_a_key_from_a_result_or_a_load_maps_back_to_its_document_id(prefix):
     # Results and load return full keys; fetch and the writes re-apply the
     # prefix, so passing a key straight back would miss the record.
@@ -262,11 +262,14 @@ def test_a_key_from_a_result_or_a_load_maps_back_to_its_document_id(prefix):
     assert handle.document_id(index.key("t1")) == "t1"
 
 
-@pytest.mark.parametrize("key", ["other:t1", "ticket:"])
+# A key under a second prefix is in the index, but outside the prefix that
+# document ids, fetch and the writes address.
+@pytest.mark.parametrize("key", ["other:t1", "ticket:", "archive:t1"])
 def test_a_key_outside_the_index_has_no_document_id(key):
-    handle = IndexHandle(FakeServer(), _real_index("ticket"), timeout_seconds=TIMEOUT)
+    index = _real_index(["ticket", "archive"])
+    handle = IndexHandle(FakeServer(), index, timeout_seconds=TIMEOUT)
 
-    with pytest.raises(ValueError, match="not a document of this index"):
+    with pytest.raises(ValueError, match="is not under 'ticket:'"):
         handle.document_id(key)
 
 
