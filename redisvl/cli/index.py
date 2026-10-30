@@ -10,6 +10,7 @@ from redisvl.cli.utils import (
     add_json_output_flag,
     cli_print_json,
     create_redis_url,
+    log_cli_exception,
 )
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
@@ -20,9 +21,6 @@ from redisvl.redis.connection import (
 )
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema.schema import IndexSchema
-from redisvl.utils.log import get_logger
-
-logger = get_logger("[RedisVL]")
 
 # Exceptions commonly raised when loading or validating a schema path (-s).
 SCHEMA_INPUT_ERRORS = (
@@ -83,7 +81,7 @@ class Index:
         try:
             args.handler(args)
         except Exception as e:
-            logger.error(e, exc_info=True)
+            log_cli_exception(e)
             print(str(e), file=sys.stderr)
             sys.exit(1)
 

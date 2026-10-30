@@ -9,7 +9,7 @@ import subprocess
 import sys
 import textwrap
 
-from redisvl.utils.log import get_logger
+from redisvl.utils.log import _DefaultStderrHandler, get_logger
 
 
 def _run(script: str) -> subprocess.CompletedProcess[str]:
@@ -38,11 +38,12 @@ def _same_handler_format(left: str, right: str) -> None:
     )
 
 
-def test_get_logger_does_not_attach_a_handler():
-    name = "redisvl.test.nohandler"
+def test_get_logger_attaches_default_stderr_handler():
+    name = "redisvl.test.stderr_handler"
     logger = get_logger(name)
-    assert logger.handlers == []
-    assert logger.propagate is True
+    assert len(logger.handlers) == 1
+    assert isinstance(logger.handlers[0], _DefaultStderrHandler)
+    assert logger.propagate is False
 
 
 def test_warning_reaches_stderr_without_logging_configuration():
@@ -63,6 +64,21 @@ def test_warning_reaches_stderr_without_logging_configuration():
     _line_with(stderr_lines, "from redisvl error")
     plain_line = _line_with(stderr_lines, "from plain logger")
     _same_handler_format(redis_line, plain_line)
+
+
+def test_error_with_exc_info_does_not_write_traceback_to_stderr():
+    result = _run("""
+        from redisvl.utils.log import get_logger
+
+        logger = get_logger("redisvl.cli.test")
+        try:
+            raise RuntimeError("cli failure")
+        except RuntimeError as exc:
+            logger.error(exc, exc_info=True)
+        """)
+    assert result.returncode == 0, result.stderr
+    assert "cli failure" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_configured_logging_still_receives_redisvl_warnings():
