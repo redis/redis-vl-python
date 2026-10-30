@@ -251,9 +251,17 @@ def test_a_name_the_profile_rules_refuse_is_refused_here_too(options, message):
         build_code_tool_spec(recent_tickets, **options)
 
 
-def test_a_blank_scope_is_refused():
-    with pytest.raises(ValueError, match="scope must not be blank"):
-        build_code_tool_spec(recent_tickets, scope=" ")
+@pytest.mark.parametrize(
+    "scope, message",
+    [
+        (" ", "scope must not be blank"),
+        # Scopes match exactly, so this one would refuse every caller.
+        (" tickets.read", "has surrounding whitespace"),
+    ],
+)
+def test_an_unusable_scope_is_refused(scope, message):
+    with pytest.raises(ValueError, match=message):
+        build_code_tool_spec(recent_tickets, scope=scope)
 
 
 # --------------------------------------------------------------------------

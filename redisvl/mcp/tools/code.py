@@ -163,6 +163,11 @@ def build_code_tool_spec(
 
     if scope is not None and not scope.strip():
         raise ValueError(f"code tool {where} scope must not be blank")
+    if scope is not None and scope != scope.strip():
+        # Scopes are matched exactly, so a padded one would refuse every caller.
+        raise ValueError(
+            f"code tool {where} scope {scope!r} has surrounding whitespace"
+        )
 
     return CodeToolSpec(
         fn=fn,
