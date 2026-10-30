@@ -458,7 +458,7 @@ What the client sees:
 
 Rules worth knowing:
 
-- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool stays under its index's key prefix. That does not separate indexes whose prefixes overlap, or an index with an empty prefix, which covers every key. There is no Redis client and no way to create, drop or clear the index.
+- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool stays under its index's key prefix. `load` returns document ids, and `ctx.index.document_id(hit["id"])` turns a search result's key into one. That does not separate indexes whose prefixes overlap, or an index with an empty prefix, which covers every key. There is no Redis client and no way to create, drop or clear the index.
 - **Writing tools need a cast for type checkers.** `ctx.index` is typed as `IndexHandle`. In a tool registered with `writes=True`, `cast(WritableIndexHandle, ctx.index)` gives a type checker the write methods. Both types are exported from `redisvl.mcp`.
 - **Every call is bounded.** Each `ctx.index` call takes a slot under the concurrency cap and the binding's `request_timeout_seconds`, and the whole tool call is bounded by the same timeout.
 - **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself.

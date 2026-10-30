@@ -133,6 +133,31 @@ async def test_a_writing_tool_writes_through_its_handle(server_for):
     assert await _call(server, "close-ticket", ticket_id="t1") == {"status": "resolved"}
 
 
+async def test_ids_from_a_load_and_a_search_address_the_same_record(server_for):
+    # Both return full keys underneath, and the writes re-apply the prefix, so
+    # only document ids reach the record.
+    server = server_for()
+
+    @server.code_tool(writes=True)
+    async def file_and_withdraw(ctx: ToolContext) -> dict:
+        """File a ticket under a generated id, find it again, then withdraw it."""
+        [filed] = await ctx.index.load(
+            [{"content": "charged twice", "status": "draft"}]
+        )
+        [hit] = await ctx.index.query(
+            FilterQuery(filter_expression=Tag("status") == "draft")
+        )
+        found = ctx.index.document_id(hit["id"])
+        return {
+            "same": found == filed,
+            "dropped": await ctx.index.drop_documents(found),
+        }
+
+    await server.startup()
+
+    assert await _call(server, "file-and-withdraw") == {"same": True, "dropped": 1}
+
+
 async def test_a_code_tool_on_a_tenant_scoped_index_fails_startup(server_for):
     key = RSAKeyPair.generate()
     server = server_for(
