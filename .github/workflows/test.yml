@@ -140,6 +140,83 @@ jobs:
         run: |
           make test
 
+  cluster-tests:
+    name: Cluster Tests - redis-py ${{ matrix.redis-py-version }}
+    # Nightly and on demand only, to keep the cluster's setup time off PRs.
+    # Every other job runs `make test`, which skips `requires_cluster` tests.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+      REDIS_PY_VERSION: ${{ matrix.redis-py-version }}
+      # Required: without it `uv run` re-syncs the venv to uv.lock and reverts
+      # the redis-py pin set below.
+      UV_NO_SYNC: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cluster replies differ by redis-py version (8.x defaults to RESP3),
+        # so cover each major the `test` job does. The Redis image is pinned
+        # in tests/cluster-compose.yml.
+        redis-py-version: ["6.x", "7.x", "8.x"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Cache HuggingFace Models
+        uses: actions/cache@v4
+        with:
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          uv sync --all-extras --frozen
+
+          # Keep in sync with the `test` job's install rules.
+          case "$REDIS_PY_VERSION" in
+            "6.x") spec="redis>=6,<7" ;;
+            "7.x") spec="redis>=7,<8" ;;
+            "8.x") spec="redis>=8.1,<9" ;;
+            *)
+              echo "::error title=Unhandled redis-py-version::Matrix value '${REDIS_PY_VERSION}' has no install rule -- add a case branch in .github/workflows/test.yml."
+              exit 1
+              ;;
+          esac
+
+          uv pip install "$spec"
+          uv run python -c 'import redis; print("redis-py:", redis.__version__)'
+
+      - name: Resolve host.docker.internal on the runner
+        # The cluster nodes announce host.docker.internal (see
+        # tests/cluster-compose.yml), so MOVED redirects point the test client
+        # there. Linux runners do not resolve that name by default.
+        run: |
+          echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
+
+      - name: Run cluster tests
+        # -n 0: the cluster publishes fixed ports 7001-7006, so per-worker
+        # clusters under xdist would collide.
+        run: |
+          uv run python -m pytest -n 0 --log-level=CRITICAL --run-cluster-tests -m requires_cluster tests/
+
   notebooks:
     name: Notebook Validation
     runs-on: ubuntu-latest
