@@ -1,5 +1,5 @@
 import asyncio
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import ValidationError
@@ -8,7 +8,7 @@ from redis.exceptions import RedisError
 from redisvl.exceptions import RedisSearchError
 
 
-class MCPErrorCode(str, Enum):
+class MCPErrorCode(StrEnum):
     """Stable internal error codes exposed by the MCP framework."""
 
     INVALID_REQUEST = "invalid_request"
