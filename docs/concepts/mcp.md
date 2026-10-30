@@ -296,7 +296,7 @@ A code tool never receives the server, the real `AsyncSearchIndex`, or a Redis c
 
 | Attribute | What it is |
 |---|---|
-| `ctx.index` | A handle on the bound index offering `query`, `batch_query`, `search`, `batch_search`, `aggregate`, `fetch`, `exists` and `info`. A tool declared with `writes=True` also gets `load`, `drop_documents` and `expire_documents`. `document_id(key)` turns the full key a search result carries as `id` back into a document id. |
+| `ctx.index` | A handle on the bound index offering `query`, `batch_query`, `search`, `batch_search`, `aggregate`, `fetch`, `exists` and `info`. A tool declared with `writes=True` also gets `load`, `drop_documents` and `expire_documents`. `document_id(key)` turns the full key a search result carries as `id` back into a document id. On JSON storage, a `FilterQuery` without `return_fields` returns whole documents, whose own `id` field replaces the key, so set `return_fields` when you need it. |
 | `ctx.schema` | The bound index's schema. |
 | `ctx.vectorizer` and `ctx.embed(text)` | The binding's vectorizer, if it has one, and a helper that embeds text with it. |
 | `ctx.claims` | A read-only copy of the current request's verified token claims, or `None` when the server has no authentication or the request has no token. |
