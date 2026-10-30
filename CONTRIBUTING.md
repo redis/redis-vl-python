@@ -31,7 +31,7 @@ Here's how to get started with your code contribution:
 
 ### Prerequisites
 
-- **Python**: RedisVL supports Python 3.9 and above
+- **Python**: RedisVL supports Python 3.10 through 3.15
 - **Docker**: Required for running Redis and integration tests
 - **UV**: Modern Python package manager for fast dependency management
 
