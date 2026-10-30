@@ -810,13 +810,20 @@ class RedisVLMCPServer(FastMCP):
         if self.config is None:
             raise RuntimeError("MCP server config not loaded")
 
-        client = await asyncio.wait_for(
-            RedisConnectionFactory._get_aredis_connection(
-                redis_url=self.config.server.redis_url
-            ),
-            timeout=timeout,
-        )
-        await asyncio.wait_for(client.info("server"), timeout=timeout)
+        # Connecting and the first INFO share one deadline, so a slow server
+        # fails startup within ``timeout`` rather than up to twice that.
+        client: Any = None
+        try:
+            async with asyncio.timeout(timeout):
+                client = await RedisConnectionFactory._get_aredis_connection(
+                    redis_url=self.config.server.redis_url
+                )
+                await client.info("server")
+        except BaseException:
+            # The caller only takes ownership of a client that answered INFO.
+            if client is not None:
+                await client.aclose()
+            raise
         return client
 
     async def _load_effective_schema(
