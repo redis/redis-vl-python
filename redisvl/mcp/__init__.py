@@ -3,6 +3,7 @@ from redisvl.mcp.context import IndexHandle, ToolContext, WritableIndexHandle
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
+from redisvl.mcp.tools.code import code_tool
 
 __all__ = [
     "IndexHandle",
@@ -16,4 +17,5 @@ __all__ = [
     "WritableIndexHandle",
     "load_mcp_config",
     "map_exception",
+    "code_tool",
 ]
