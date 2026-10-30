@@ -161,6 +161,7 @@ class TestExistsOnCluster:
         node = Mock()
         client = MagicMock()
         client.__class__ = AsyncRedisCluster  # isinstance drives the branch
+        client.initialize = AsyncMock()
         client.get_random_node.return_value = node
         client.execute_command = AsyncMock(return_value=["index_name", INDEX_NAME])
         index = AsyncSearchIndex(schema=_schema(), redis_client=client)

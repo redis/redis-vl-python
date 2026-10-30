@@ -2370,7 +2370,8 @@ class SearchIndex(BaseSearchIndex):
                 values = redis_client.execute_command(
                     "FT.INFO", name, target_nodes=node
                 )
-                info = make_dict(values)
+                # A raw reply is a flat list on RESP2 and a map on RESP3.
+                info = values if isinstance(values, dict) else make_dict(values)
             else:
                 info = redis_client.ft(name).info()
             return convert_bytes(info)
@@ -2639,17 +2640,26 @@ class AsyncSearchIndex(BaseSearchIndex):
                 self._lib_name,
             )
             self._validated_client = True
+        if isinstance(self._redis_client, AsyncRedisCluster):
+            # The async cluster client discovers its nodes on first use, so
+            # get_default_node() and get_random_node() find nothing on a fresh
+            # client. This is a no-op once the client is initialised.
+            await self._redis_client.initialize()
         return self._redis_client
 
     @staticmethod
     async def _info(name: str, redis_client: AsyncRedisClient) -> dict[str, Any]:
         try:
             if isinstance(redis_client, AsyncRedisCluster):
+                # Callers such as from_existing() pass a client that has not
+                # been through _get_client(), so initialise it here too.
+                await redis_client.initialize()
                 node = redis_client.get_random_node()
                 values = await redis_client.execute_command(
                     "FT.INFO", name, target_nodes=node
                 )
-                info = make_dict(values)
+                # A raw reply is a flat list on RESP2 and a map on RESP3.
+                info = values if isinstance(values, dict) else make_dict(values)
             else:
                 info = await redis_client.ft(name).info()
             return convert_bytes(info)
