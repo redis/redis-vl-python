@@ -117,19 +117,10 @@ jobs:
             uv.lock
 
       - name: Install dependencies
-        env:
-          MATRIX_PYTHON: ${{ matrix.python-version }}
         run: |
           set -euo pipefail
 
-          # torch has no cp315 wheels on PyPI yet, so sentence-transformers
-          # (and `all`, which includes it) cannot install on 3.15. Tests marked
-          # requires_hf skip themselves when it is missing (tests/conftest.py).
-          extras=(--all-extras)
-          if [ "$MATRIX_PYTHON" = "3.15" ]; then
-            extras+=(--no-extra sentence-transformers --no-extra all)
-          fi
-          uv sync "${extras[@]}" --frozen
+          uv sync --all-extras --frozen
 
           # Must cover every redis-py-version matrix value; unhandled values fail.
           case "$REDIS_PY_VERSION" in
