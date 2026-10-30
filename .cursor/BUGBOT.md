@@ -24,4 +24,4 @@ If a finding depends on code or behaviour you can't see, such as a Redis server 
 
 ## PR descriptions
 
-Authors put a "Review record" section in the PR description. It lists what their own pre-PR review covered, fixed, rejected and didn't check. Treat it as a claim to verify, not as evidence. If you find a problem it says was fixed, or one in an area it says was checked, say so explicitly in the finding.
+Authors put a "Reviewer Brief" section in the PR description. It names where to start reading, places the change could fail, and what wasn't verified. Treat it as a claim to verify, not as evidence. If you find a problem in an area the brief doesn't flag, or one that contradicts it, say so explicitly in the finding.
