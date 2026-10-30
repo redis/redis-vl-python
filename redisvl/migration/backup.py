@@ -17,7 +17,7 @@ import pickle
 import struct
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Self, Tuple
 
 
 @dataclass
@@ -52,7 +52,7 @@ class BackupHeader:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "BackupHeader":
+    def from_dict(cls, d: dict) -> Self:
         return cls(
             index_name=d["index_name"],
             fields=d["fields"],

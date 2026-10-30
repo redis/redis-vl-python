@@ -2,7 +2,7 @@ import os
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -99,7 +99,7 @@ class MCPRuntimeConfig(BaseModel):
     max_concurrency: int = 16
 
     @model_validator(mode="after")
-    def _validate_limits(self) -> "MCPRuntimeConfig":
+    def _validate_limits(self) -> Self:
         """Validate runtime bounds during config load."""
         if self.default_limit <= 0:
             raise ValueError("runtime.default_limit must be greater than 0")
@@ -174,7 +174,7 @@ class MCPAuthConfig(BaseModel):
     authorization_claim: str = Field(default="scp", min_length=1)
 
     @model_validator(mode="after")
-    def _validate_jwt(self) -> "MCPAuthConfig":
+    def _validate_jwt(self) -> Self:
         """Enforce the JWT key-source, issuer, and audience requirements."""
         jwt_fields_set = any(
             (
@@ -283,7 +283,7 @@ class MCPServerConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_builtin_tools(self) -> "MCPServerConfig":
+    def _validate_builtin_tools(self) -> Self:
         """Reject disable/enable entries that do not name a built-in tool."""
         unknown = sorted(set(self.builtin_tools) - builtin_tool_names())
         if unknown:
@@ -311,7 +311,7 @@ class MCPIndexSearchConfig(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_params(self) -> "MCPIndexSearchConfig":
+    def _validate_params(self) -> Self:
         """Reject params that do not belong to the configured search mode."""
         allowed_params = {
             "vector": {
@@ -454,7 +454,7 @@ class MCPIndexBindingConfig(BaseModel):
         return self.uses_query_embedding or self.supports_server_side_embedding
 
     @model_validator(mode="after")
-    def _validate_capability_requirements(self) -> "MCPIndexBindingConfig":
+    def _validate_capability_requirements(self) -> Self:
         """Require only the config fields needed by enabled capabilities."""
         if self.uses_text_search and self.runtime.text_field_name is None:
             raise ValueError(
@@ -672,7 +672,7 @@ class MCPProfileParamConfig(BaseModel):
     max: int | None = None
 
     @model_validator(mode="after")
-    def _validate_max(self) -> "MCPProfileParamConfig":
+    def _validate_max(self) -> Self:
         """Reject a non-positive cap."""
         if self.max is not None and self.max <= 0:
             raise ValueError("custom_tools params max must be greater than 0")
@@ -717,7 +717,7 @@ class MCPProfileInjectConfig(BaseModel):
     required: Literal[True] = True
 
     @model_validator(mode="after")
-    def _validate_inject(self) -> "MCPProfileInjectConfig":
+    def _validate_inject(self) -> Self:
         """Reject a blank field or claim name, which min_length lets through."""
         if not self.field.strip():
             raise ValueError("custom_tools lock.inject field must not be blank")
@@ -736,7 +736,7 @@ class MCPProfileLockConfig(BaseModel):
     inject: list[MCPProfileInjectConfig] | None = None
 
     @model_validator(mode="after")
-    def _validate_lock(self) -> "MCPProfileLockConfig":
+    def _validate_lock(self) -> Self:
         """Reject an empty or blank projection.
 
         The annotations already give the rest: pydantic enforces ``list[str]``
@@ -809,7 +809,7 @@ class MCPCustomToolConfig(BaseModel):
     params: dict[str, MCPProfileParamConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_profile(self) -> "MCPCustomToolConfig":
+    def _validate_profile(self) -> Self:
         """Validate naming, parameter policy, and lock/expose coherence."""
         if not self.description.strip():
             # min_length alone lets whitespace through, which would publish a
@@ -890,7 +890,7 @@ class MCPConfig(BaseModel):
     custom_tools: list[MCPCustomToolConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_bindings(self) -> "MCPConfig":
+    def _validate_bindings(self) -> Self:
         """Require at least one binding and reject blank logical ids."""
         if not self.indexes:
             raise ValueError("indexes must contain at least one configured binding")
@@ -901,7 +901,7 @@ class MCPConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_custom_tools(self) -> "MCPConfig":
+    def _validate_custom_tools(self) -> Self:
         """Validate custom tool names and index pinning against the bindings.
 
         Field-level checks that need the inspected schema (locked filter fields,
