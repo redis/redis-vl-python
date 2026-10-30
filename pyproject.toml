@@ -43,7 +43,10 @@ mcp = [
     # stateless redesign of the protocol core, so a major bump could change both
     # the negotiated version and how tools advertise their input schemas.
     # Supporting that revision is its own piece of work.
-    "fastmcp>=2.0.0,<4",
+    # The floor is the oldest release RedisVL works with, not a security floor:
+    # earlier 2.x releases lack fastmcp.server.auth, fail to import with
+    # pydantic 2.13, or reject the base_url the JWT verifier is built with.
+    "fastmcp>=2.12.1,<4",
     "pydantic-settings>=2.0,<3",
 ]
 mistralai = ["mistralai>=1.0.0,<2"]
