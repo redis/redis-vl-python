@@ -375,7 +375,9 @@ class BaseStorage(BaseModel):
             ValueError: If the length of provided keys does not match the
                 length of objects, or if validation fails.
         """
-        if keys and len(keys) != len(objects):  # type: ignore
+        objects = list(objects)
+        keys = list(keys) if keys is not None else None
+        if keys is not None and len(keys) != len(objects):
             raise ValueError("Length of keys does not match the length of objects")
 
         if batch_size is None:
@@ -386,7 +388,7 @@ class BaseStorage(BaseModel):
 
         # Pass 1: Preprocess and validate all objects
         prepared_objects = self._preprocess_and_validate_objects(
-            list(objects),  # Convert Iterable to List
+            objects,
             id_field=id_field,
             keys=keys,
             preprocess=preprocess,
@@ -454,7 +456,9 @@ class BaseStorage(BaseModel):
             ValueError: If the length of provided keys does not match the
                 length of objects, or if validation fails.
         """
-        if keys and len(keys) != len(objects):  # type: ignore
+        objects = list(objects)
+        keys = list(keys) if keys is not None else None
+        if keys is not None and len(keys) != len(objects):
             raise ValueError("Length of keys does not match the length of objects")
 
         if batch_size is None:
@@ -465,7 +469,7 @@ class BaseStorage(BaseModel):
 
         # Pass 1: Preprocess and validate all objects
         prepared_objects = self._preprocess_and_validate_objects(
-            list(objects),  # Convert Iterable to List
+            objects,
             id_field=id_field,
             keys=keys,
             preprocess=preprocess,
