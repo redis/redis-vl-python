@@ -153,9 +153,17 @@ class TestFreshAsyncClusterClient:
             "FT.DROPINDEX", INDEX_NAME, target_nodes=[node]
         )
 
+
+class TestListallOnCluster:
     @pytest.mark.asyncio
     async def test_listall_sees_a_new_index(self):
         client, _ = _fresh_async_cluster()
         index = AsyncSearchIndex(schema=_schema(), redis_client=client)
 
         assert await index.listall() == [INDEX_NAME]
+
+    def test_sync_listall_sees_a_new_index(self):
+        client = _sync_cluster([INDEX_NAME.encode()])
+        index = SearchIndex(schema=_schema(), redis_client=client)
+
+        assert index.listall() == [INDEX_NAME]

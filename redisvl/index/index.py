@@ -2336,6 +2336,13 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             List[str]: The list of indices in the database.
         """
+        if isinstance(self._redis_client, SyncRedisCluster):
+            # redis-py 7+ cannot route a keyless FT._LIST on a cluster, and a
+            # replica may lag behind, so ask the default node, as in _info().
+            node = self._redis_client.get_default_node()
+            return convert_bytes(
+                self._redis_client.execute_command("FT._LIST", target_nodes=node)
+            )
         return convert_bytes(self._redis_client.execute_command("FT._LIST"))
 
     def exists(self) -> bool:
