@@ -573,11 +573,8 @@ def process_aggregate_results(
 
     This function processes results from Redis, handling different storage
     types and query types. For JSON storage with empty return fields, it
-    unpacks the JSON object. In every case a result's ``id`` is the record's
-    full Redis key; a JSON document's own ``id`` field is dropped from the
-    unpacked result, as redis-py already does for a hash field named ``id``.
-    The 'payload' field is also removed from all resulting documents for
-    consistency.
+    unpacks the JSON object while retaining the document ID. The 'payload'
+    field is also removed from all resulting documents for consistency.
 
     Args:
         results (AggregateResult): The aggregate results from Redis.

@@ -352,7 +352,7 @@ query = HybridQuery(
 
 ## Result ids
 
-Every result's `id` is the record's full Redis key, such as `users:t1`, whatever the query type, storage type or `return_fields`. A field the document itself names `id` never replaces it. Redis-py already drops a hash field called `id` from search results, and a JSON `FilterQuery` without `return_fields`, which returns the whole document, drops the document's own `id` in the same way.
+For search queries, such as `VectorQuery`, `RangeQuery`, `FilterQuery` and `TextQuery`, every result's `id` is the record's full Redis key, such as `users:t1`, whatever the storage type or `return_fields`. A field the document itself names `id` never replaces it. Aggregation, hybrid and SQL results are rows of loaded fields rather than documents: they do not set `id` to the key, and a field you load under the name `id` keeps the document's value. Redis-py already drops a hash field called `id` from search results, and a JSON `FilterQuery` without `return_fields`, which returns the whole document, drops the document's own `id` in the same way.
 
 To read that field back, request it under another name. On JSON, either add its path to `return_fields`, as in `return_fields=["status", "$.id"]`, which returns it under the `$.id` key, or index it under an alias such as `{"name": "doc_id", "type": "tag", "path": "$.id"}` and return `doc_id`. `index.fetch()` returns the stored document unchanged, `id` field included.
 
