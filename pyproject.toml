@@ -171,6 +171,7 @@ exclude = '''
 [tool.pytest.ini_options]
 log_cli = true
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.mypy]
 warn_unused_configs = true
