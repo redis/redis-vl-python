@@ -1,6 +1,44 @@
 """Unit tests for convert_index_info_to_schema function."""
 
 from redisvl.redis.connection import convert_index_info_to_schema
+from redisvl.schema import IndexSchema
+
+
+def test_convert_index_info_svs_no_compression():
+    """Redis 8.2+ reports an uncompressed SVS-VAMANA field as NO_COMPRESSION."""
+    index_info = {
+        "index_name": "svs",
+        "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
+        "attributes": [
+            [
+                "identifier",
+                "emb",
+                "attribute",
+                "emb",
+                "type",
+                "VECTOR",
+                "algorithm",
+                "SVS-VAMANA",
+                "data_type",
+                "FLOAT32",
+                "dim",
+                4,
+                "distance_metric",
+                "COSINE",
+                "graph_max_degree",
+                40,
+                "construction_window_size",
+                250,
+                "compression",
+                "NO_COMPRESSION",
+            ]
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert "compression" not in result["fields"][0]["attrs"]
+    assert IndexSchema.from_dict(result).fields["emb"].attrs.compression is None
 
 
 def test_convert_index_info_single_prefix():
