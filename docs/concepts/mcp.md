@@ -299,7 +299,7 @@ A code tool never receives the server, the real `AsyncSearchIndex`, or a Redis c
 | `ctx.index` | A handle on the bound index offering `query`, `batch_query`, `search`, `batch_search`, `aggregate`, `fetch`, `exists` and `info`. A tool declared with `writes=True` also gets `load`, `drop_documents` and `expire_documents`. `document_id(key)` turns the full key a search result carries as `id` back into a document id. |
 | `ctx.schema` | The bound index's schema. |
 | `ctx.vectorizer` and `ctx.embed(text)` | The binding's vectorizer, if it has one, and a helper that embeds text with it. |
-| `ctx.claims` | A read-only copy of the current request's verified token claims, or `None` when the request has no token. |
+| `ctx.claims` | A read-only copy of the current request's verified token claims, or `None` when the server has no authentication or the request has no token. |
 
 Every call stays inside the bound index. Searches and aggregations run against its name, and records are addressed by document id, which the index turns into a key under its own prefix. So nothing on the handle takes a full Redis key, `load` returns document ids, and `query` refuses a `SQLQuery`, whose `FROM` clause names its own index. Either could otherwise reach another index's documents, including a tenant-scoped one. An index whose key prefix overlaps another's shares keys with it, which the handle cannot tell apart, and an index with an empty prefix covers every key, so its document ids are full Redis keys.
 
