@@ -127,6 +127,7 @@ async def test_lookup_produces_check_embeddings_and_retrieval_spans(
         otel.GEN_AI_RETRIEVAL_TOP_K: 1,
         otel.DB_SYSTEM_NAME: "redis",
         otel.DB_COLLECTION_NAME: index,
+        otel.DB_OPERATION_NAME: "FT.SEARCH",
         otel.CACHE_DISTANCE_THRESHOLD: 0.1,
     }
 

@@ -82,6 +82,7 @@ semantic_cache.check     INTERNAL
 | | `gen_ai.data_source.id`, `db.collection.name` | The index name |
 | | `gen_ai.retrieval.top_k` | `num_results` |
 | | `db.system.name` | `redis` |
+| | `db.operation.name` | `FT.SEARCH` |
 | | `redisvl.cache.distance_threshold` | The threshold the lookup used |
 | | `redisvl.cache.distance` | The nearest candidate's distance, when there was one |
 

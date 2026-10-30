@@ -110,6 +110,7 @@ def retrieval(index_name: str, top_k: int, distance_threshold: float) -> Iterato
         otel.GEN_AI_RETRIEVAL_TOP_K: top_k,
         otel.DB_SYSTEM_NAME: "redis",
         otel.DB_COLLECTION_NAME: index_name,
+        otel.DB_OPERATION_NAME: "FT.SEARCH",
         otel.CACHE_DISTANCE_THRESHOLD: distance_threshold,
     }
     with otel.start_span(
