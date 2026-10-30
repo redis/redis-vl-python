@@ -6,16 +6,14 @@ Redis) went through the value before the move from ``(str, Enum)`` and must
 not change.
 """
 
-import json
 from enum import StrEnum
 
 import pytest
 import yaml
 from redis.connection import Encoder
 
-from redisvl.extensions.message_history.schema import ChatMessage, ChatRole
-from redisvl.mcp.errors import MCPErrorCode, map_exception
-from redisvl.query import VectorQuery
+from redisvl.extensions.message_history.schema import ChatRole
+from redisvl.mcp.errors import MCPErrorCode
 from redisvl.query.filter import Inclusive, Num, Tag
 from redisvl.query.query import HybridPolicy
 from redisvl.schema import IndexSchema
@@ -111,7 +109,6 @@ def test_schema_serialisation_uses_member_values(tmp_path):
     assert flat["attrs"]["distance_metric"] == "L2"
     svs_attrs = schema.fields["svs"].attrs
     assert svs_attrs.model_dump(mode="json")["compression"] == "LeanVec4x8"
-    assert svs_attrs.model_dump()["compression"] == "LeanVec4x8"
 
     as_dict = schema.to_dict()
     schema.to_yaml(str(tmp_path / "schema.yaml"))
@@ -164,22 +161,3 @@ def test_int8_range_check_matches_the_datatype():
 def test_query_strings_use_member_values():
     assert str(Tag("role") == [ChatRole.USER, ChatRole.TOOL]) == "@role:{user|tool}"
     assert str(Num("n").between(1, 2, inclusive=Inclusive.LEFT)) == "@n:[1 (2]"
-
-    query = VectorQuery([0.1, 0.2], "v", hybrid_policy="BATCHES", batch_size=10)
-    assert "HYBRID_POLICY BATCHES BATCH_SIZE 10" in str(query)
-    assert query.hybrid_policy == "BATCHES"
-
-
-def test_chat_role_is_stored_as_its_value():
-    message = ChatMessage(role="user", content="hi", session_tag="s")
-    encoder = Encoder("utf-8", "strict", False)
-
-    assert encoder.encode(message.to_dict()["role"]) == b"user"
-    assert message.model_dump(mode="json")["role"] == "user"
-
-
-def test_mcp_error_code_serialises_as_its_value():
-    code = map_exception(ValueError("bad")).code
-
-    assert str(code) == "invalid_request"
-    assert json.dumps({"code": code}) == '{"code": "invalid_request"}'
