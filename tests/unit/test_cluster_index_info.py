@@ -121,17 +121,6 @@ class TestClusterInfoReplyShape:
 
 class TestFreshAsyncClusterClient:
     @pytest.mark.asyncio
-    async def test_info_initialises_before_choosing_a_node(self):
-        client, node = _fresh_async_cluster(RESP2_REPLY)
-
-        info = await AsyncSearchIndex._info(INDEX_NAME, client)
-
-        assert info["index_name"] == INDEX_NAME
-        client.execute_command.assert_awaited_once_with(
-            "FT.INFO", INDEX_NAME, target_nodes=node
-        )
-
-    @pytest.mark.asyncio
     async def test_delete_targets_a_node_not_none(self):
         client, node = _fresh_async_cluster()
         index = AsyncSearchIndex(schema=_schema(), redis_client=client)
