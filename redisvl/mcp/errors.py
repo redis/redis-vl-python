@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import ValidationError
 from redis.exceptions import RedisError
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisSearchError, RedisVLError, SchemaValidationError
 
 
 class MCPErrorCode(str, Enum):
@@ -41,7 +41,9 @@ def map_exception(exc: Exception) -> RedisVLMCPError:
     if isinstance(exc, RedisVLMCPError):
         return exc
 
-    if isinstance(exc, (ValidationError, ValueError, FileNotFoundError)):
+    if isinstance(
+        exc, (ValidationError, SchemaValidationError, ValueError, FileNotFoundError)
+    ):
         return RedisVLMCPError(
             str(exc),
             code=MCPErrorCode.INVALID_REQUEST,
@@ -63,6 +65,13 @@ def map_exception(exc: Exception) -> RedisVLMCPError:
             code=MCPErrorCode.BACKEND_UNAVAILABLE,
             retryable=True,
         )
+
+    # Index methods such as ``load`` wrap whatever went wrong in a plain
+    # ``RedisVLError``. Classify by the cause, so a lost connection stays retryable,
+    # but keep the wrapper's message, which says which operation failed.
+    if isinstance(exc, RedisVLError) and isinstance(exc.__cause__, Exception):
+        cause = map_exception(exc.__cause__)
+        return RedisVLMCPError(str(exc), code=cause.code, retryable=cause.retryable)
 
     return RedisVLMCPError(
         str(exc),

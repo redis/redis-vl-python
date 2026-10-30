@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 from redis.exceptions import RedisError
 
+from redisvl.exceptions import SchemaValidationError
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
@@ -464,6 +465,20 @@ async def test_upsert_records_surfaces_partial_write_possible_on_backend_failure
     assert exc_info.value.code == MCPErrorCode.BACKEND_UNAVAILABLE
     assert exc_info.value.metadata["partial_write_possible"] is True
     assert isinstance(exc_info.value.__cause__, RedisError)
+    assert "may already have been written" in str(exc_info.value)
+    assert "without id_field writes them again" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_rejected_load_does_not_warn_of_partial_write():
+    server = FakeServer()
+    server.index.load_exception = SchemaValidationError("bad record", index=0)
+
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await upsert_records(server, records=[{"content": "alpha doc"}])
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert "written" not in str(exc_info.value)
 
 
 @pytest.mark.asyncio

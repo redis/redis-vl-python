@@ -1,7 +1,9 @@
+import pytest
 from pydantic import BaseModel, ValidationError
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisSearchError, RedisVLError, SchemaValidationError
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 
 
@@ -57,6 +59,27 @@ def test_timeout_error_maps_to_backend_unavailable():
 
     assert mapped.code == MCPErrorCode.BACKEND_UNAVAILABLE
     assert mapped.retryable is True
+
+
+@pytest.mark.parametrize(
+    "cause", [RedisConnectionError("down"), RedisTimeoutError("slow")]
+)
+def test_wrapped_redis_errors_map_by_their_cause(cause):
+    try:
+        raise RedisVLError("Failed to load data") from cause
+    except RedisVLError as exc:
+        mapped = map_exception(exc)
+
+    assert mapped.code == MCPErrorCode.BACKEND_UNAVAILABLE
+    assert mapped.retryable is True
+    assert str(mapped) == "Failed to load data"
+
+
+def test_schema_validation_error_maps_to_invalid_request():
+    mapped = map_exception(SchemaValidationError("bad record", index=0))
+
+    assert mapped.code == MCPErrorCode.INVALID_REQUEST
+    assert mapped.retryable is False
 
 
 def test_unknown_errors_map_to_internal_error():

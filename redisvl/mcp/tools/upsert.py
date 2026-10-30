@@ -345,8 +345,22 @@ async def upsert_records(
             )
         except Exception as exc:
             mapped = map_exception(exc)
-            mapped.metadata["partial_write_possible"] = True
-            raise mapped from exc
+            # load validates every record before it writes any, so a rejected
+            # request wrote nothing. Anything else may have failed mid-write, and
+            # clients only see the message, so the warning goes there.
+            if mapped.code is MCPErrorCode.INVALID_REQUEST:
+                raise mapped from exc
+            warning = "some records may already have been written"
+            if id_field is None:
+                warning += (
+                    "; retrying without id_field writes them again under new keys"
+                )
+            raise RedisVLMCPError(
+                f"{mapped}; {warning}",
+                code=mapped.code,
+                retryable=mapped.retryable,
+                metadata={**mapped.metadata, "partial_write_possible": True},
+            ) from exc
 
         return {
             "index": rt.binding_id,
