@@ -30,10 +30,9 @@ async def test_sync_methods_warn_with_async_only_client(
 
     # Mock _get_redis_client to prevent actual connection attempt
     with patch.object(cache, "_get_redis_client") as mock_get_client:
-        # Mock the Redis client methods that would be called
-        mock_client = mock_get_client.return_value
-        mock_client.hgetall.return_value = {}  # Empty result for get_by_key
-        mock_client.hset.return_value = 1  # Success for set
+        # Both calls run through a pipeline; with no TTL, one empty reply is a miss
+        pipeline = mock_get_client.return_value.pipeline.return_value.__enter__()
+        pipeline.execute.return_value = [{}]
 
         # Capture log warnings
         with caplog.at_level(logging.WARNING):
@@ -46,6 +45,7 @@ async def test_sync_methods_warn_with_async_only_client(
                 "initialized with async_redis_client only" in caplog.records[0].message
             )
             assert "Use async methods" in caplog.records[0].message
+            assert "(get_by_key)" in caplog.records[0].message
 
             # Clear captured logs
             caplog.clear()

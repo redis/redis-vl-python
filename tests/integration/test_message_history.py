@@ -412,6 +412,22 @@ def test_semantic_scope(semantic_history):
 
 
 @pytest.mark.requires_hf
+def test_semantic_get_relevant_falls_back_within_the_requested_session(
+    semantic_history,
+):
+    semantic_history.store("default prompt", "default response")
+    semantic_history.store("other prompt", "other response", session_tag="other")
+
+    context = semantic_history.get_relevant(
+        "unrelated", session_tag="other", fall_back=True, distance_threshold=0
+    )
+    assert context == [
+        {"role": "user", "content": "other prompt"},
+        {"role": "llm", "content": "other response"},
+    ]
+
+
+@pytest.mark.requires_hf
 def test_semantic_store_and_get_recent(semantic_history):
     context = semantic_history.get_recent()
     assert len(context) == 0
