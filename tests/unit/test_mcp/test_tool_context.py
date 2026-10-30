@@ -53,7 +53,8 @@ class RecordingIndex:
 
 
 class FakeServer:
-    def __init__(self):
+    def __init__(self, *, auth_enabled: bool = True):
+        self._auth_enabled = auth_enabled
         self.guarded: list[tuple[str, float]] = []
 
     async def run_guarded(self, operation_name, awaitable, *, timeout_seconds):
@@ -322,6 +323,20 @@ def test_the_context_is_read_only(monkeypatch):
         )
     with pytest.raises(AttributeError):
         ctx.anything = object()
+
+
+def test_a_server_without_auth_never_looks_for_a_token(monkeypatch):
+    # FastMCP before 2.10 has no get_access_token, so reaching for it without
+    # auth would fail every code-tool call there.
+    def no_such_helper():
+        raise AssertionError("get_access_token was called")
+
+    monkeypatch.setattr(
+        "fastmcp.server.dependencies.get_access_token", no_such_helper, raising=False
+    )
+    server = FakeServer(auth_enabled=False)
+
+    assert ToolContext.for_request(server, _runtime(), writes=False).claims is None
 
 
 def test_a_tokenless_request_has_no_claims(monkeypatch):

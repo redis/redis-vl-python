@@ -191,8 +191,12 @@ def _freeze(value: Any) -> Any:
     return value
 
 
-def _current_claims() -> Mapping[str, Any] | None:
+def _current_claims(server: Any) -> Mapping[str, Any] | None:
     """The verified claims of the current request, or ``None`` without a token."""
+    # Without auth no token is verified. Returning first also keeps code tools
+    # working on FastMCP releases before 2.10, which lack get_access_token.
+    if not getattr(server, "_auth_enabled", False):
+        return None
     # Imported here because this module stays importable without the `mcp` extra.
     from fastmcp.server.dependencies import get_access_token
 
@@ -243,7 +247,7 @@ class ToolContext:
             # built-in tools included.
             schema=runtime.schema.model_copy(deep=True),
             vectorizer=runtime.vectorizer,
-            claims=_current_claims(),
+            claims=_current_claims(server),
         )
 
     @property
