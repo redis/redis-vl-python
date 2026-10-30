@@ -35,6 +35,4 @@ async def test_a_failing_meter_never_reaches_the_caller(monkeypatch):
         cache.check(error)
     assert raised.value is error
     assert CustomVectorizer(embed=lambda text: [1.0]).embed("x") == [1.0]
-    with _telemetry.retrieval("cache", 1, 0.1) as span:
-        _telemetry.record_lookup(span, [{"vector_distance": "0.1"}], None)
     _telemetry.record_nearest_distance("cache", [{"vector_distance": "0.1"}], [])

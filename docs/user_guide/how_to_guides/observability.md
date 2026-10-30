@@ -59,7 +59,7 @@ All RedisVL telemetry uses the instrumentation scope `redisvl`, with RedisVL's v
 
 ### Spans
 
-Every `SemanticCache` operation produces a span tree. A lookup looks like this:
+Each `check`, `store`, `update` and `drop` call produces a span tree. A lookup looks like this:
 
 ```
 semantic_cache.check     INTERNAL
