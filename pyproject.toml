@@ -81,6 +81,12 @@ pillow = [
 sql-redis = [
     "sql-redis>=0.7.1",
 ]
+# API only: the application owns the SDK and exporters. 1.30.0 is the first
+# release that accepts histogram bucket advice
+# (explicit_bucket_boundaries_advisory).
+otel = [
+    "opentelemetry-api>=1.30.0",
+]
 all = [
     "mistralai>=1.0.0,<2",
     "openai>=1.1.0",
@@ -96,6 +102,7 @@ all = [
     "pillow>=11.3.0",
     "sql-redis>=0.7.1",
     "ollama>=0.5.4",
+    "opentelemetry-api>=1.30.0",
 ]
 ollama = [
     "ollama>=0.5.4",
@@ -131,6 +138,10 @@ dev = [
     "cryptography>=44.0.1",
     "codespell>=2.4.1,<3",
     "langcache>=0.9.0",
+]
+# Not a default group, so a plain `uv sync` stays free of OpenTelemetry.
+otel-test = [
+    "opentelemetry-sdk>=1.30.0",
 ]
 docs = [
     "sphinx>=4.4.0",
