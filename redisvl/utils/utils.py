@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import inspect
 import json
+import numbers
 import sys
 import warnings
 from contextlib import contextmanager
@@ -290,6 +291,29 @@ def denorm_cosine_distance(value: float) -> float:
     0 and 2.
     """
     return max(2 - 2 * value, 0)
+
+
+def validate_cosine_distance_threshold(distance_threshold: float) -> float:
+    """Validate a COSINE distance threshold and return it as a float.
+
+    A real number from 0 to 2 inclusive, the range of Redis COSINE distance. A
+    bool is refused even though it is an ``int``, and NaN fails the range
+    check, which it would otherwise pass silently by matching nothing.
+
+    Raises:
+        TypeError: If the threshold is not a real number, or is a bool.
+        ValueError: If the threshold is not between 0 and 2, or is NaN.
+    """
+    if isinstance(distance_threshold, bool) or not isinstance(
+        distance_threshold, numbers.Real
+    ):
+        raise TypeError(
+            "distance_threshold must be a real number, got "
+            f"{type(distance_threshold).__name__}"
+        )
+    if not 0 <= distance_threshold <= 2:
+        raise ValueError(f"Distance must be between 0 and 2, got {distance_threshold}")
+    return float(distance_threshold)
 
 
 def norm_l2_distance(value: float) -> float:

@@ -23,7 +23,12 @@ from redisvl.index import SearchIndex
 from redisvl.query import CountQuery, FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_argument, serialize, validate_vector_dims
+from redisvl.utils.utils import (
+    deprecated_argument,
+    serialize,
+    validate_cosine_distance_threshold,
+    validate_vector_dims,
+)
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 logger = get_logger(__name__)
@@ -61,7 +66,8 @@ class SemanticMessageHistory(BaseMessageHistory):
                 Defaults to None and will be replaced with the index name.
             vectorizer (Optional[BaseVectorizer]): The vectorizer used to create embeddings.
             distance_threshold (float): The maximum semantic distance to be
-                included in the context. Defaults to 0.3.
+                included in the context, in Redis COSINE units [0-2]. Defaults
+                to 0.3.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
@@ -79,6 +85,10 @@ class SemanticMessageHistory(BaseMessageHistory):
                 Defaults to True.
 
         Raises:
+            TypeError: If the distance threshold is not a real number, or is a
+                bool.
+            ValueError: If the distance threshold is not between 0 and 2
+                (Redis COSINE distance), or is NaN.
             ValueError: If both create_index is False and overwrite is True.
 
         The proposed schema will support a single vector embedding constructed
@@ -258,7 +268,8 @@ class SemanticMessageHistory(BaseMessageHistory):
             session_tag (Optional[str]): Tag of the entries linked to a specific
                 conversation session. Defaults to instance ULID.
             distance_threshold (Optional[float]): The threshold for semantic
-                vector distance.
+                vector distance, in Redis COSINE units [0-2]. Defaults to None,
+                which uses the history's threshold.
             fall_back (bool): Whether to drop back to recent conversation history
                 if no relevant context is found.
             raw (bool): Whether to return the full Redis hash entry or just the
@@ -271,8 +282,11 @@ class SemanticMessageHistory(BaseMessageHistory):
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
             list of prompts and responses in JSON containing the most relevant.
 
-        Raises ValueError: if top_k is not an integer greater or equal to 0,
-            or if role contains invalid values.
+        Raises:
+            ValueError: If top_k is not an integer greater or equal to 0, or if
+                role contains invalid values.
+            TypeError: If `distance_threshold` is not a real number, or is a bool.
+            ValueError: If `distance_threshold` is not between 0 and 2, or is NaN.
         """
         if type(top_k) != int or top_k < 0:
             raise ValueError("top_k must be an integer greater than or equal to -1")
@@ -286,6 +300,8 @@ class SemanticMessageHistory(BaseMessageHistory):
         # (exact match only), so only fall back on None.
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
+        else:
+            distance_threshold = validate_cosine_distance_threshold(distance_threshold)
 
         return_fields = [
             SESSION_FIELD_NAME,
@@ -423,8 +439,19 @@ class SemanticMessageHistory(BaseMessageHistory):
     def distance_threshold(self):
         return self._distance_threshold
 
-    def set_distance_threshold(self, threshold):
-        self._distance_threshold = threshold
+    def set_distance_threshold(self, threshold: float) -> None:
+        """Set the history's semantic distance threshold.
+
+        Args:
+            threshold (float): The maximum semantic distance to be included in
+                the context, in Redis COSINE units [0-2].
+
+        Raises:
+            TypeError: If the threshold is not a real number, or is a bool.
+            ValueError: If the threshold is not between 0 and 2 (Redis COSINE
+                distance), or is NaN.
+        """
+        self._distance_threshold = validate_cosine_distance_threshold(threshold)
 
     def store(self, prompt: str, response: str, session_tag: str | None = None) -> None:
         """Insert a prompt:response pair into the message history. A timestamp
