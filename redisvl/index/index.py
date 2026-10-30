@@ -449,8 +449,11 @@ def process_results(
 
     This function processes results from Redis, handling different storage
     types and query types. For JSON storage with empty return fields, it
-    unpacks the JSON object while retaining the document ID. The 'payload'
-    field is also removed from all resulting documents for consistency.
+    unpacks the JSON object. In every case a result's ``id`` is the record's
+    full Redis key; a JSON document's own ``id`` field is dropped from the
+    unpacked result, as redis-py already does for a hash field named ``id``.
+    The 'payload' field is also removed from all resulting documents for
+    consistency.
 
     Where it can be detected, a matched document whose field payload came back
     missing is silently dropped (and logged at WARNING level). On Redis 8.8+ the
@@ -524,6 +527,11 @@ def process_results(
             if isinstance(json_data, str):
                 json_data = json.loads(json_data)
             if isinstance(json_data, dict):
+                # The Redis key always wins as "id", matching hash results
+                # (redis-py drops a hash field literally named "id") and every
+                # query that sets return_fields. A document's own "id" field
+                # is dropped rather than shadowing the key.
+                json_data.pop("id", None)
                 return {"id": doc_dict.get("id"), **json_data}
             raise ValueError(f"Unable to parse json data from Redis {json_data}")
 
@@ -565,8 +573,11 @@ def process_aggregate_results(
 
     This function processes results from Redis, handling different storage
     types and query types. For JSON storage with empty return fields, it
-    unpacks the JSON object while retaining the document ID. The 'payload'
-    field is also removed from all resulting documents for consistency.
+    unpacks the JSON object. In every case a result's ``id`` is the record's
+    full Redis key; a JSON document's own ``id`` field is dropped from the
+    unpacked result, as redis-py already does for a hash field named ``id``.
+    The 'payload' field is also removed from all resulting documents for
+    consistency.
 
     Args:
         results (AggregateResult): The aggregate results from Redis.
