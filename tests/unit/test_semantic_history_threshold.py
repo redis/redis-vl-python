@@ -14,7 +14,6 @@ import pytest
 
 from redisvl.extensions.message_history import SemanticMessageHistory
 from redisvl.query.filter import Tag
-from redisvl.utils.vectorize import BaseVectorizer
 
 ACCEPTED = [0, 2, np.float32(0.5)]
 
@@ -52,7 +51,13 @@ def test_every_path_accepts_the_closed_range(history, value):
 
 
 @pytest.mark.parametrize("value, error", REFUSED)
-def test_every_path_refuses_alike(history, value, error):
+def test_every_path_refuses_alike(history, monkeypatch, value, error):
+    # The constructor must refuse before it loads the default vectorizer.
+    monkeypatch.setattr(
+        "redisvl.extensions.message_history.semantic_history.HFTextVectorizer",
+        Mock(side_effect=AssertionError("default vectorizer loaded")),
+    )
+
     with pytest.raises(error) as expected:
         history.set_distance_threshold(value)
     match = re.escape(str(expected.value))
@@ -60,9 +65,9 @@ def test_every_path_refuses_alike(history, value, error):
     with pytest.raises(error, match=match):
         history.get_relevant("prompt", distance_threshold=value)
     with pytest.raises(error, match=match):
-        SemanticMessageHistory(
-            "history", vectorizer=Mock(spec=BaseVectorizer), distance_threshold=value
-        )
+        history.get_relevant("prompt", top_k=0, distance_threshold=value)
+    with pytest.raises(error, match=match):
+        SemanticMessageHistory("history", distance_threshold=value)
     assert history.distance_threshold == 0.1
     history._vectorizer.embed.assert_not_called()
     history._index.query.assert_not_called()

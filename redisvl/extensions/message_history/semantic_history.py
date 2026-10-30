@@ -97,6 +97,8 @@ class SemanticMessageHistory(BaseMessageHistory):
         connection_kwargs = connection_kwargs or {}
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+        # Refuse a bad threshold before loading the default vectorizer.
+        validate_cosine_distance_threshold(distance_threshold)
 
         super().__init__(name, session_tag)
 
@@ -290,18 +292,18 @@ class SemanticMessageHistory(BaseMessageHistory):
         """
         if type(top_k) != int or top_k < 0:
             raise ValueError("top_k must be an integer greater than or equal to -1")
-        if top_k == 0:
-            return []
-
-        # Validate and normalize role parameter
-        roles_to_filter = self._validate_roles(role)
-
         # override distance threshold. Note: 0 is a valid distance threshold
         # (exact match only), so only fall back on None.
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
         else:
             distance_threshold = validate_cosine_distance_threshold(distance_threshold)
+
+        if top_k == 0:
+            return []
+
+        # Validate and normalize role parameter
+        roles_to_filter = self._validate_roles(role)
 
         return_fields = [
             SESSION_FIELD_NAME,
