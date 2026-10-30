@@ -617,6 +617,39 @@ def test_routes_different_distance_thresholds_get_one(
                 router.delete()
 
 
+def test_threshold_filter_applies_before_max_k_truncation(
+    client, routes, hf_vectorizer, redis_test_name
+):
+    """A closer route that misses its own threshold must not crowd out a
+    farther one that meets its threshold."""
+    skip_if_no_redis_search(client)
+    # With all-mpnet-base-v2 and avg aggregation, "hello" sits ~0.07 from
+    # greeting and ~0.60 from farewell. (Under min, greeting would be ~0.)
+    routes[0].distance_threshold = 0.01
+    routes[1].distance_threshold = 0.8
+
+    router = SemanticRouter(
+        name=redis_test_name("test_threshold_filter_before_max_k"),
+        routes=routes,
+        routing_config=RoutingConfig(
+            max_k=1, aggregation_method=DistanceAggregationMethod.avg
+        ),
+        redis_client=client,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    try:
+        assert router("hello").name == "farewell"
+
+        # max_k comes from the routing config; route() always uses max_k=1.
+        assert [match.name for match in router.route_many("hello")] == ["farewell"]
+    finally:
+        with suppress(Exception):
+            router.clear()
+        with suppress(Exception):
+            router.delete()
+
+
 def test_distance_threshold_is_inclusive(semantic_router):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
