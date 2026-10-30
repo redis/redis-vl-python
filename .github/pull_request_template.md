@@ -1,4 +1,4 @@
-<!-- Describe the change, not the work behind it: "This PR adds", not "I added". Leave out test-plan checklists and review history; the diff and the Reviewer Brief carry those. A trivial PR, such as a typo fix or a dependency bump, can replace this whole template with one paragraph. -->
+<!-- Describe the change, not the work behind it: "This PR adds", not "I added". Leave out test-plan checklists and review history; the diff and the Reviewer Brief carry those. A trivial PR, such as a typo fix or a dependency bump, can replace the other sections with one paragraph, but keeps the Reviewer Brief if its author is expected to include one. -->
 
 ## Motivation
 
