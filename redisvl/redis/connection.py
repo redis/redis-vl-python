@@ -513,11 +513,8 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
         # Handle SVS-VAMANA specific parameters
         # Compression - Redis uses different internal names, so we need to map them
         # NO_COMPRESSION represents an omitted compression setting.
-        if (
-            "compression" in vector_attrs
-            and vector_attrs["compression"] != "NO_COMPRESSION"
-        ):
-            compression_value = vector_attrs["compression"]
+        compression_value = vector_attrs.get("compression")
+        if compression_value not in (None, "NO_COMPRESSION"):
             # Map Redis internal names to our enum values
             compression_mapping = {
                 "GlobalSQ8": "LVQ4x4",  # Default mapping

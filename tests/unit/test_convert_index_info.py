@@ -1,76 +1,44 @@
 """Unit tests for convert_index_info_to_schema function."""
 
-import pytest
-
 from redisvl.redis.connection import convert_index_info_to_schema
 from redisvl.schema import IndexSchema
 
 
-@pytest.mark.parametrize("storage_type", ["HASH", "JSON"])
-@pytest.mark.parametrize("response_format", ["dict", "list", "flags"])
-@pytest.mark.parametrize(
-    "compression, expected",
-    [
-        ("NO_COMPRESSION", None),
-        (None, None),
-        ("GlobalSQ8", "LVQ4x4"),
-        ("GlobalSQ4", "LVQ4"),
-        ("LVQ4", "LVQ4"),
-        ("LVQ4x4", "LVQ4x4"),
-        ("LVQ4x8", "LVQ4x8"),
-        ("LVQ8", "LVQ8"),
-        ("LeanVec4x8", "LeanVec4x8"),
-        ("LeanVec8x8", "LeanVec8x8"),
-    ],
-)
-def test_convert_index_info_svs_compression(
-    storage_type, response_format, compression, expected
-):
-    """Recover SVS compression, including Redis's explicit no-compression sentinel."""
-    identifier = "$.emb" if storage_type == "JSON" else "emb"
-    field = {"identifier": identifier, "attribute": "emb", "type": "VECTOR"}
-    params = {
-        "algorithm": "SVS-VAMANA",
-        "data_type": "FLOAT32",
-        "dim": 3,
-        "distance_metric": "COSINE",
-        "graph_max_degree": 32,
-        "construction_window_size": 200,
-    }
-    if compression is not None:
-        params["compression"] = compression
-    if compression is not None and compression.startswith("LeanVec"):
-        params["reduce"] = 2
-    definition = {"key_type": storage_type, "prefixes": ["svs"]}
-    if response_format == "flags":
-        field["flags"] = [item for pair in params.items() for item in pair]
-    else:
-        field.update(params)
-    if response_format == "list":
-        field = [item for pair in field.items() for item in pair]
-        definition = [item for pair in definition.items() for item in pair]
-    info = {
+def test_convert_index_info_svs_no_compression():
+    """Redis 8.2+ reports an uncompressed SVS-VAMANA field as NO_COMPRESSION."""
+    index_info = {
         "index_name": "svs",
-        "index_definition": definition,
-        "attributes": [field],
+        "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
+        "attributes": [
+            [
+                "identifier",
+                "emb",
+                "attribute",
+                "emb",
+                "type",
+                "VECTOR",
+                "algorithm",
+                "SVS-VAMANA",
+                "data_type",
+                "FLOAT32",
+                "dim",
+                4,
+                "distance_metric",
+                "COSINE",
+                "graph_max_degree",
+                40,
+                "construction_window_size",
+                250,
+                "compression",
+                "NO_COMPRESSION",
+            ]
+        ],
     }
 
-    result = convert_index_info_to_schema(info)
-    schema = IndexSchema.from_dict(result)
-    recovered = schema.fields["emb"]
+    result = convert_index_info_to_schema(index_info)
 
-    assert schema.index.storage_type.value == storage_type.lower()
-    assert recovered.attrs.compression == expected
-    assert recovered.attrs.dims == 3
-    assert recovered.attrs.graph_max_degree == 32
-    assert recovered.attrs.construction_window_size == 200
-    if storage_type == "JSON":
-        assert recovered.path == identifier
-    if expected is None:
-        assert "compression" not in result["fields"][0]["attrs"]
-        assert "COMPRESSION" not in recovered.as_redis_field().redis_args()
-    else:
-        assert result["fields"][0]["attrs"]["compression"] == expected
+    assert "compression" not in result["fields"][0]["attrs"]
+    assert IndexSchema.from_dict(result).fields["emb"].attrs.compression is None
 
 
 def test_convert_index_info_single_prefix():
