@@ -12,6 +12,7 @@ from redisvl.migration.models import (
 )
 from redisvl.migration.planner import MigrationPlanner
 from redisvl.migration.utils import list_indexes, write_yaml
+from redisvl.schema.fields import CompressionType
 from redisvl.schema.schema import IndexSchema
 
 SUPPORTED_FIELD_TYPES = ["text", "tag", "numeric", "geo"]
@@ -824,19 +825,14 @@ class MigrationWizard:
             print(
                 "    Note: LVQ/LeanVec optimizations require Intel hardware with AVX-512"
             )
-            compression_input = (
-                input("COMPRESSION [leave blank for none]: ").strip().upper()
-            )
-            # Map input to correct enum case (CompressionType expects exact case)
-            compression_map = {
-                "LVQ4": "LVQ4",
-                "LVQ8": "LVQ8",
-                "LVQ4X4": "LVQ4x4",
-                "LVQ4X8": "LVQ4x8",
-                "LEANVEC4X8": "LeanVec4x8",
-                "LEANVEC8X8": "LeanVec8x8",
-            }
-            compression = compression_map.get(compression_input)
+            compression_input = input("COMPRESSION [leave blank for none]: ").strip()
+            compression: Optional[str] = None
+            if compression_input:
+                try:
+                    # CompressionType is case-insensitive; .value is the canonical form
+                    compression = CompressionType(compression_input).value
+                except ValueError:
+                    print(f"    Unknown compression '{compression_input}', ignoring.")
             if compression:
                 attrs["compression"] = compression
 

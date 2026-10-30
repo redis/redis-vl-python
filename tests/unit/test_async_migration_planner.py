@@ -11,6 +11,7 @@ from redis.asyncio.client import Redis as AsyncRedis
 
 from redisvl.migration import AsyncMigrationPlanner, MigrationPlanner
 from redisvl.migration.models import SchemaPatch
+from redisvl.schema.fields import CompressionType
 from redisvl.schema.schema import IndexSchema
 
 
@@ -349,3 +350,48 @@ async def test_async_planner_prefix_change_is_supported(monkeypatch, tmp_path):
     assert plan.rename_operations.change_prefix == "docs_v2"
     # Should have a warning about key renaming
     assert any("prefix" in w.lower() for w in plan.warnings)
+
+
+@pytest.mark.asyncio
+async def test_async_planner_merge_patch_preserves_svs_vamana_compression(monkeypatch):
+    """Test AsyncMigrationPlanner preserves SVS-VAMANA compression when merging a patch."""
+    source_schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test_idx", "prefix": "test"},
+            "fields": [
+                {
+                    "name": "vector",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 8,
+                        "compression": "LVQ8",
+                    },
+                }
+            ],
+        }
+    )
+    dummy_index = AsyncDummyIndex(
+        source_schema,
+        {"num_docs": 1, "indexing": False},
+        [b"test:1"],
+    )
+
+    async def mock_from_existing(*args, **kwargs):
+        return dummy_index
+
+    monkeypatch.setattr(
+        "redisvl.migration.async_planner.AsyncSearchIndex.from_existing",
+        mock_from_existing,
+    )
+
+    patch = SchemaPatch(changes={"add_fields": [{"name": "price", "type": "numeric"}]})
+    planner = AsyncMigrationPlanner()
+    plan = await planner.create_plan_from_patch("test_idx", schema_patch=patch)
+    merged_fields = {
+        field["name"]: field for field in plan.merged_target_schema["fields"]
+    }
+    assert (
+        CompressionType(merged_fields["vector"]["attrs"]["compression"])
+        == CompressionType.LVQ8
+    )
