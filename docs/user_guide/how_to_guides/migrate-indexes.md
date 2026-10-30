@@ -888,8 +888,9 @@ leaves a complete backup on disk. In multi-worker mode, dump and quantize
 are fused (each worker reads, backs up, and converts its shard in one pass
 *after* the index drop). A crash during this fused phase may leave partial
 backup shards. Re-running detects and resumes from partial state. With
-`AsyncMigrationExecutor`, the first worker to fail cancels the others, so no
-shard is still being written when the migration reports the failure.
+`--async` (`AsyncMigrationExecutor`), the first worker to fail cancels the
+others; the sync executor lets them finish their shards. Either way, no shard
+is still being written when the migration reports the failure.
 ```
 
 ### Rollback

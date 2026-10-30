@@ -527,7 +527,7 @@ class TestAsyncMultiWorkerFailure:
         async def every_worker_fails(ops):
             raise RedisConnectionError(f"failed at {ops[0][1]}")
 
-        with pytest.raises(RedisConnectionError, match="failed at"):
+        with pytest.raises(RedisConnectionError, match="failed at doc:0"):
             await self._run(store, every_worker_fails, tmp_path, [])
 
         assert caplog.text.count("Another quantization worker also failed") == 2
