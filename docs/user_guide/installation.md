@@ -179,6 +179,7 @@ index = SearchIndex.from_yaml(
 The Sentinel URL format supports:
 
 - Multiple sentinel hosts (comma-separated)
+- IPv6 literals in brackets, for example `redis+sentinel://[::1]:26380,[2001:db8::1]/mymaster`; omitted ports default to `26379`
 - Optional authentication (username:password)
 - Service name (defaults to `mymaster` if not specified)
 - Optional database number (defaults to 0)
