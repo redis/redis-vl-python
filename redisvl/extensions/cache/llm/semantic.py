@@ -22,7 +22,7 @@ from redisvl.extensions.constants import (
     UPDATED_AT_FIELD_NAME,
 )
 from redisvl.index import AsyncSearchIndex, SearchIndex
-from redisvl.query import VectorRangeQuery
+from redisvl.query import VectorQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import hashify
 from redisvl.utils.log import get_logger
@@ -485,6 +485,8 @@ class SemanticCache(BaseLLMCache):
         # (exact match only), so only fall back on None.
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
+        else:
+            self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -496,23 +498,12 @@ class SemanticCache(BaseLLMCache):
         else:
             raise ValueError("Failed to generate a valid vector for the query.")
 
-        # Create the vector search query
-        query = VectorRangeQuery(
-            vector=vector,
-            vector_field_name=CACHE_VECTOR_FIELD_NAME,
-            return_fields=self.return_fields,
-            distance_threshold=distance_threshold,
-            num_results=num_results,
-            return_score=True,
-            filter_expression=filter_expression,
-            dtype=self._vectorizer.dtype,
-        )
-
         # Search the cache!
-        cache_search_results = self._index.query(query)
+        query = self._build_check_query(vector, num_results, filter_expression)
+        candidates = self._index.query(query)
         redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results,
-            return_fields,  # type: ignore
+            self._within_threshold(candidates, distance_threshold),
+            return_fields,
         )
 
         # Refresh TTL on all found keys
@@ -579,6 +570,8 @@ class SemanticCache(BaseLLMCache):
         # (exact match only), so only fall back on None.
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
+        else:
+            self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -590,29 +583,70 @@ class SemanticCache(BaseLLMCache):
         else:
             raise ValueError("Failed to generate a valid vector for the query.")
 
-        # Create the vector search query
-        query = VectorRangeQuery(
-            vector=vector,
-            vector_field_name=CACHE_VECTOR_FIELD_NAME,
-            return_fields=self.return_fields,
-            distance_threshold=distance_threshold,
-            num_results=num_results,
-            return_score=True,
-            filter_expression=filter_expression,
-            dtype=self._vectorizer.dtype,
-        )
-
         # Search the cache!
-        cache_search_results = await aindex.query(query)
+        query = self._build_check_query(vector, num_results, filter_expression)
+        candidates = await aindex.query(query)
         redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results,
-            return_fields,  # type: ignore
+            self._within_threshold(candidates, distance_threshold),
+            return_fields,
         )
 
         # Refresh TTL on all found keys
         await self._aexpire_many(redis_keys)
 
         return cache_hits
+
+    def _build_check_query(
+        self,
+        vector: list[float],
+        num_results: int,
+        filter_expression: FilterExpression | None,
+    ) -> VectorQuery:
+        """Build the KNN lookup shared by :meth:`check` and :meth:`acheck`.
+
+        :meth:`_within_threshold` then applies the distance threshold, so the
+        nearest distance is known even on a miss.
+        """
+        return VectorQuery(
+            vector=vector,
+            vector_field_name=CACHE_VECTOR_FIELD_NAME,
+            return_fields=self.return_fields,
+            num_results=num_results,
+            return_score=True,
+            filter_expression=filter_expression,
+            dtype=self._vectorizer.dtype,
+        )
+
+    @staticmethod
+    def _within_threshold(
+        candidates: list[dict[str, Any]], distance_threshold: float
+    ) -> list[dict[str, Any]]:
+        """Keep the candidates whose distance is at most the threshold.
+
+        Inclusive, as a range query's radius is, at the precision of the
+        distance Redis returns (12 significant digits). A candidate with no distance
+        (an id-only row from the Redis 8.8+ expiry race) is kept so that
+        :meth:`_process_cache_results` skips it with its usual warning.
+        """
+        return [
+            candidate
+            for candidate in candidates
+            if (distance := candidate.get(VectorQuery.DISTANCE_ID)) is None
+            or float(distance) <= distance_threshold
+        ]
+
+    @staticmethod
+    def _validate_distance_threshold(distance_threshold: float) -> None:
+        """Validate a per-call ``distance_threshold`` override.
+
+        Raises:
+            TypeError: If the threshold is not a float or int.
+            ValueError: If the threshold is negative.
+        """
+        if not isinstance(distance_threshold, (float, int)):
+            raise TypeError("distance_threshold must be of type float or int")
+        if distance_threshold < 0:
+            raise ValueError("distance_threshold must be non-negative")
 
     def _process_cache_results(
         self,
