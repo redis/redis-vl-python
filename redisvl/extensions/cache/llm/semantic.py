@@ -509,10 +509,10 @@ class SemanticCache(BaseLLMCache):
             self._within_threshold(candidates, distance_threshold),
             return_fields,
         )
-        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         # Refresh TTL on all found keys
         self._expire_many(redis_keys)
+        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         return cache_hits
 
@@ -596,10 +596,10 @@ class SemanticCache(BaseLLMCache):
             self._within_threshold(candidates, distance_threshold),
             return_fields,
         )
-        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         # Refresh TTL on all found keys
         await self._aexpire_many(redis_keys)
+        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         return cache_hits
 
