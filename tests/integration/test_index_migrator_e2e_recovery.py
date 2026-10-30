@@ -536,9 +536,6 @@ def test_json_same_width_datatype_change_is_schema_only_end_to_end(
         live_index = SearchIndex.from_existing(index_name, redis_url=redis_url)
         vector_field = live_index.schema.fields.get("embedding")
         assert vector_field is not None
-        datatype = getattr(
-            vector_field.attrs.datatype, "value", vector_field.attrs.datatype
-        )
-        assert str(datatype).lower() == "bfloat16"
+        assert str(vector_field.attrs.datatype).lower() == "bfloat16"
     finally:
         _cleanup(redis_url, client, index_name, prefix)

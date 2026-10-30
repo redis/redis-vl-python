@@ -27,7 +27,7 @@ def _binding_fields(binding_runtime: BindingRuntime) -> list[dict[str, str]]:
     embed_source = binding_runtime.binding.runtime.default_embed_text_field
     fields: list[dict[str, str]] = []
     for field in binding_runtime.schema.fields.values():
-        field_type = str(getattr(field.type, "value", field.type))
+        field_type = str(field.type)
         if field_type.lower() == "vector":
             continue
         if field.name == embed_source:
