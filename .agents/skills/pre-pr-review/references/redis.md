@@ -12,7 +12,7 @@ Redis hosts a public, read-only MCP server for its documentation at `https://red
 
 Send it questions about Redis, not code from the diff, credentials or anything unreleased. The corpus is the redis.io documentation, which includes RedisVL's own docs. Check each page's version metadata against the Redis versions RedisVL supports before you rely on it.
 
-If your agent can't use MCP, read the same pages on `https://redis.io/docs/latest/`. If you can reach neither, skip the lens and put it under "Not checked" in the record.
+If your agent can't use MCP, read the same pages on `https://redis.io/docs/latest/`. If you can reach neither, skip the lens and say so under "Not verified" in the Reviewer Brief.
 
 ## Run it when
 
@@ -31,4 +31,4 @@ If your agent can't use MCP, read the same pages on `https://redis.io/docs/lates
 
 ## How to report
 
-Each finding cites the page it rests on: `... Per: <redis.io URL>`. A claim you couldn't confirm in the docs is not a finding. List it under "Not checked" instead, so the reviewer knows it was raised but not settled. Record each page you relied on in the record's "Docs consulted" line.
+Each finding cites the page it rests on: `... Per: <redis.io URL>`. A claim you couldn't confirm in the docs is not a finding. If it matters, list it under "Not verified" in the Reviewer Brief, so the reviewer knows it was raised but not settled. When a point in the brief rests on a docs page, link the page in that line.
