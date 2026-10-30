@@ -110,6 +110,21 @@ class IndexHandle:
         """Return ``FT.INFO`` for the bound index."""
         return await self._guarded("info", self._index.info())
 
+    def document_id(self, key: str) -> str:
+        """Return the document id of a Redis key under this index's prefix.
+
+        Search results carry each record's full key as ``id``, while the
+        handle addresses records by document id, so this is the bridge from a
+        result back to ``fetch`` or a write. Raises ``ValueError`` for a key
+        outside the prefix.
+        """
+        prefix = self._index.key("")
+        if not prefix:
+            return key
+        if not key.startswith(prefix) or key == prefix:
+            raise ValueError(f"key {key!r} is not a document of this index")
+        return key[len(prefix) :]
+
 
 class WritableIndexHandle(IndexHandle):
     """An :class:`IndexHandle` that may also write, for tools declared as writing.
@@ -129,12 +144,13 @@ class WritableIndexHandle(IndexHandle):
         preprocess: Callable | None = None,
         batch_size: int | None = None,
     ) -> list[str]:
-        """Write records to the index and return the keys written.
+        """Write records to the index and return their document ids.
 
-        Each record's key is its ``id_field`` value under the index prefix, or
-        a generated id when ``id_field`` is not given.
+        Each record's id is its ``id_field`` value, or a generated one when
+        ``id_field`` is not given. The ids, not full Redis keys, are what
+        ``fetch``, ``drop_documents`` and ``expire_documents`` take.
         """
-        return await self._guarded(
+        keys = await self._guarded(
             "load",
             self._index.load(
                 data,
@@ -144,6 +160,7 @@ class WritableIndexHandle(IndexHandle):
                 batch_size=batch_size,
             ),
         )
+        return [self.document_id(key) for key in keys]
 
     async def drop_documents(
         self, ids: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE

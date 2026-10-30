@@ -25,6 +25,8 @@ READS = {
     "info",
 }
 WRITES = {"load", "drop_documents", "expire_documents"}
+# Answered by the handle itself, with no Redis call.
+LOCAL = {"document_id"}
 TIMEOUT = 7.0
 
 
@@ -33,6 +35,7 @@ class RecordingIndex:
 
     def __init__(self):
         self.awaited: list[str] = []
+        self.calls: list[tuple] = []
 
     def key(self, id):
         return f"doc:{id}"
@@ -40,6 +43,10 @@ class RecordingIndex:
     def __getattr__(self, name):
         async def method(*args, **kwargs):
             self.awaited.append(name)
+            self.calls.append((name, args, kwargs))
+            if name == "load":
+                # The real load returns full Redis keys.
+                return [self.key(record["id"]) for record in args[0]]
             return (name, args, kwargs)
 
         return method
@@ -99,11 +106,11 @@ def _public(cls) -> set[str]:
 def test_the_read_handle_exposes_exactly_the_read_methods():
     # Pinned exactly, so a method added to the handle is a deliberate,
     # reviewed change rather than a quiet widening.
-    assert _public(IndexHandle) == READS
+    assert _public(IndexHandle) == READS | LOCAL
 
 
 def test_the_writable_handle_adds_exactly_the_bounded_writes():
-    assert _public(WritableIndexHandle) == READS | WRITES
+    assert _public(WritableIndexHandle) == READS | WRITES | LOCAL
 
 
 QUERY = object()
@@ -158,6 +165,8 @@ CALLS = [
     ("expire_documents", ("a1", 60), {}, "expire_keys", (("doc:a1", 60), {})),
 ]
 CALL_IDS = [f"{call[0]}-{n}" for n, call in enumerate(CALLS)]
+# load hands back document ids, not the keys the index returns.
+RETURNS = {"load": ["a1"]}
 
 
 @pytest.mark.parametrize("method, args, kwargs, target, forwarded", CALLS, ids=CALL_IDS)
@@ -165,11 +174,13 @@ async def test_every_call_reaches_the_index_through_the_guard(
     method, args, kwargs, target, forwarded
 ):
     server = FakeServer()
-    handle = WritableIndexHandle(server, RecordingIndex(), timeout_seconds=TIMEOUT)
+    index = RecordingIndex()
+    handle = WritableIndexHandle(server, index, timeout_seconds=TIMEOUT)
 
     result = await getattr(handle, method)(*args, **kwargs)
 
-    assert result == (target, *forwarded)
+    assert index.calls == [(target, *forwarded)]
+    assert result == RETURNS.get(method, (target, *forwarded))
     assert server.guarded == [(method, TIMEOUT)]
 
 
@@ -229,6 +240,33 @@ async def test_a_handle_never_takes_another_target(call):
 
     with pytest.raises(TypeError):
         await call(handle)
+
+
+def _real_index(prefix: str) -> AsyncSearchIndex:
+    return AsyncSearchIndex.from_dict(
+        {
+            "index": {"name": "tickets", "prefix": prefix},
+            "fields": [{"name": "status", "type": "tag"}],
+        }
+    )
+
+
+@pytest.mark.parametrize("prefix", ["ticket", "ticket:", ""])
+def test_a_key_from_a_result_or_a_load_maps_back_to_its_document_id(prefix):
+    # Results and load return full keys; fetch and the writes re-apply the
+    # prefix, so passing a key straight back would miss the record.
+    index = _real_index(prefix)
+    handle = IndexHandle(FakeServer(), index, timeout_seconds=TIMEOUT)
+
+    assert handle.document_id(index.key("t1")) == "t1"
+
+
+@pytest.mark.parametrize("key", ["other:t1", "ticket:"])
+def test_a_key_outside_the_index_has_no_document_id(key):
+    handle = IndexHandle(FakeServer(), _real_index("ticket"), timeout_seconds=TIMEOUT)
+
+    with pytest.raises(ValueError, match="not a document of this index"):
+        handle.document_id(key)
 
 
 def test_a_handle_offers_no_client_and_takes_no_new_attributes():
