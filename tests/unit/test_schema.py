@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from redisvl.schema.fields import TagField, TextField
+from redisvl.schema.fields import CompressionType, TagField, TextField
 from redisvl.schema.schema import IndexSchema, StorageType
 
 
@@ -306,3 +306,29 @@ def test_schema_serialization_with_new_attributes():
     # Test that the schema has the correct number of fields
     assert len(schema.fields) == 4
     assert schema.index.name == "test-serialization"
+
+
+@pytest.mark.parametrize("member", list(CompressionType))
+def test_svs_vamana_compression_yaml_round_trip(tmp_path, member):
+    """Test YAML round-trip for SVS-VAMANA vector field compression."""
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test_idx", "prefix": "test"},
+            "fields": [
+                {
+                    "name": "vector",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 8,
+                        "compression": member.value,
+                    },
+                }
+            ],
+        }
+    )
+    yaml_file = tmp_path / "schema.yaml"
+    schema.to_yaml(str(yaml_file))
+
+    loaded_schema = IndexSchema.from_yaml(str(yaml_file))
+    assert loaded_schema.fields["vector"].attrs.compression == member

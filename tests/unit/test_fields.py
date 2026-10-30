@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from pydantic import ValidationError
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
 from redis.commands.search.field import TagField as RedisTagField
@@ -11,6 +12,7 @@ from redisvl.exceptions import RedisModuleVersionError
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.schema import IndexSchema
 from redisvl.schema.fields import (
+    CompressionType,
     FieldFactory,
     FlatVectorField,
     GeoField,
@@ -638,6 +640,70 @@ def test_svs_vector_field_leanvec8x8_with_reduce():
     assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec8x8"
     assert "REDUCE" in redis_field.args
     assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 512
+
+
+def test_svs_vector_field_compression_exact_case():
+    """Test that exact-case compression input produces the expected CompressionType member."""
+    field = SVSVectorField(
+        name="test_vector",
+        attrs={
+            "dims": 8,
+            "algorithm": "svs-vamana",
+            "compression": "LeanVec4x8",
+        },
+    )
+    assert field.attrs.compression == CompressionType.LeanVec4x8
+
+
+def test_svs_vector_field_compression_case_insensitive():
+    """Test that lower-case compression input produces the canonical CompressionType member."""
+    field = SVSVectorField(
+        name="test_vector",
+        attrs={
+            "dims": 8,
+            "algorithm": "svs-vamana",
+            "compression": "lvq8",
+        },
+    )
+    assert field.attrs.compression == CompressionType.LVQ8
+
+
+def test_svs_vector_field_compression_unknown_value_raises_validation_error():
+    """Test that an unknown compression value raises ValidationError."""
+    with pytest.raises(ValidationError):
+        SVSVectorField(
+            name="test_vector",
+            attrs={
+                "dims": 8,
+                "algorithm": "svs-vamana",
+                "compression": "foo",
+            },
+        )
+
+
+def test_svs_vector_field_ft_create_args_canonical_compression():
+    """Test that FT.CREATE args contain the canonical compression value for a schema built from lower-case input."""
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test", "prefix": "test"},
+            "fields": [
+                {
+                    "name": "vector",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 8,
+                        "compression": "lvq8",
+                    },
+                }
+            ],
+        }
+    )
+    redis_field = schema.fields["vector"].as_redis_field()
+    redis_args = redis_field.redis_args()
+    assert "COMPRESSION" in redis_args
+    assert redis_args[redis_args.index("COMPRESSION") + 1] == "LVQ8"
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LVQ8"
 
 
 def test_uses_svs_vamana_true():

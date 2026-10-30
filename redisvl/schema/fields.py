@@ -96,6 +96,15 @@ class CompressionType(str, Enum):
     LeanVec4x8 = "LeanVec4x8"
     LeanVec8x8 = "LeanVec8x8"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            lowered = value.lower()
+            for member in cls:
+                if member.value.lower() == lowered:
+                    return member
+        return None  # falls through to the normal ValueError
+
 
 ### Helper Functions ###
 
