@@ -284,6 +284,16 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
+### CI for fork and Dependabot PRs
+
+GitHub withholds repository secrets from PRs opened from forks and from runs that Dependabot triggers, so the **Service Tests** and **Notebook Validation** jobs are skipped on those PRs, and a skipped job shows as passing. Before merging one, a maintainer should read the change and then run the service tests with secrets:
+
+```bash
+gh workflow run test-fork-pr.yml -f pr_number=<PR number>
+```
+
+The result appears on the PR as the **Fork PR - Service Tests** check. Notebook Validation has no manual equivalent; it runs on `main` after merge and nightly.
+
 ### Reviewer Brief
 
 Maintainer PRs, and any PR written with a coding agent, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Outside contributors are welcome to add one but don't have to.
