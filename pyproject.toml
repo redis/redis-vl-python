@@ -141,7 +141,8 @@ dev = [
 ]
 # Not a default group, so a plain `uv sync` stays free of OpenTelemetry.
 otel-test = [
-    "opentelemetry-sdk>=1.30.0",
+    # The first release that exports every histogram's bucket advice.
+    "opentelemetry-sdk>=1.32.0",
 ]
 docs = [
     "sphinx>=4.4.0",

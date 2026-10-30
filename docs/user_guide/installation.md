@@ -35,6 +35,7 @@ $ pip install redisvl[bedrock]             # AWS Bedrock embeddings
 $ pip install redisvl[mcp]                 # RedisVL MCP server support (Python 3.10+)
 $ pip install redisvl[langcache]           # LangCache managed service integration
 $ pip install redisvl[sql-redis]           # SQL query support
+$ pip install redisvl[otel]                # OpenTelemetry traces and metrics (API only)
 ```
 
 If you use ZSH, remember to escape the brackets:

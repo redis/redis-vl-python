@@ -10,6 +10,7 @@ from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
 from redisvl.utils.utils import deprecated_argument
+from redisvl.utils.vectorize import _telemetry
 
 try:
     from PIL.Image import Image
@@ -104,38 +105,44 @@ class BaseVectorizer(BaseModel):
         if preprocess is not None:
             content = preprocess(content)
 
-        # Check cache if available and not skipped
-        if self.cache is not None and not skip_cache:
-            try:
-                cache_result = self.cache.get(
-                    content=self._serialize_for_cache(content), model_name=self.model
-                )
-                if cache_result:
-                    logger.debug(f"Cache hit for content with model {self.model}")
-                    return self._process_embedding(
-                        cache_result["embedding"], as_buffer, self.dtype
+        with _telemetry.embeddings(self) as call:
+            # Check cache if available and not skipped
+            if self.cache is not None and not skip_cache:
+                try:
+                    cache_result = self.cache.get(
+                        content=self._serialize_for_cache(content),
+                        model_name=self.model,
                     )
-            except Exception as e:
-                logger.warning(f"Error accessing embedding cache: {str(e)}")
+                    if cache_result:
+                        logger.debug(f"Cache hit for content with model {self.model}")
+                        call.cache_result(1, 1)
+                        return self._process_embedding(
+                            cache_result["embedding"], as_buffer, self.dtype
+                        )
+                except Exception as e:
+                    logger.warning(f"Error accessing embedding cache: {str(e)}")
 
-        # Generate embedding using provider-specific implementation
-        cache_metadata = kwargs.pop("metadata", {})
-        embedding = self._embed(content, **kwargs)
+                call.cache_result(0, 1)
 
-        # Store in cache if available and not skipped
-        if self.cache is not None and not skip_cache:
-            try:
-                self.cache.set(
-                    content=self._serialize_for_cache(content),
-                    model_name=self.model,
-                    embedding=embedding,
-                    metadata=cache_metadata,
-                )
-            except Exception as e:
-                logger.warning(f"Error storing in embedding cache: {str(e)}")
+            # Generate embedding using provider-specific implementation
+            cache_metadata = kwargs.pop("metadata", {})
+            with call.provider_call():
+                embedding = self._embed(content, **kwargs)
 
-        # Process and return result
-        return self._process_embedding(embedding, as_buffer, self.dtype)
+            # Store in cache if available and not skipped
+            if self.cache is not None and not skip_cache:
+                try:
+                    self.cache.set(
+                        content=self._serialize_for_cache(content),
+                        model_name=self.model,
+                        embedding=embedding,
+                        metadata=cache_metadata,
+                    )
+                except Exception as e:
+                    logger.warning(f"Error storing in embedding cache: {str(e)}")
+
+            # Process and return result
+            return self._process_embedding(embedding, as_buffer, self.dtype)
 
     @deprecated_argument("texts", "contents")
     def embed_many(
@@ -175,29 +182,35 @@ class BaseVectorizer(BaseModel):
         else:
             processed_contents = contents
 
-        # Get cached embeddings and identify misses
-        results, cache_misses, cache_miss_indices = self._get_from_cache_batch(
-            processed_contents, skip_cache
-        )
-
-        # Generate embeddings for cache misses
-        if cache_misses:
-            cache_metadata = kwargs.pop("metadata", {})
-            new_embeddings = self._embed_many(
-                cache_misses, batch_size=batch_size, **kwargs
+        with _telemetry.embeddings(self) as call:
+            # Get cached embeddings and identify misses
+            results, cache_misses, cache_miss_indices = self._get_from_cache_batch(
+                processed_contents, skip_cache
             )
+            if self.cache is not None and not skip_cache:
+                call.cache_result(len(contents) - len(cache_misses), len(contents))
 
-            # Store new embeddings in cache
-            self._store_in_cache_batch(
-                cache_misses, new_embeddings, cache_metadata, skip_cache
-            )
+            # Generate embeddings for cache misses
+            if cache_misses:
+                cache_metadata = kwargs.pop("metadata", {})
+                with call.provider_call():
+                    new_embeddings = self._embed_many(
+                        cache_misses, batch_size=batch_size, **kwargs
+                    )
 
-            # Insert new embeddings into results array
-            for idx, embedding in zip(cache_miss_indices, new_embeddings):
-                results[idx] = embedding
+                # Store new embeddings in cache
+                self._store_in_cache_batch(
+                    cache_misses, new_embeddings, cache_metadata, skip_cache
+                )
 
-        # Process and return results
-        return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
+                # Insert new embeddings into results array
+                for idx, embedding in zip(cache_miss_indices, new_embeddings):
+                    results[idx] = embedding
+
+            # Process and return results
+            return [
+                self._process_embedding(emb, as_buffer, self.dtype) for emb in results
+            ]
 
     @deprecated_argument("text", "content")
     async def aembed(
@@ -233,42 +246,50 @@ class BaseVectorizer(BaseModel):
         if preprocess is not None:
             content = preprocess(content)
 
-        # Check cache if available and not skipped
-        if self.cache is not None and not skip_cache:
-            try:
-                cache_result = await self.cache.aget(
-                    content=self._serialize_for_cache(content), model_name=self.model
-                )
-                if cache_result:
-                    logger.debug(f"Async cache hit for content with model {self.model}")
-                    return self._process_embedding(
-                        cache_result["embedding"], as_buffer, self.dtype
+        with _telemetry.embeddings(self) as call:
+            # Check cache if available and not skipped
+            if self.cache is not None and not skip_cache:
+                try:
+                    cache_result = await self.cache.aget(
+                        content=self._serialize_for_cache(content),
+                        model_name=self.model,
                     )
-            except Exception as e:
-                logger.warning(
-                    f"Error accessing embedding cache asynchronously: {str(e)}"
-                )
+                    if cache_result:
+                        logger.debug(
+                            f"Async cache hit for content with model {self.model}"
+                        )
+                        call.cache_result(1, 1)
+                        return self._process_embedding(
+                            cache_result["embedding"], as_buffer, self.dtype
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Error accessing embedding cache asynchronously: {str(e)}"
+                    )
 
-        # Generate embedding using provider-specific implementation
-        cache_metadata = kwargs.pop("metadata", {})
-        embedding = await self._aembed(content, **kwargs)
+                call.cache_result(0, 1)
 
-        # Store in cache if available and not skipped
-        if self.cache is not None and not skip_cache:
-            try:
-                await self.cache.aset(
-                    content=self._serialize_for_cache(content),
-                    model_name=self.model,
-                    embedding=embedding,
-                    metadata=cache_metadata,
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Error storing in embedding cache asynchronously: {str(e)}"
-                )
+            # Generate embedding using provider-specific implementation
+            cache_metadata = kwargs.pop("metadata", {})
+            with call.provider_call():
+                embedding = await self._aembed(content, **kwargs)
 
-        # Process and return result
-        return self._process_embedding(embedding, as_buffer, self.dtype)
+            # Store in cache if available and not skipped
+            if self.cache is not None and not skip_cache:
+                try:
+                    await self.cache.aset(
+                        content=self._serialize_for_cache(content),
+                        model_name=self.model,
+                        embedding=embedding,
+                        metadata=cache_metadata,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Error storing in embedding cache asynchronously: {str(e)}"
+                    )
+
+            # Process and return result
+            return self._process_embedding(embedding, as_buffer, self.dtype)
 
     @deprecated_argument("texts", "contents")
     async def aembed_many(
@@ -308,29 +329,35 @@ class BaseVectorizer(BaseModel):
         else:
             processed_contents = contents
 
-        # Get cached embeddings and identify misses
-        results, cache_misses, cache_miss_indices = await self._aget_from_cache_batch(
-            processed_contents, skip_cache
-        )
-
-        # Generate embeddings for cache misses
-        if cache_misses:
-            cache_metadata = kwargs.pop("metadata", {})
-            new_embeddings = await self._aembed_many(
-                cache_misses, batch_size=batch_size, **kwargs
+        with _telemetry.embeddings(self) as call:
+            # Get cached embeddings and identify misses
+            results, cache_misses, cache_miss_indices = (
+                await self._aget_from_cache_batch(processed_contents, skip_cache)
             )
+            if self.cache is not None and not skip_cache:
+                call.cache_result(len(contents) - len(cache_misses), len(contents))
 
-            # Store new embeddings in cache
-            await self._astore_in_cache_batch(
-                cache_misses, new_embeddings, cache_metadata, skip_cache
-            )
+            # Generate embeddings for cache misses
+            if cache_misses:
+                cache_metadata = kwargs.pop("metadata", {})
+                with call.provider_call():
+                    new_embeddings = await self._aembed_many(
+                        cache_misses, batch_size=batch_size, **kwargs
+                    )
 
-            # Insert new embeddings into results array
-            for idx, embedding in zip(cache_miss_indices, new_embeddings):
-                results[idx] = embedding
+                # Store new embeddings in cache
+                await self._astore_in_cache_batch(
+                    cache_misses, new_embeddings, cache_metadata, skip_cache
+                )
 
-        # Process and return results
-        return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
+                # Insert new embeddings into results array
+                for idx, embedding in zip(cache_miss_indices, new_embeddings):
+                    results[idx] = embedding
+
+            # Process and return results
+            return [
+                self._process_embedding(emb, as_buffer, self.dtype) for emb in results
+            ]
 
     # The four hooks below are the provider extension points. Every caller —
     # the public embed/embed_many/aembed/aembed_many above, and each provider's

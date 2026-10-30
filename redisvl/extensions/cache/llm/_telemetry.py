@@ -1,15 +1,23 @@
-"""OpenTelemetry metrics for SemanticCache. Internal.
+"""OpenTelemetry spans and metrics for SemanticCache. Internal.
 
-Attributes stay low-cardinality: the cache name, the operation, the lookup
-result and the error type. Prompts, filters, entry ids and distances never
-become metric attributes.
+Each operation gets a ``semantic_cache.{operation}`` span and a duration point.
+A lookup's search gets a ``retrieval {index}`` child span carrying the
+threshold, ``top_k`` and the nearest distance. The embeddings span comes from
+the vectorizer.
+
+Metric attributes stay low-cardinality: the cache name, the operation, the
+lookup result and the error type. Prompt text and retrieved documents are
+recorded only on the retrieval span, and only when content capture is enabled.
 """
 
 import functools
 import inspect
+import json
+from contextlib import contextmanager
 from time import perf_counter
-from typing import Any, Callable, ParamSpec, TypeVar, cast
+from typing import Any, Callable, Iterator, ParamSpec, TypeVar, cast
 
+from redisvl.extensions.constants import ENTRY_ID_FIELD_NAME
 from redisvl.query import VectorQuery
 from redisvl.utils import otel
 from redisvl.utils.log import get_logger
@@ -24,9 +32,10 @@ def _result(hits: list[Any]) -> str:
     return "hit" if hits else "miss"
 
 
-def _record_duration(
+def _finish(
     cache: Any,
     operation: str,
+    span: Any,
     start: float,
     hits: list[Any] | None = None,
     error: Exception | None = None,
@@ -39,22 +48,24 @@ def _record_duration(
             attributes[otel.ERROR_TYPE] = otel.error_type(error)
         elif hits is not None:
             attributes[otel.CACHE_RESULT] = _result(hits)
+            span.set_attribute(otel.CACHE_RESULT, attributes[otel.CACHE_RESULT])
         otel.histogram(otel.SEMANTIC_CACHE_OPERATION_DURATION).record(
             perf_counter() - start, attributes
         )
     except Exception:
-        logger.debug("Could not record a SemanticCache metric", exc_info=True)
+        logger.debug("Could not record RedisVL telemetry", exc_info=True)
 
 
-def timed(
-    operation: str, *, lookup: bool = False
+def operation(
+    name: str, *, lookup: bool = False
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Record the duration of a sync or async SemanticCache method.
+    """Trace and time a sync or async SemanticCache method.
 
     A lookup also records whether it hit, judged from the hits it returns. A
     failure records ``error.type`` instead and re-raises unchanged. A call that
-    never completes, such as a cancelled task, records nothing.
+    never completes, such as a cancelled task, records no duration.
     """
+    span_name = f"semantic_cache.{name}"
 
     def decorate(method: Callable[P, R]) -> Callable[P, R]:
         if inspect.iscoroutinefunction(method):
@@ -62,32 +73,80 @@ def timed(
             @functools.wraps(method)
             async def async_wrapper(cache: Any, *args: Any, **kwargs: Any) -> Any:
                 start = perf_counter()
-                try:
-                    result = await method(cache, *args, **kwargs)
-                except Exception as error:
-                    _record_duration(cache, operation, start, error=error)
-                    raise
-                _record_duration(
-                    cache, operation, start, hits=result if lookup else None
-                )
-                return result
+                with otel.start_span(span_name, {otel.CACHE_NAME: cache.name}) as span:
+                    try:
+                        result = await method(cache, *args, **kwargs)
+                    except Exception as error:
+                        _finish(cache, name, span, start, error=error)
+                        raise
+                    _finish(cache, name, span, start, result if lookup else None)
+                    return result
 
             return cast(Callable[P, R], async_wrapper)
 
         @functools.wraps(method)
         def wrapper(cache: Any, *args: Any, **kwargs: Any) -> Any:
             start = perf_counter()
-            try:
-                result: Any = method(cache, *args, **kwargs)
-            except Exception as error:
-                _record_duration(cache, operation, start, error=error)
-                raise
-            _record_duration(cache, operation, start, hits=result if lookup else None)
-            return result
+            with otel.start_span(span_name, {otel.CACHE_NAME: cache.name}) as span:
+                try:
+                    result: Any = method(cache, *args, **kwargs)
+                except Exception as error:
+                    _finish(cache, name, span, start, error=error)
+                    raise
+                _finish(cache, name, span, start, result if lookup else None)
+                return result
 
         return cast(Callable[P, R], wrapper)
 
     return decorate
+
+
+@contextmanager
+def retrieval(index_name: str, top_k: int, distance_threshold: float) -> Iterator[Any]:
+    """Trace a lookup's vector search as a ``retrieval {index}`` client span."""
+    attributes = {
+        otel.GEN_AI_OPERATION_NAME: "retrieval",
+        otel.GEN_AI_DATA_SOURCE_ID: index_name,
+        otel.GEN_AI_RETRIEVAL_TOP_K: top_k,
+        otel.DB_SYSTEM_NAME: "redis",
+        otel.DB_COLLECTION_NAME: index_name,
+        otel.DB_OPERATION_NAME: "FT.SEARCH",
+        otel.CACHE_DISTANCE_THRESHOLD: distance_threshold,
+    }
+    with otel.start_span(
+        f"retrieval {index_name}", attributes, otel.SpanKind.CLIENT
+    ) as span:
+        yield span
+
+
+def record_lookup(
+    span: Any, candidates: list[dict[str, Any]], prompt: str | None
+) -> None:
+    """Record on the retrieval span what a lookup found, on a miss as well as a hit.
+
+    With content capture on, each document's ``score`` is its raw vector
+    distance, so lower is closer, unlike the relevance score the GenAI
+    conventions describe. No single conversion suits every distance metric.
+    """
+    try:
+        scored = _scored(candidates)
+        if scored:
+            span.set_attribute(
+                otel.CACHE_DISTANCE, float(scored[0][VectorQuery.DISTANCE_ID])
+            )
+        if otel.capture_content() and span.is_recording():
+            if prompt is not None:
+                span.set_attribute(otel.GEN_AI_RETRIEVAL_QUERY_TEXT, prompt)
+            documents = [
+                {
+                    "id": candidate.get(ENTRY_ID_FIELD_NAME),
+                    "score": float(candidate[VectorQuery.DISTANCE_ID]),
+                }
+                for candidate in scored
+            ]
+            span.set_attribute(otel.GEN_AI_RETRIEVAL_DOCUMENTS, json.dumps(documents))
+    except Exception:
+        logger.debug("Could not record RedisVL telemetry", exc_info=True)
 
 
 def record_nearest_distance(
@@ -95,22 +154,27 @@ def record_nearest_distance(
 ) -> None:
     """Record the nearest candidate's distance, on a miss as well as a hit.
 
-    Nothing is recorded when there was no candidate at all: an empty cache, or
-    a filter that excluded every entry. Candidates arrive nearest first.
+    Called once the lookup has completed, so an interrupted one records
+    nothing.
     """
     try:
-        distance = next(
-            (
-                candidate[VectorQuery.DISTANCE_ID]
-                for candidate in candidates
-                if candidate.get(VectorQuery.DISTANCE_ID) is not None
-            ),
-            None,
-        )
-        if distance is not None:
+        scored = _scored(candidates)
+        if scored:
             otel.histogram(otel.SEMANTIC_CACHE_DISTANCE).record(
-                float(distance),
+                float(scored[0][VectorQuery.DISTANCE_ID]),
                 {otel.CACHE_NAME: cache_name, otel.CACHE_RESULT: _result(hits)},
             )
     except Exception:
-        logger.debug("Could not record a SemanticCache metric", exc_info=True)
+        logger.debug("Could not record RedisVL telemetry", exc_info=True)
+
+
+def _scored(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The candidates that carry a distance, nearest first.
+
+    There are none for an empty cache or a filter that excluded every entry.
+    """
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.get(VectorQuery.DISTANCE_ID) is not None
+    ]
