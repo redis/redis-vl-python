@@ -670,6 +670,7 @@ Notes:
 - when server-side embedding is configured, records that need embedding must contain `runtime.default_embed_text_field`
 - when `skip_embedding_if_present` is `true`, records that already contain the configured vector field can skip re-embedding
 - when a vector field is configured but server-side embedding is disabled, callers must supply vectors explicitly
+- a write that fails part-way, for example on a lost connection, may already have stored some records, and the error message says so. Pass `id_field` so a retry overwrites those records instead of storing them again under new keys
 
 ## Search Examples
 

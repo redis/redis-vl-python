@@ -1,6 +1,7 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ResponseError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from redisvl.exceptions import RedisSearchError, RedisVLError, SchemaValidationError
@@ -73,6 +74,16 @@ def test_wrapped_redis_errors_map_by_their_cause(cause):
     assert mapped.code == MCPErrorCode.BACKEND_UNAVAILABLE
     assert mapped.retryable is True
     assert str(mapped) == "Failed to load data"
+
+
+def test_wrapped_redis_reply_errors_stay_non_retryable():
+    try:
+        raise RedisVLError("Failed to load data") from ResponseError("WRONGTYPE")
+    except RedisVLError as exc:
+        mapped = map_exception(exc)
+
+    assert mapped.code == MCPErrorCode.INTERNAL_ERROR
+    assert mapped.retryable is False
 
 
 def test_schema_validation_error_maps_to_invalid_request():

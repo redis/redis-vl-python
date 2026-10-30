@@ -3,6 +3,7 @@ import inspect
 from copy import deepcopy
 from typing import Any
 
+from redisvl.exceptions import RedisVLError
 from redisvl.mcp.auth import ensure_write_scope
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.redis.utils import array_to_buffer
@@ -345,10 +346,13 @@ async def upsert_records(
             )
         except Exception as exc:
             mapped = map_exception(exc)
-            # load validates every record before it writes any, so a rejected
-            # request wrote nothing. Anything else may have failed mid-write, and
-            # clients only see the message, so the warning goes there.
-            if mapped.code is MCPErrorCode.INVALID_REQUEST:
+            # load raises its invalid_request errors before it writes anything,
+            # and run_guarded's own errors mean load never ran. Any other load
+            # failure, or a timeout, may have left records behind. Clients see
+            # only the message, so the warning goes there.
+            if mapped.code is MCPErrorCode.INVALID_REQUEST or not isinstance(
+                exc, (RedisVLError, TimeoutError, asyncio.TimeoutError)
+            ):
                 raise mapped from exc
             warning = "some records may already have been written"
             if id_field is None:

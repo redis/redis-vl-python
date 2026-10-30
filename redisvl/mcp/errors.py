@@ -3,7 +3,9 @@ from enum import Enum
 from typing import Any
 
 from pydantic import ValidationError
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from redisvl.exceptions import RedisSearchError, RedisVLError, SchemaValidationError
 
@@ -67,11 +69,18 @@ def map_exception(exc: Exception) -> RedisVLMCPError:
         )
 
     # Index methods such as ``load`` wrap whatever went wrong in a plain
-    # ``RedisVLError``. Classify by the cause, so a lost connection stays retryable,
-    # but keep the wrapper's message, which says which operation failed.
-    if isinstance(exc, RedisVLError) and isinstance(exc.__cause__, Exception):
-        cause = map_exception(exc.__cause__)
-        return RedisVLMCPError(str(exc), code=cause.code, retryable=cause.retryable)
+    # ``RedisVLError``. A lost connection or a timeout under that wrapper is still
+    # worth retrying. Other wrapped Redis errors, such as WRONGTYPE or OOM, would
+    # fail the same way again, so they stay non-retryable.
+    if isinstance(exc, RedisVLError) and isinstance(
+        exc.__cause__,
+        (RedisConnectionError, RedisTimeoutError, TimeoutError, asyncio.TimeoutError),
+    ):
+        return RedisVLMCPError(
+            str(exc),
+            code=MCPErrorCode.BACKEND_UNAVAILABLE,
+            retryable=True,
+        )
 
     return RedisVLMCPError(
         str(exc),

@@ -2,9 +2,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from redis.exceptions import RedisError
+from redis.exceptions import ConnectionError as RedisConnectionError
 
-from redisvl.exceptions import SchemaValidationError
+from redisvl.exceptions import RedisVLError, SchemaValidationError
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
@@ -455,29 +455,47 @@ async def test_upsert_records_validates_non_vector_fields_before_embedding():
 
 
 @pytest.mark.asyncio
-async def test_upsert_records_surfaces_partial_write_possible_on_backend_failures():
+@pytest.mark.parametrize("id_field", [None, "id"])
+async def test_upsert_records_surfaces_partial_write_possible_on_backend_failures(
+    id_field,
+):
     server = FakeServer()
-    server.index.load_exception = RedisError("boom")
+    try:
+        raise RedisVLError("Failed to load data") from RedisConnectionError("down")
+    except RedisVLError as exc:
+        server.index.load_exception = exc
 
     with pytest.raises(RedisVLMCPError) as exc_info:
-        await upsert_records(server, records=[{"content": "alpha doc"}])
+        await upsert_records(
+            server, records=[{"id": "a", "content": "alpha doc"}], id_field=id_field
+        )
 
     assert exc_info.value.code == MCPErrorCode.BACKEND_UNAVAILABLE
+    assert exc_info.value.retryable is True
     assert exc_info.value.metadata["partial_write_possible"] is True
-    assert isinstance(exc_info.value.__cause__, RedisError)
     assert "may already have been written" in str(exc_info.value)
-    assert "without id_field writes them again" in str(exc_info.value)
+    assert ("without id_field" in str(exc_info.value)) is (id_field is None)
 
 
 @pytest.mark.asyncio
-async def test_upsert_records_rejected_load_does_not_warn_of_partial_write():
+@pytest.mark.parametrize(
+    "error, code",
+    [
+        # load rejects bad records before it writes any.
+        (SchemaValidationError("bad record", index=0), MCPErrorCode.INVALID_REQUEST),
+        # run_guarded refuses before load runs.
+        (RuntimeError("MCP server is not running"), MCPErrorCode.INTERNAL_ERROR),
+    ],
+)
+async def test_upsert_records_does_not_warn_when_nothing_was_written(error, code):
     server = FakeServer()
-    server.index.load_exception = SchemaValidationError("bad record", index=0)
+    server.index.load_exception = error
 
     with pytest.raises(RedisVLMCPError) as exc_info:
         await upsert_records(server, records=[{"content": "alpha doc"}])
 
-    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert exc_info.value.code == code
+    assert "partial_write_possible" not in exc_info.value.metadata
     assert "written" not in str(exc_info.value)
 
 
