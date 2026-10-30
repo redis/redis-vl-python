@@ -152,6 +152,17 @@ def _register_tools_with(
     monkeypatch, bindings: dict, *, config=None, code_tools=()
 ) -> list[str]:
     """Run _register_tools against the given bindings, returning registered names."""
+    server, registered = _registration_server(
+        monkeypatch, bindings, config=config, code_tools=code_tools
+    )
+    server._register_tools()
+    return registered
+
+
+def _registration_server(
+    monkeypatch, bindings: dict, *, config=None, code_tools=()
+) -> tuple[RedisVLMCPServer, list[str]]:
+    """A server ready for _register_tools, recording every name it registers."""
     registered: list[str] = []
     monkeypatch.setattr(
         "redisvl.mcp.server.register_code_tool",
@@ -194,9 +205,7 @@ def _register_tools_with(
     server.config = config
     server.mcp_settings = SimpleNamespace(read_only=False)
     server._resolved_code_tools = tuple(code_tools)
-
-    server._register_tools()
-    return registered
+    return server, registered
 
 
 def _config_with(*, builtin_tools=None, custom_tools=None) -> MCPConfig:
@@ -1284,24 +1293,22 @@ def test_register_tools_registers_code_tools_after_profiles(monkeypatch):
     assert registered[-2:] == ["resolved-search", "recent-tickets"]
 
 
-def _restart_with(*, registered_on, restarted_on):
+def _restart_with(monkeypatch, *, registered_on, restarted_on):
     """Register a code tool on one binding, then restart pairing it with another."""
     spec = build_code_tool_spec(recent_tickets)
-    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
-    server._tools_registered = True
-    server._registered_code_tools = ((spec, registered_on),)
+    # The first startup records the pairing itself, as a real server does.
+    server, _ = _registration_server(
+        monkeypatch, {}, code_tools=[(spec, registered_on)]
+    )
+    server._register_tools()
     server._resolved_code_tools = ((spec, restarted_on),)
-    server._registered_tool_fingerprint = server._tool_surface_fingerprint(None)
-    server._registered_tools_inject = False
-    server.tool = object()
-    server.config = None
     server._register_tools()
 
 
-def test_a_restart_that_moves_a_code_tool_is_fatal():
+def test_a_restart_that_moves_a_code_tool_is_fatal(monkeypatch):
     with pytest.raises(RuntimeError, match="code tools, or the indexes they are"):
-        _restart_with(registered_on="knowledge", restarted_on="tickets")
+        _restart_with(monkeypatch, registered_on="knowledge", restarted_on="tickets")
 
 
-def test_a_restart_with_the_same_code_tools_proceeds():
-    _restart_with(registered_on="knowledge", restarted_on="knowledge")
+def test_a_restart_with_the_same_code_tools_proceeds(monkeypatch):
+    _restart_with(monkeypatch, registered_on="knowledge", restarted_on="knowledge")
