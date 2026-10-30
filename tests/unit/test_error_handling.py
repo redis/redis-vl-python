@@ -413,6 +413,7 @@ class TestAsyncErrorHandling:
         # Create a mock that properly inherits from RedisCluster for isinstance check
         mock_cluster_client = Mock()
         mock_cluster_client.__class__ = AsyncRedisCluster
+        mock_cluster_client.initialize = AsyncMock()
         mock_cluster_client.delete = AsyncMock(return_value=2)
 
         index = AsyncSearchIndex(schema=schema, redis_client=mock_cluster_client)
