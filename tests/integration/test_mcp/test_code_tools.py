@@ -1,4 +1,4 @@
-"""Code tools registered with ``server.code_tool``, against a real Redis.
+"""Code tools, registered in Python or loaded from modules, against a real Redis.
 
 The unit suites own the validation and wrapping matrices. What lives here is
 what depends on a started server: that a tool's handle reaches the real index,
@@ -8,6 +8,10 @@ a tool that makes several.
 """
 
 import asyncio
+import importlib
+import sys
+import textwrap
+import uuid
 from pathlib import Path
 
 import pytest
@@ -65,8 +69,12 @@ def config_path(tmp_path: Path, redis_url: str):
         max_concurrency: int = 16,
         custom_tools: list[dict] | None = None,
         auth: dict | None = None,
+        tool_modules: list[str] | None = None,
     ) -> str:
         server: dict = {"redis_url": redis_url}
+        if tool_modules is not None:
+            server["code_tool_modules"] = tool_modules
+            server["allow_code_tools"] = True
         if auth is not None:
             server["auth"] = auth
             server["builtin_tools"] = {
@@ -215,3 +223,41 @@ async def test_each_redis_call_takes_the_cap_without_deadlocking_the_tool(
     )
 
     assert results == [{"open": 2, "resolved": 1}] * 2
+
+
+@pytest.fixture
+def tool_module(tmp_path, monkeypatch):
+    """Write an importable tool module, unloading it afterwards."""
+    monkeypatch.syspath_prepend(str(tmp_path))
+    written: list[str] = []
+
+    def write(source: str) -> str:
+        name = f"code_tools_{uuid.uuid4().hex}"
+        (tmp_path / f"{name}.py").write_text(textwrap.dedent(source))
+        # The directory may already be cached as scanned by an earlier import.
+        importlib.invalidate_caches()
+        written.append(name)
+        return name
+
+    yield write
+
+    for name in written:
+        sys.modules.pop(name, None)
+
+
+async def test_a_tool_loaded_from_a_module_is_served(server_for, tool_module):
+    module = tool_module("""
+        from redisvl.mcp import ToolContext, code_tool
+        from redisvl.query import CountQuery
+        from redisvl.query.filter import Tag
+
+        @code_tool(namespace="support")
+        async def count_open(ctx: ToolContext) -> dict:
+            "Count open support tickets."
+            return {"open": await ctx.index.query(CountQuery(Tag("status") == "open"))}
+        """)
+    server = server_for(tool_modules=[module])
+
+    await server.startup()
+
+    assert await _call(server, "support-count-open") == {"open": 2}
