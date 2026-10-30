@@ -480,9 +480,11 @@ class TestClusterOperationsErrorHandling:
 
                 # Should have attempted to delete all 3 keys
                 assert mock_cluster_client.delete.call_count == 3
-                # Should have logged the error for the failed key
+                # Should have logged the error for the failed key. The key is
+                # repr'd: it comes from user-supplied data, so quoting it keeps a
+                # newline in a key from forging a second log line.
                 mock_logger.warning.assert_called_once_with(
-                    "Failed to delete key test:key2: Some cluster error"
+                    "Failed to delete key 'test:key2': Some cluster error"
                 )
                 # Should return count of successfully deleted keys (2 out of 3)
                 assert result == 2
@@ -595,7 +597,7 @@ class TestClusterOperationsErrorHandling:
                 assert mock_cluster_client.delete.call_count == 3
                 # Should have logged the error for the failed key
                 mock_logger.warning.assert_called_once_with(
-                    "Failed to delete key test:key2: Some cluster error"
+                    "Failed to delete key 'test:key2': Some cluster error"
                 )
                 # Should return count of successfully deleted keys (2 out of 3)
                 assert result == 2
