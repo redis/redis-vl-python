@@ -174,8 +174,8 @@ uv run pytest tests/unit/test_fields.py -v
 # Run the Redis Cluster tests, which are skipped by default
 uv run pytest --run-cluster-tests -m requires_cluster
 
-# Run tests with coverage
-uv run pytest --cov=redisvl --cov-report=html
+# Run tests with coverage (pytest-cov is not a dev dependency, so add it for this run)
+uv run --with pytest-cov pytest --cov=redisvl --cov-report=html
 ```
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
