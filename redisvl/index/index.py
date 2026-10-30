@@ -2366,7 +2366,9 @@ class SearchIndex(BaseSearchIndex):
         """Run FT.INFO to fetch information about the index."""
         try:
             if isinstance(redis_client, SyncRedisCluster):
-                node = redis_client.get_random_node()
+                # Ask the node FT.CREATE and FT.DROPINDEX go to. A replica
+                # learns of a new index only once replication catches up.
+                node = redis_client.get_default_node()
                 values = redis_client.execute_command(
                     "FT.INFO", name, target_nodes=node
                 )
@@ -2642,8 +2644,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             self._validated_client = True
         if isinstance(self._redis_client, AsyncRedisCluster):
             # The async cluster client discovers its nodes on first use, so
-            # get_default_node() and get_random_node() find nothing on a fresh
-            # client. This is a no-op once the client is initialised.
+            # get_default_node() returns None on a fresh client. This is a
+            # no-op once the client is initialised.
             await self._redis_client.initialize()
         return self._redis_client
 
@@ -2654,7 +2656,9 @@ class AsyncSearchIndex(BaseSearchIndex):
                 # Callers such as from_existing() pass a client that has not
                 # been through _get_client(), so initialise it here too.
                 await redis_client.initialize()
-                node = redis_client.get_random_node()
+                # Ask the node FT.CREATE and FT.DROPINDEX go to. A replica
+                # learns of a new index only once replication catches up.
+                node = redis_client.get_default_node()
                 values = await redis_client.execute_command(
                     "FT.INFO", name, target_nodes=node
                 )
@@ -3705,8 +3709,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         client = await self._get_client()
         if isinstance(client, AsyncRedisCluster):
-            target_nodes = client.get_random_node()
-            return convert_bytes(await target_nodes.execute_command("FT._LIST"))
+            # The default node, as in _info(): a replica may lag behind.
+            node = client.get_default_node()
+            return convert_bytes(await node.execute_command("FT._LIST"))
         else:
             return convert_bytes(await client.execute_command("FT._LIST"))
 
