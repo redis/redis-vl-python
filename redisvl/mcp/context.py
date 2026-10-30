@@ -115,8 +115,10 @@ class IndexHandle:
 
         Search results carry each record's full key as ``id``, while the
         handle addresses records by document id, so this is the bridge from a
-        result back to ``fetch`` or a write. Raises ``ValueError`` for a key
-        outside the prefix.
+        result back to ``fetch`` or a write. One exception: on JSON storage, a
+        ``FilterQuery`` without ``return_fields`` returns whole documents, and
+        a document's own ``id`` field replaces the key; set ``return_fields``
+        to keep it. Raises ``ValueError`` for a key outside the prefix.
         """
         prefix = self._index.key("")
         if not prefix:
