@@ -135,12 +135,16 @@ These PromQL queries use the names the OpenTelemetry Prometheus exporter produce
 Hit rate, per cache:
 
 ```promql
-sum by (redisvl_cache_name) (rate(redisvl_semantic_cache_operation_duration_seconds_count{redisvl_cache_operation="check", redisvl_cache_result="hit"}[5m]))
+(
+  sum by (redisvl_cache_name) (rate(redisvl_semantic_cache_operation_duration_seconds_count{redisvl_cache_operation="check", redisvl_cache_result="hit"}[5m]))
+  or
+  0 * sum by (redisvl_cache_name) (rate(redisvl_semantic_cache_operation_duration_seconds_count{redisvl_cache_operation="check", redisvl_cache_result="miss"}[5m]))
+)
 /
 sum by (redisvl_cache_name) (rate(redisvl_semantic_cache_operation_duration_seconds_count{redisvl_cache_operation="check", redisvl_cache_result=~"hit|miss"}[5m]))
 ```
 
-Failed checks carry `error.type` and no result, so they count towards neither side.
+The `or` term reports 0 for a cache that has never hit, which would otherwise drop out of the result because it has no `hit` series. Failed checks carry `error.type` and no result, so they count towards neither side.
 
 95th-percentile duration, per operation:
 
