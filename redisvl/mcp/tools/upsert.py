@@ -184,8 +184,7 @@ async def _embed_many(vectorizer: Any, contents: list[str]) -> list[list[float]]
 def _vector_dtype(rt: Any) -> str:
     """Resolve the binding's vector field datatype as a lowercase string."""
     field = rt.binding.get_vector_field(rt.schema)
-    datatype = getattr(field.attrs.datatype, "value", field.attrs.datatype)
-    return str(datatype).lower()
+    return str(field.attrs.datatype).lower()
 
 
 def _validation_schema_for_record(
