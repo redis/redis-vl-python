@@ -274,9 +274,6 @@ def test_convert_index_info_resp2_unified_vector_flags():
 
     result = convert_index_info_to_schema(index_info)
 
-    # INDEXMISSING is deliberately not recovered as ``index_missing``: a vector
-    # field can't be recreated with it yet, so restoring it here would turn a
-    # quiet loss into a failure on ``create()``.
     assert result["fields"] == [
         {
             "name": "emb",
@@ -288,6 +285,7 @@ def test_convert_index_info_resp2_unified_vector_flags():
                 "datatype": "float32",
                 "m": 24,
                 "ef_construction": 300,
+                "index_missing": True,
             },
         }
     ]

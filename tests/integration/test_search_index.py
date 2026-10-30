@@ -645,6 +645,7 @@ def test_client_from_existing_and_batch_search(
                         "distance_metric": "cosine",
                         "algorithm": "flat",
                         "datatype": "float32",
+                        "index_missing": True,
                     },
                 },
             ],
