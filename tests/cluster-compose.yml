@@ -2,7 +2,7 @@
 # its peers and hands to clients in MOVED redirects, so the name has to resolve
 # both inside the containers and on the host running the tests.
 # - Inside: Docker Desktop provides the name; Linux Docker Engine (GitHub's
-#   ubuntu runners) needs the `extra_hosts` mapping on each node below.
+#   ubuntu runners) needs the `extra_hosts` mapping on every container below.
 # - On the host: add `127.0.0.1 host.docker.internal` to the hosts file, as the
 #   `cluster-tests` job in .github/workflows/test.yml does. macOS does not
 #   resolve the name by default either.
@@ -135,6 +135,10 @@ services:
 
   redis-cluster-setup:
     image: "redis:8.4"
+    # `redis-cli --cluster create` reconnects to every node at its announced
+    # address once the nodes have met, so this container needs the name too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis-node-1
       - redis-node-2

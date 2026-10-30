@@ -143,7 +143,8 @@ jobs:
   cluster-tests:
     name: Cluster Tests - redis-py ${{ matrix.redis-py-version }}
     # Nightly and on demand only, to keep the cluster's setup time off PRs.
-    # Every other job runs `make test`, which skips `requires_cluster` tests.
+    # No other job passes `--run-cluster-tests`, so this is the only one that
+    # runs `requires_cluster` tests.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
