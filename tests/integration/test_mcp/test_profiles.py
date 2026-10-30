@@ -258,8 +258,8 @@ async def test_profile_advertises_only_its_exposed_arguments(started_server):
     # a fake, since the schema is derived by the library from the signature.
     assert set(schema["properties"]) == {"query", "limit", "filter"}
     # A set, not a list: `required` ordering is a pydantic implementation detail,
-    # and only its membership is behavior. `fastmcp` is pinned `>=2.0.0` with no
-    # upper bound, so a minor bump must not break this on presentation alone.
+    # and only its membership is behavior. `fastmcp` is allowed anywhere in
+    # `>=2.12.1,<4`, so a minor bump must not break this on presentation alone.
     assert set(schema["required"]) == {"query"}
     assert schema["additionalProperties"] is False
 
