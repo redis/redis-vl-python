@@ -108,7 +108,9 @@ class SemanticCache(BaseLLMCache):
         Raises:
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
-            ValueError: If the threshold is not between 0 and 2 (Redis COSINE distance).
+            TypeError: If the threshold is not a real number, or is a bool.
+            ValueError: If the threshold is not between 0 and 2 (Redis COSINE
+                distance), or is NaN.
             ValueError: If existing schema does not match new schema and overwrite is False.
             ValueError: If both create_index is False and overwrite is True.
 
@@ -458,7 +460,8 @@ class SemanticCache(BaseLLMCache):
                 that can be used to filter cache results. Defaults to None and
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
-                vector distance.
+                vector distance, in Redis COSINE units [0-2]. Defaults to None,
+                which uses the cache's threshold.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -543,7 +546,8 @@ class SemanticCache(BaseLLMCache):
                 that can be used to filter cache results. Defaults to None and
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
-                vector distance.
+                vector distance, in Redis COSINE units [0-2]. Defaults to None,
+                which uses the cache's threshold.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
