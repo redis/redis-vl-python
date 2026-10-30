@@ -14,8 +14,8 @@ from pydantic import ValidationError
 from redisvl.extensions.router.schema import Route
 from redisvl.extensions.router.semantic import SemanticRouter
 
-INVALID = [math.nan, True, "0.5", 3, 0]
-INVALID_IDS = ["nan", "bool", "numeric_string", "above_range", "zero"]
+INVALID = [math.nan, True, "0.5", 3, 0, None]
+INVALID_IDS = ["nan", "bool", "numeric_string", "above_range", "zero", "none"]
 
 
 def _route(name="greeting", threshold=0.5):
@@ -40,12 +40,6 @@ def test_constructor_and_assignment_reject_the_same_values(value):
     assert route.distance_threshold == 0.5
 
 
-def test_assignment_rejects_none():
-    route = _route()
-    with pytest.raises(ValidationError):
-        route.distance_threshold = None
-
-
 @pytest.mark.parametrize("value", [2, 2.0, 1e-9])
 def test_assignment_accepts_the_range_bounds(value):
     route = _route()
@@ -53,7 +47,7 @@ def test_assignment_accepts_the_range_bounds(value):
     assert route.distance_threshold == value
 
 
-@pytest.mark.parametrize("value", INVALID + [None], ids=INVALID_IDS + ["none"])
+@pytest.mark.parametrize("value", INVALID, ids=INVALID_IDS)
 def test_update_route_thresholds_rejects_invalid_values(value):
     router = _router(_route())
     with pytest.raises(ValidationError):
