@@ -564,8 +564,9 @@ class AsyncMigrationExecutor:
 
         Async counterpart of :meth:`MigrationExecutor.apply`. Uses
         ``await`` for Redis I/O so the event loop remains responsive during
-        large quantization jobs. Multi-worker quantization uses
-        ``asyncio.gather`` with independent connections.
+        large quantization jobs. Multi-worker quantization runs in an
+        ``asyncio.TaskGroup`` with independent connections, so one worker's
+        failure cancels the rest.
 
         Args:
             plan: The migration plan to apply (from
