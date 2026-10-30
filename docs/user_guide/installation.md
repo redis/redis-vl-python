@@ -56,7 +56,7 @@ $ pip install redisvl[all]
 ```
 
 ```{note}
-On Python 3.15, the `sentence-transformers` and `all` extras can't be installed yet, because PyTorch doesn't publish Python 3.15 wheels on PyPI. Install the individual extras you need instead. The `voyageai` and `sql-redis` packages also declare a Python upper bound below 3.15, so `pip` refuses them on 3.15 until their maintainers lift it.
+The `voyageai` package declares support for Python below 3.15, and `sql-redis` for Python below 3.14. On newer versions, `pip` refuses those extras, and `all` with them, until their maintainers lift the limit. `uv` installs them regardless.
 ```
 
 ## Install RedisVL from Source

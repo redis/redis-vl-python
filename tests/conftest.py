@@ -1,5 +1,4 @@
 import hashlib
-import importlib.util
 import logging
 import os
 import re
@@ -534,11 +533,6 @@ def pytest_collection_modifyitems(
     skip_cluster = pytest.mark.skip(
         reason="Skipping test because Redis cluster is not available. Use --run-cluster-tests to run these tests."
     )
-    # torch, and so sentence-transformers, can lag a new CPython release.
-    has_hf = importlib.util.find_spec("sentence_transformers") is not None
-    skip_hf = pytest.mark.skip(
-        reason="Skipping test because sentence-transformers is not installed."
-    )
 
     # Apply skip markers independently based on flags
     for item in items:
@@ -546,8 +540,6 @@ def pytest_collection_modifyitems(
             item.add_marker(skip_api)
         if item.get_closest_marker("requires_cluster") and not run_cluster_tests:
             item.add_marker(skip_cluster)
-        if item.get_closest_marker("requires_hf") and not has_hf:
-            item.add_marker(skip_hf)
 
 
 @pytest.fixture
