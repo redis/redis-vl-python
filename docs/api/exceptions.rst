@@ -19,6 +19,7 @@ hierarchy.)
         ├── RedisSearchError
         ├── SchemaValidationError
         ├── QueryValidationError
+        ├── PartialDeletionError
         └── RedisModuleVersionError
 
 .. note::
@@ -31,6 +32,17 @@ hierarchy.)
    validation raises standard Python exceptions instead: for example,
    ``VectorQuery(..., ef_runtime=-1)`` raises ``ValueError`` at construction time,
    before any ``try`` block around the query run is entered.
+
+.. note::
+
+   Some failures are logged rather than raised. On Redis Cluster, ``drop_keys()``,
+   ``drop_by_filter()`` and ``clear()`` remove keys one at a time and a per-key
+   failure is logged so one unreachable slot does not abort the batch. There is no
+   exception to catch in that case: check the returned count, or
+   ``BulkResult.completed`` for the bulk operations. The exception is a caller that
+   keeps its own mirror of the keyspace — :class:`SemanticRouter` persists a route
+   config — which reconciles that mirror and then raises
+   :class:`PartialDeletionError` so the partial deletion cannot go unnoticed.
 
 
 When each error is raised
@@ -55,6 +67,12 @@ When each error is raised
      - An index or search operation fails, including errors returned by Redis
        itself.
      - ``create()``, ``exists()``, ``delete()``, ``search()``, ``aggregate()``
+   * - :class:`PartialDeletionError`
+     - Some keys could not be removed from Redis, and the caller keeps its own
+       record of them. RedisVL reconciles and persists that record first, so a
+       retry targets exactly what is left. Practically cluster-only.
+     - ``SemanticRouter.remove_route()``,
+       ``SemanticRouter.delete_route_references()``
    * - :class:`RedisModuleVersionError`
      - The connected Redis or Redis Search version does not support a requested
        feature, such as an ``svs-vamana`` vector field.
@@ -245,6 +263,13 @@ QueryValidationError
 --------------------
 
 .. autoclass:: QueryValidationError
+   :members:
+   :show-inheritance:
+
+PartialDeletionError
+--------------------
+
+.. autoclass:: PartialDeletionError
    :members:
    :show-inheritance:
 

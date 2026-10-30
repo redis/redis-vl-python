@@ -11,6 +11,7 @@ from redisvl.migration.models import (
     SourceSnapshot,
 )
 from redisvl.migration.planner import MigrationPlanner
+from redisvl.migration.utils import parse_percent_indexed
 from redisvl.redis.connection import supports_svs_async
 from redisvl.schema.schema import IndexSchema
 from redisvl.types import AsyncRedisClient
@@ -124,6 +125,18 @@ class AsyncMigrationPlanner:
                 "Documents that previously failed to index may become indexable after "
                 "migration, causing the post-migration document count to differ from "
                 "the pre-migration count. This is expected and validation accounts for it."
+            )
+
+        # Surface the same incomplete-index warning as the sync planner.
+        source_percent_indexed = parse_percent_indexed(snapshot.stats_snapshot)
+        if source_percent_indexed < 1.0:
+            warnings.append(
+                f"Source index is still building "
+                f"(percent_indexed={source_percent_indexed:.4f}). "
+                "Apply will fall back to SCAN enumeration to avoid missing "
+                "documents whose background HNSW indexing has not completed. "
+                "Wait for percent_indexed to reach 1.0 before applying for "
+                "the fastest migration path."
             )
 
         # Check for SVS-VAMANA in target schema and add appropriate warnings
