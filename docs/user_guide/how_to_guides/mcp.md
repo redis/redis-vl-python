@@ -193,7 +193,7 @@ indexes:
 - `runtime.default_embed_text_field` is only required when the server should generate embeddings during upsert
 - `vectorizer` is required for query embedding and server-side embedding, but optional for fulltext-only configs
 - `runtime.max_result_window` caps deep paging by limiting the maximum `offset + limit`
-- `runtime.startup_timeout_seconds` bounds each startup step for the binding: connecting to Redis and the first `INFO` share one deadline, then reading the index and building the vectorizer each get their own
+- `runtime.startup_timeout_seconds` bounds three startup steps for the binding: connecting to Redis together with the first `INFO`, which share one deadline, then reading the index, then building the vectorizer
 - `schema_overrides` is only for patching incomplete field attrs discovered from Redis
 
 ### Fulltext-Only Config
