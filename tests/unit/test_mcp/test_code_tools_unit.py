@@ -474,7 +474,9 @@ async def test_a_timed_out_call_gives_back_its_concurrency_slot(monkeypatch, slo
         await server._semaphore.acquire()
 
     with pytest.raises(RedisVLMCPError):
-        await registered["probe"]()
+        # Bounded here too, so a lost whole-call timeout fails the test
+        # instead of leaving it queued forever behind the slot held above.
+        await asyncio.wait_for(registered["probe"](), 2)
 
     assert server._active_requests == 0
     assert inspect.getcoroutinestate(started[0]) == inspect.CORO_CLOSED
