@@ -1,7 +1,5 @@
 """Tests for Redis Cluster support in RedisVL."""
 
-import asyncio
-
 import pytest
 from redis import Redis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
@@ -408,19 +406,18 @@ async def test_embeddings_cache_aclear_multipage_cluster(
             pipe.set(f"{noise_prefix}:{i}", "keep")
         await pipe.execute()
 
-        # Seeded with aset, not amset: amset silently writes nothing on an
-        # async cluster client (it awaits the pipeline returned by the queueing
-        # call, which drains the queue). That is a separate bug; this test is
-        # about aclear, so don't let it depend on the broken path.
-        await asyncio.gather(
-            *(
-                cache.aset(
-                    content=f"content-{i}",
-                    model_name="test",
-                    embedding=[0.1, 0.2, 0.3],
-                )
+        # Seed with one amset (one pipeline), not concurrent asets: hundreds of
+        # pipelines in flight exceed redis-py 8's default of 100 connections
+        # per node, and its pipeline retry then closes the shared client.
+        await cache.amset(
+            [
+                {
+                    "content": f"content-{i}",
+                    "model_name": "test",
+                    "embedding": [0.1, 0.2, 0.3],
+                }
                 for i in range(CLEAR_CACHE_KEYS)
-            )
+            ]
         )
         assert await _acount_keys(cluster_client, f"{name}:*") == CLEAR_CACHE_KEYS
 
