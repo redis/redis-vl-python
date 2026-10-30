@@ -1043,7 +1043,9 @@ async def test_a_client_cannot_pass_the_injected_field_over_the_wire(monkeypatch
     async with fastmcp.Client(mcp) as client:
         (tool,) = await client.list_tools()
         assert "category" not in tool.inputSchema["properties"]
-        assert tool.inputSchema["additionalProperties"] is False
+        # FastMCP 2.x omits the key; the refused call below holds either way.
+        if int(fastmcp.__version__.split(".")[0]) >= 3:
+            assert tool.inputSchema["additionalProperties"] is False
 
         refused = await client.call_tool(
             tool.name, {"query": "jam", "category": "victim"}, raise_on_error=False

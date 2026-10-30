@@ -1,3 +1,4 @@
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -258,10 +259,13 @@ async def test_profile_advertises_only_its_exposed_arguments(started_server):
     # a fake, since the schema is derived by the library from the signature.
     assert set(schema["properties"]) == {"query", "limit", "filter"}
     # A set, not a list: `required` ordering is a pydantic implementation detail,
-    # and only its membership is behavior. `fastmcp` is pinned `>=2.0.0` with no
-    # upper bound, so a minor bump must not break this on presentation alone.
+    # and only its membership is behavior. `fastmcp` is allowed anywhere in
+    # `>=2.13.0,<4`, so a minor bump must not break this on presentation alone.
     assert set(schema["required"]) == {"query"}
-    assert schema["additionalProperties"] is False
+    # FastMCP 2.x leaves `additionalProperties` out of the schema but still
+    # refuses extra arguments at call time; only 3.x publishes the refusal.
+    if int(version("fastmcp").split(".")[0]) >= 3:
+        assert schema["additionalProperties"] is False
 
     # A raw string filter has no safe composition with a locked filter, so the
     # object form is the only shape offered. Optional[dict] is encoded as an
