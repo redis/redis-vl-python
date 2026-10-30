@@ -253,7 +253,12 @@ class RedisVLMCPServer(FastMCP):
         """
 
         def decorator(fn: _ToolFn) -> _ToolFn:
-            if self._tools_registered:
+            # While starting, the code tools have already been read, so one
+            # added now would be silently left out.
+            if (
+                self._tools_registered
+                or self._lifecycle_state is _LifecycleState.STARTING
+            ):
                 raise RuntimeError(
                     "MCP tools are registered once, at the first startup; "
                     "register code tools before starting the server"

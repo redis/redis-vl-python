@@ -1067,6 +1067,7 @@ def _code_tool_server(*, read_only=False) -> RedisVLMCPServer:
     server = RedisVLMCPServer.__new__(RedisVLMCPServer)
     server._code_tools = []
     server._tools_registered = False
+    server._lifecycle_state = server._LifecycleState.INITIAL
     server.mcp_settings = SimpleNamespace(read_only=read_only)
     return server
 
@@ -1117,12 +1118,18 @@ def test_custom_tool_checks_the_function_where_it_is_declared():
     assert server._code_tools == []
 
 
-def test_custom_tool_after_registration_is_refused():
+@pytest.mark.parametrize("moment", ["registered", "starting"])
+def test_custom_tool_after_registration_is_refused(moment):
     server = _code_tool_server()
-    server._tools_registered = True
+    if moment == "registered":
+        server._tools_registered = True
+    else:
+        # Startup has read the code tools but not yet registered them.
+        server._lifecycle_state = server._LifecycleState.STARTING
 
     with pytest.raises(RuntimeError, match="register code tools before starting"):
         server.code_tool()(recent_tickets)
+    assert server._code_tools == []
 
 
 def test_a_code_tool_on_a_single_index_server_binds_to_it():

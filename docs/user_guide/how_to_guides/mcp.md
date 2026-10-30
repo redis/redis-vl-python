@@ -420,7 +420,9 @@ The server refuses to start an injecting profile without authentication, over `s
 When a tool needs logic a profile cannot express, write it as an async function and register it on the server before you run it. This suits a server you start from your own Python process:
 
 ```python
-from redisvl.mcp import MCPSettings, RedisVLMCPServer, ToolContext
+from typing import cast
+
+from redisvl.mcp import MCPSettings, RedisVLMCPServer, ToolContext, WritableIndexHandle
 from redisvl.query import FilterQuery
 from redisvl.query.filter import Tag
 
@@ -441,10 +443,11 @@ async def open_tickets_for_product(ctx: ToolContext, product: str, limit: int = 
 @server.code_tool(index="tickets", writes=True, scope="tickets.triage")
 async def delete_spam_ticket(ctx: ToolContext, ticket_id: str) -> dict:
     """Delete a support ticket that triage has marked as spam."""
-    ticket = await ctx.index.fetch(ticket_id)
+    index = cast(WritableIndexHandle, ctx.index)
+    ticket = await index.fetch(ticket_id)
     if ticket is None or ticket.get("status") != "spam":
         raise ValueError(f"ticket {ticket_id} is not marked as spam")
-    return {"deleted": await ctx.index.drop_documents(ticket_id)}
+    return {"deleted": await index.drop_documents(ticket_id)}
 
 
 server.run(transport="streamable-http", host="127.0.0.1", port=8000)
@@ -459,7 +462,7 @@ What the client sees:
 Rules worth knowing:
 
 - **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool stays under its index's key prefix. `load` returns document ids, and `ctx.index.document_id(hit["id"])` turns a search result's key into one. That does not separate indexes whose prefixes overlap, or an index with an empty prefix, which covers every key. There is no Redis client and no way to create, drop or clear the index.
-- **Writing tools need a cast for type checkers.** `ctx.index` is typed as `IndexHandle`. In a tool registered with `writes=True`, `cast(WritableIndexHandle, ctx.index)` gives a type checker the write methods. Both types are exported from `redisvl.mcp`.
+- **Writing tools need a cast for type checkers.** `ctx.index` is typed as `IndexHandle`. In a tool registered with `writes=True`, `cast(WritableIndexHandle, ctx.index)` gives a type checker the write methods, as `delete-spam-ticket` shows. Both types are exported from `redisvl.mcp`.
 - **Every call is bounded.** Each `ctx.index` call takes a slot under the concurrency cap and the binding's `request_timeout_seconds`, and the whole tool call is bounded by the same timeout.
 - **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself.
 - **Register before starting.** Tools register once, at the first startup, so a tool registered afterwards is refused.
