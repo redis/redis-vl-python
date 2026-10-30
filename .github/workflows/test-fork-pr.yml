@@ -41,8 +41,12 @@ jobs:
               return;
             }
 
-            if (pr.data.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`) {
-              core.setFailed(`PR #${{ inputs.pr_number }} is not from a fork. Use the regular workflow.`);
+            // Dependabot branches live in this repo, but GitHub withholds Actions
+            // secrets from runs it triggers, so they go through here like forks.
+            const isFork = pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
+            const isDependabot = pr.data.user.login === 'dependabot[bot]';
+            if (!isFork && !isDependabot) {
+              core.setFailed(`PR #${{ inputs.pr_number }} is not from a fork or Dependabot. Use the regular workflow.`);
               return;
             }
 
