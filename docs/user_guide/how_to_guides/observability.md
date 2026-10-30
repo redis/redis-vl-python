@@ -92,7 +92,7 @@ A failed operation sets an error status and `error.type` on every RedisVL span i
 | Metric | Unit | Attributes | Recorded on |
 |---|---|---|---|
 | `redisvl.semantic_cache.operation.duration` | `s` | `redisvl.cache.name`, `redisvl.cache.operation`, `redisvl.cache.result` (on `check`), `error.type` (on failure) | Every `check`, `store`, `update` and `drop`, sync or async |
-| `redisvl.semantic_cache.distance` | `1` | `redisvl.cache.name`, `redisvl.cache.result` | Every lookup that found at least one candidate |
+| `redisvl.semantic_cache.distance` | `1` | `redisvl.cache.name`, `redisvl.cache.result` | Every completed lookup that found at least one candidate |
 | `gen_ai.client.operation.duration` | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `error.type` (on failure) | Every embedding call that reaches the provider, but not an embeddings-cache hit. One `embed_many` call records one point, covering all its batches |
 
 There is no counter: the duration histogram's count is the number of operations. Cache-operation buckets start at 100 µs, because a lookup against local Redis takes about 250 µs before embedding, while embedding-duration buckets follow the GenAI conventions' advice, from 10 ms. Distance buckets are 0.01 wide up to 0.1, then coarser up to 2, the maximum cosine distance. To change any of them, use an SDK [View](https://opentelemetry.io/docs/languages/python/instrumentation/#metrics).

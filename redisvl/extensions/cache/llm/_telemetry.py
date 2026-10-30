@@ -119,35 +119,19 @@ def retrieval(index_name: str, top_k: int, distance_threshold: float) -> Iterato
 
 
 def record_lookup(
-    span: Any,
-    cache_name: str,
-    candidates: list[dict[str, Any]],
-    hits: list[Any],
-    prompt: str | None,
+    span: Any, candidates: list[dict[str, Any]], prompt: str | None
 ) -> None:
-    """Record what a lookup found, on a miss as well as a hit.
-
-    The nearest candidate's distance goes on the retrieval span and the
-    distance histogram. Nothing is recorded for it when there was no candidate
-    at all: an empty cache, or a filter that excluded every entry. Candidates
-    arrive nearest first.
+    """Record on the retrieval span what a lookup found, on a miss as well as a hit.
 
     With content capture on, each document's ``score`` is its raw vector
     distance, so lower is closer, unlike the relevance score the GenAI
     conventions describe. No single conversion suits every distance metric.
     """
     try:
-        scored = [
-            candidate
-            for candidate in candidates
-            if candidate.get(VectorQuery.DISTANCE_ID) is not None
-        ]
+        scored = _scored(candidates)
         if scored:
-            distance = float(scored[0][VectorQuery.DISTANCE_ID])
-            span.set_attribute(otel.CACHE_DISTANCE, distance)
-            otel.histogram(otel.SEMANTIC_CACHE_DISTANCE).record(
-                distance,
-                {otel.CACHE_NAME: cache_name, otel.CACHE_RESULT: _result(hits)},
+            span.set_attribute(
+                otel.CACHE_DISTANCE, float(scored[0][VectorQuery.DISTANCE_ID])
             )
         if otel.capture_content() and span.is_recording():
             if prompt is not None:
@@ -162,3 +146,34 @@ def record_lookup(
             span.set_attribute(otel.GEN_AI_RETRIEVAL_DOCUMENTS, json.dumps(documents))
     except Exception:
         logger.debug("Could not record RedisVL telemetry", exc_info=True)
+
+
+def record_nearest_distance(
+    cache_name: str, candidates: list[dict[str, Any]], hits: list[Any]
+) -> None:
+    """Record the nearest candidate's distance, on a miss as well as a hit.
+
+    Called once the lookup has completed, so an interrupted one records
+    nothing.
+    """
+    try:
+        scored = _scored(candidates)
+        if scored:
+            otel.histogram(otel.SEMANTIC_CACHE_DISTANCE).record(
+                float(scored[0][VectorQuery.DISTANCE_ID]),
+                {otel.CACHE_NAME: cache_name, otel.CACHE_RESULT: _result(hits)},
+            )
+    except Exception:
+        logger.debug("Could not record RedisVL telemetry", exc_info=True)
+
+
+def _scored(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The candidates that carry a distance, nearest first.
+
+    There are none for an empty cache or a filter that excluded every entry.
+    """
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.get(VectorQuery.DISTANCE_ID) is not None
+    ]
