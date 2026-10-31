@@ -16,9 +16,7 @@ class _DefaultStderrHandler(logging.Handler):
         super().__init__(level=logging.WARNING)
 
     def emit(self, record: logging.LogRecord) -> None:
-        root = logging.getLogger()
-        if root.handlers:
-            root.handle(record)
+        if _has_application_handlers(record.name):
             return
         clean = logging.makeLogRecord(
             {
@@ -31,6 +29,19 @@ class _DefaultStderrHandler(logging.Handler):
         logging.lastResort.handle(clean)
 
 
+def _has_application_handlers(logger_name: str) -> bool:
+    """True when the host app attached handlers outside RedisVL's default."""
+    root = logging.getLogger()
+    if root.handlers:
+        return True
+    parts = logger_name.split(".")
+    for i in range(len(parts), 0, -1):
+        for handler in logging.getLogger(".".join(parts[:i])).handlers:
+            if not isinstance(handler, _DefaultStderrHandler):
+                return True
+    return False
+
+
 def get_logger(name, log_level="info", fmt=None):
     """Return a logger instance."""
 
@@ -40,5 +51,4 @@ def get_logger(name, log_level="info", fmt=None):
     logger = logging.getLogger(name)
     if not any(isinstance(h, _DefaultStderrHandler) for h in logger.handlers):
         logger.addHandler(_DefaultStderrHandler())
-        logger.propagate = False
     return logger

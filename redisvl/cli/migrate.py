@@ -5,7 +5,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from redisvl.cli.utils import add_redis_connection_options, create_redis_url, log_cli_exception
+from redisvl.cli.utils import (
+    add_redis_connection_options,
+    create_redis_url,
+    log_cli_exception,
+)
 from redisvl.migration import (
     AsyncMigrationExecutor,
     BatchMigrationExecutor,

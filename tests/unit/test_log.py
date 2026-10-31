@@ -43,7 +43,7 @@ def test_get_logger_attaches_default_stderr_handler():
     logger = get_logger(name)
     assert len(logger.handlers) == 1
     assert isinstance(logger.handlers[0], _DefaultStderrHandler)
-    assert logger.propagate is False
+    assert logger.propagate is True
 
 
 def test_warning_reaches_stderr_without_logging_configuration():
@@ -79,6 +79,51 @@ def test_error_with_exc_info_does_not_write_traceback_to_stderr():
     assert result.returncode == 0, result.stderr
     assert "cli failure" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_info_propagates_when_root_logging_is_configured_for_debug():
+    result = _run("""
+        import logging
+        import sys
+
+        logging.basicConfig(
+            stream=sys.stdout,
+            format="APP %(levelname)s %(name)s %(message)s",
+            level=logging.DEBUG,
+        )
+        from redisvl.utils.log import get_logger
+
+        get_logger("redisvl.demo").info("configured redisvl info")
+        """)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "APP INFO redisvl.demo configured redisvl info"
+    ]
+    assert "configured redisvl info" not in result.stderr
+
+
+def test_parent_logger_handlers_receive_redisvl_records():
+    result = _run("""
+        import logging
+        import sys
+
+        parent = logging.getLogger("redisvl")
+        parent.setLevel(logging.INFO)
+        parent.addHandler(
+            logging.StreamHandler(sys.stdout)
+        )
+        parent.handlers[0].setFormatter(
+            logging.Formatter("PARENT %(levelname)s %(name)s %(message)s")
+        )
+        from redisvl.utils.log import get_logger
+
+        get_logger("redisvl.demo").info("parent handler info")
+        """)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "PARENT INFO redisvl.demo parent handler info"
+    ]
+    assert "parent handler info" not in result.stderr
 
 
 def test_configured_logging_still_receives_redisvl_warnings():
