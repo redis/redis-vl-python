@@ -145,3 +145,27 @@ def test_configured_logging_still_receives_redisvl_warnings():
         "APP WARNING redisvl.demo configured redisvl warning"
     ]
     assert "configured redisvl warning" not in result.stderr
+
+
+def test_parent_and_child_default_handlers_do_not_duplicate_stderr():
+    result = _run("""
+        from redisvl.utils.log import get_logger
+
+        get_logger("redisvl")
+        get_logger("redisvl.demo").warning("single parent child warning")
+        """)
+    assert result.returncode == 0, result.stderr
+    _line_with(result.stderr.splitlines(), "single parent child warning")
+
+
+def test_warning_emit_succeeds_when_last_resort_is_none():
+    result = _run("""
+        import logging
+        from redisvl.utils.log import get_logger
+
+        logging.lastResort = None
+        get_logger("redisvl.demo").warning("suppressed by none last resort")
+        """)
+    assert result.returncode == 0, result.stderr
+    assert "suppressed by none last resort" not in result.stderr
+    assert "Traceback" not in result.stderr

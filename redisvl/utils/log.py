@@ -12,11 +12,14 @@ class _DefaultStderrHandler(logging.Handler):
     ``exc_info`` for configured apps without duplicating tracebacks on stderr.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, logger_name: str) -> None:
         super().__init__(level=logging.WARNING)
+        self._logger_name = logger_name
 
     def emit(self, record: logging.LogRecord) -> None:
         if _has_application_handlers(record.name):
+            return
+        if _default_stderr_owner(record.name) != self._logger_name:
             return
         clean = logging.makeLogRecord(
             {
@@ -26,7 +29,21 @@ class _DefaultStderrHandler(logging.Handler):
                 "stack_info": None,
             }
         )
-        logging.lastResort.handle(clean)
+        last_resort = logging.lastResort
+        if last_resort is not None:
+            last_resort.handle(clean)
+
+
+def _default_stderr_owner(record_name: str) -> str | None:
+    """Logger name whose ``_DefaultStderrHandler`` should emit for ``record_name``."""
+    parts = record_name.split(".")
+    owner: str | None = None
+    for i in range(1, len(parts) + 1):
+        candidate = ".".join(parts[:i])
+        logger = logging.getLogger(candidate)
+        if any(isinstance(h, _DefaultStderrHandler) for h in logger.handlers):
+            owner = candidate
+    return owner
 
 
 def _has_application_handlers(logger_name: str) -> bool:
@@ -50,5 +67,5 @@ def get_logger(name, log_level="info", fmt=None):
 
     logger = logging.getLogger(name)
     if not any(isinstance(h, _DefaultStderrHandler) for h in logger.handlers):
-        logger.addHandler(_DefaultStderrHandler())
+        logger.addHandler(_DefaultStderrHandler(name))
     return logger
