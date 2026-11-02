@@ -1,4 +1,4 @@
-import logging
+import asyncio
 import sys
 import types
 
@@ -63,26 +63,23 @@ def vectorizer(fake_cohere_module):
     return CohereTextVectorizer(api_config={"api_key": "test-key"}, timeout=30)
 
 
-def test_init_creates_sync_and_async_clients(fake_cohere_module, vectorizer):
+def test_init_creates_sync_client_and_defers_async(fake_cohere_module, vectorizer):
     sync_client = fake_cohere_module.Client.instances[-1]
-    async_client = fake_cohere_module.AsyncClient.instances[-1]
 
     assert vectorizer.dims == 3
-    for client in (sync_client, async_client):
-        assert client.api_key == "test-key"
-        assert client.client_name == "redisvl"
-        assert client.kwargs == {"timeout": 30}
+    assert sync_client.api_key == "test-key"
+    assert sync_client.client_name == "redisvl"
+    assert sync_client.kwargs == {"timeout": 30}
+    # The async client is built on first use, inside a running event loop.
+    assert fake_cohere_module.AsyncClient.instances == []
 
 
-async def test_aembed_uses_async_client(fake_cohere_module, vectorizer, caplog):
-    sync_client = fake_cohere_module.Client.instances[-1]
+async def test_aembed_uses_async_client(fake_cohere_module, vectorizer):
+    result = await vectorizer.aembed("hello async", input_type="search_query")
+
     async_client = fake_cohere_module.AsyncClient.instances[-1]
-    sync_calls_before = len(sync_client.embed_calls)
-
-    with caplog.at_level(logging.WARNING):
-        result = await vectorizer.aembed("hello async", input_type="search_query")
-
     assert result == _embedding_for("hello async")
+    assert async_client.kwargs == {"timeout": 30}
     assert async_client.embed_calls == [
         {
             "texts": ["hello async"],
@@ -91,39 +88,33 @@ async def test_aembed_uses_async_client(fake_cohere_module, vectorizer, caplog):
             "embedding_types": ["float"],
         }
     ]
-    assert len(sync_client.embed_calls) == sync_calls_before
-    assert "Falling back to sync" not in caplog.text
 
 
-async def test_aembed_many_batches_through_async_client(
-    fake_cohere_module, vectorizer, caplog
-):
-    sync_client = fake_cohere_module.Client.instances[-1]
-    async_client = fake_cohere_module.AsyncClient.instances[-1]
-    sync_calls_before = len(sync_client.embed_calls)
+async def test_aembed_many_batches_through_async_client(fake_cohere_module, vectorizer):
     texts = ["a", "bb", "ccc", "dddd", "eeeee"]
 
-    with caplog.at_level(logging.WARNING):
-        result = await vectorizer.aembed_many(
-            texts, batch_size=2, input_type="search_document"
-        )
+    result = await vectorizer.aembed_many(
+        texts, batch_size=2, input_type="search_document"
+    )
 
+    async_client = fake_cohere_module.AsyncClient.instances[-1]
     assert result == [_embedding_for(text) for text in texts]
     assert [call["texts"] for call in async_client.embed_calls] == [
         ["a", "bb"],
         ["ccc", "dddd"],
         ["eeeee"],
     ]
-    assert len(sync_client.embed_calls) == sync_calls_before
-    assert "Falling back to sync" not in caplog.text
 
 
-async def test_aembed_maps_dtype_to_embedding_types(fake_cohere_module):
+async def test_aembed_dtype_wins_over_embedding_types(fake_cohere_module):
     vectorizer = CohereTextVectorizer(api_config={"api_key": "test-key"}, dtype="int8")
+
+    with pytest.warns(UserWarning, match="embedding_types"):
+        await vectorizer.aembed(
+            "hello", input_type="search_query", embedding_types=["float"]
+        )
+
     async_client = fake_cohere_module.AsyncClient.instances[-1]
-
-    await vectorizer.aembed("hello", input_type="search_query")
-
     assert async_client.embed_calls[-1]["embedding_types"] == ["int8"]
 
 
@@ -137,30 +128,35 @@ async def test_aembed_many_rejects_non_list(vectorizer):
         await vectorizer.aembed_many("not a list", input_type="search_document")
 
 
-async def test_aembed_ignores_embedding_types_with_warning(
-    fake_cohere_module, vectorizer
-):
-    async_client = fake_cohere_module.AsyncClient.instances[-1]
-
-    with pytest.warns(UserWarning, match="embedding_types"):
-        await vectorizer.aembed(
-            "hello", input_type="search_query", embedding_types=["int8"]
-        )
-
-    assert async_client.embed_calls[-1]["embedding_types"] == ["float"]
-
-
 def test_embed_and_embed_many_still_use_sync_client(fake_cohere_module, vectorizer):
     sync_client = fake_cohere_module.Client.instances[-1]
-    async_client = fake_cohere_module.AsyncClient.instances[-1]
 
     assert vectorizer.embed("hi", input_type="search_query") == _embedding_for("hi")
     assert vectorizer.embed_many(["x", "yy"], input_type="search_document") == [
         _embedding_for("x"),
         _embedding_for("yy"),
     ]
-    assert async_client.embed_calls == []
     assert sync_client.embed_calls[-1]["texts"] == ["x", "yy"]
+
+
+def test_async_client_is_rebuilt_for_a_new_event_loop(fake_cohere_module, vectorizer):
+    # A vectorizer that outlives an event loop must not reuse a client whose
+    # connection pool is bound to the closed loop.
+    asyncio.run(vectorizer.aembed("hello", input_type="search_query"))
+    asyncio.run(vectorizer.aembed("again", input_type="search_query"))
+
+    first, second = fake_cohere_module.AsyncClient.instances
+    assert first is not second
+    assert [call["texts"] for call in second.embed_calls] == [["again"]]
+
+
+async def test_async_client_is_reused_within_one_event_loop(
+    fake_cohere_module, vectorizer
+):
+    await vectorizer.aembed("one", input_type="search_query")
+    await vectorizer.aembed_many(["two"], input_type="search_document")
+
+    assert len(fake_cohere_module.AsyncClient.instances) == 1
 
 
 async def test_sync_httpx_client_keeps_async_on_sync_fallback(fake_cohere_module):
@@ -171,7 +167,6 @@ async def test_sync_httpx_client_keeps_async_on_sync_fallback(fake_cohere_module
     sync_client = fake_cohere_module.Client.instances[-1]
 
     assert sync_client.kwargs == {"httpx_client": sync_httpx}
-    assert fake_cohere_module.AsyncClient.instances == []
     assert await vectorizer.aembed(
         "hello", input_type="search_query"
     ) == _embedding_for("hello")
@@ -179,10 +174,26 @@ async def test_sync_httpx_client_keeps_async_on_sync_fallback(fake_cohere_module
         _embedding_for("a"),
         _embedding_for("bb"),
     ]
+    assert fake_cohere_module.AsyncClient.instances == []
     assert sync_client.embed_calls[-1]["texts"] == ["a", "bb"]
 
 
-async def test_async_httpx_client_goes_to_async_client_only(fake_cohere_module):
+async def test_httpx_client_none_still_uses_async_client(fake_cohere_module):
+    # Config dicts often carry httpx_client=None; that is not a sync client.
+    vectorizer = CohereTextVectorizer(
+        api_config={"api_key": "test-key"}, httpx_client=None
+    )
+
+    await vectorizer.aembed("hello", input_type="search_query")
+
+    async_client = fake_cohere_module.AsyncClient.instances[-1]
+    assert async_client.kwargs == {"httpx_client": None}
+    assert async_client.embed_calls[-1]["texts"] == ["hello"]
+
+
+def test_async_httpx_client_goes_to_async_client_only_and_is_kept(
+    fake_cohere_module,
+):
     sync_httpx, async_httpx = object(), object()
     vectorizer = CohereTextVectorizer(
         api_config={"api_key": "test-key"},
@@ -190,9 +201,15 @@ async def test_async_httpx_client_goes_to_async_client_only(fake_cohere_module):
         async_httpx_client=async_httpx,
     )
     sync_client = fake_cohere_module.Client.instances[-1]
-    async_client = fake_cohere_module.AsyncClient.instances[-1]
 
     assert sync_client.kwargs == {"httpx_client": sync_httpx}
+    asyncio.run(vectorizer.aembed("hello", input_type="search_query"))
+    asyncio.run(vectorizer.aembed("again", input_type="search_query"))
+
+    # The caller owns this client's loop, so it is never swapped out.
+    (async_client,) = fake_cohere_module.AsyncClient.instances
     assert async_client.kwargs == {"httpx_client": async_httpx}
-    await vectorizer.aembed("hello", input_type="search_query")
-    assert async_client.embed_calls[-1]["texts"] == ["hello"]
+    assert [call["texts"] for call in async_client.embed_calls] == [
+        ["hello"],
+        ["again"],
+    ]

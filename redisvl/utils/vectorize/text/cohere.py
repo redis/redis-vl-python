@@ -1,5 +1,7 @@
+import asyncio
 import os
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
@@ -99,6 +101,11 @@ class CohereTextVectorizer(BaseVectorizer):
                 to Cohere's corresponding embedding types. Defaults to 'float32'.
             cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
                 better performance with repeated texts. Defaults to None.
+            **kwargs: Passed to the Cohere ``Client`` and ``AsyncClient``, for
+                example ``timeout`` or ``base_url``. A custom ``httpx_client`` is
+                synchronous, so it goes to the sync client only and the async
+                methods fall back to it; pass ``async_httpx_client`` (an
+                ``httpx.AsyncClient``) to give the async client its own.
 
         Raises:
             ImportError: If the cohere library is not installed.
@@ -123,10 +130,8 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Args:
             api_config: Dictionary with API configuration options
-            **kwargs: Additional arguments to pass to the Cohere clients.
-                A custom ``httpx_client`` is synchronous, so it goes to the
-                sync client only, and async calls fall back to it. Pass
-                ``async_httpx_client`` to give the async client its own.
+            **kwargs: Additional arguments to pass to the Cohere clients; see
+                ``__init__`` for ``httpx_client`` and ``async_httpx_client``.
 
         Raises:
             ImportError: If the cohere library is not installed
@@ -158,14 +163,36 @@ class CohereTextVectorizer(BaseVectorizer):
 
         # A user-supplied httpx_client is sync and can't be awaited, so without
         # an async one the async methods keep falling back to the sync client.
-        self._aclient = None
-        if "httpx_client" not in kwargs or async_httpx_client is not None:
+        self._aclient_factory: Callable[[], Any] | None = None
+        self._aclient: Any = None
+        self._aclient_loop: asyncio.AbstractEventLoop | None = None
+        # A user-supplied async httpx client is bound to the caller's loop, so
+        # it is created once and never rebuilt.
+        self._aclient_rebuild_on_new_loop = async_httpx_client is None
+        if kwargs.get("httpx_client") is None or async_httpx_client is not None:
             async_kwargs = dict(kwargs)
             if async_httpx_client is not None:
                 async_kwargs["httpx_client"] = async_httpx_client
-            self._aclient = AsyncClient(
+            self._aclient_factory = lambda: AsyncClient(
                 api_key=api_key, client_name="redisvl", **async_kwargs
             )
+
+    def _get_aclient(self) -> Any:
+        """Return the async Cohere client, or ``None`` if async is disabled.
+
+        The client's HTTP connection pool is tied to the event loop it was
+        created on, so a vectorizer that outlives a loop gets a fresh client
+        on the next one rather than ``Event loop is closed`` errors.
+        """
+        if self._aclient_factory is None:
+            return None
+        loop = asyncio.get_running_loop()
+        if self._aclient is None or (
+            self._aclient_rebuild_on_new_loop and self._aclient_loop is not loop
+        ):
+            self._aclient = self._aclient_factory()
+            self._aclient_loop = loop
+        return self._aclient
 
     def _set_model_dims(self) -> int:
         """
@@ -366,7 +393,8 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: If content is not a string or input_type is not provided
             ValueError: If embedding fails
         """
-        if self._aclient is None:
+        aclient = self._get_aclient()
+        if aclient is None:
             return await super()._aembed(content, **kwargs)
 
         if not isinstance(content, str):
@@ -375,7 +403,7 @@ class CohereTextVectorizer(BaseVectorizer):
         input_type, embedding_types = self._prepare_request(kwargs)
 
         try:
-            response = await self._aclient.embed(
+            response = await aclient.embed(
                 texts=[content],
                 model=self.model,
                 input_type=input_type,
@@ -409,11 +437,10 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings or input_type is not provided
             ValueError: If embedding fails
         """
-        if self._aclient is None:
+        aclient = self._get_aclient()
+        if aclient is None:
             return await super()._aembed_many(contents, batch_size=batch_size, **kwargs)
-        return await self._aembed_many_with(
-            self._aclient, contents, batch_size, **kwargs
-        )
+        return await self._aembed_many_with(aclient, contents, batch_size, **kwargs)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
