@@ -306,48 +306,88 @@ async def _aidentify_client(
         logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
 
 
-def _accepted_init_kwargs(cls: type) -> set[str]:
-    """Return the keyword arguments ``cls(...)`` accepts, walking its MRO.
+def _init_parameters(cls: type) -> dict[str, inspect.Parameter]:
+    """Return the keyword parameters ``cls(...)`` accepts, walking its MRO.
 
     redis-py's connection classes each declare their own keywords and pass the
     rest up with ``**kwargs``, so the full set is the union of every
-    ``__init__`` in the chain up to the first one without ``**kwargs``.
+    ``__init__`` in the chain up to the first one without ``**kwargs``. That
+    stop is deliberate: a subclass whose ``__init__`` takes no ``**kwargs``
+    can't be given its parents' keywords, so they aren't accepted either.
     """
-    accepted: set[str] = set()
+    params: dict[str, inspect.Parameter] = {}
     for klass in cls.__mro__:
         init = klass.__dict__.get("__init__")
         if init is None:
             continue
-        params = inspect.signature(init).parameters
-        accepted.update(
-            name
-            for name, param in params.items()
-            if name != "self"
-            and param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY)
-        )
-        if not any(p.kind is p.VAR_KEYWORD for p in params.values()):
+        signature = inspect.signature(init).parameters
+        for name, param in signature.items():
+            if name == "self" or name in params:
+                continue
+            if param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY):
+                params[name] = param
+        if not any(p.kind is p.VAR_KEYWORD for p in signature.values()):
             break
-    return accepted
+    return params
+
+
+# Keywords the sync pool computes for its own connections (redis-py >= 7.4
+# fills them in for maintenance notifications). They describe the sync pool,
+# not the user's settings, and the async pool computes its own, so they are
+# never carried over.
+_SYNC_POOL_PLUMBING = frozenset(
+    {
+        "maint_notifications_pool_handler",
+        "orig_host_address",
+        "orig_socket_timeout",
+        "orig_socket_connect_timeout",
+    }
+)
+
+
+def _is_unset(
+    name: str, value: Any, sync_defaults: dict[str, inspect.Parameter]
+) -> bool:
+    """Whether ``value`` is what the sync connection class would have used anyway.
+
+    The comparison is against the sync class's own declared default, not
+    against ``None``/``False``, so ``0`` is a setting and a keyword whose
+    default is ``True`` is unset only when it is still ``True``.
+    """
+    if name == "maint_notifications_config":
+        # The sync pool injects a config in "auto" mode on its own; only a
+        # user who turned notifications on explicitly would lose anything.
+        return getattr(value, "enabled", None) is not True
+    param = sync_defaults.get(name)
+    if param is None or param.default is param.empty:
+        return value is None
+    default = param.default
+    return value is default or (type(value) is type(default) and value == default)
 
 
 def _async_connection_kwargs(
     connection_kwargs: Mapping[str, Any],
     connection_class: type[AsyncAbstractConnection],
+    sync_connection_class: type,
 ) -> dict[str, Any]:
     """Translate a sync pool's ``connection_kwargs`` for an async connection class.
 
-    Keywords the async class does not accept are dropped when they hold their
-    default (``None`` or ``False``). One that is set, such as
-    ``ssl_validate_ocsp=True``, is a setting the async client cannot honour,
-    so it raises instead of being silently lost.
+    Keywords the async class does not accept are dropped when they are unset,
+    meaning they still hold the sync class's own default, or when they are
+    pool plumbing the async pool computes for itself. One that the user set,
+    such as ``ssl_validate_ocsp=True``, is a setting the async client cannot
+    honour, so it raises instead of being silently lost.
     """
-    accepted = _accepted_init_kwargs(connection_class)
+    accepted = _init_parameters(connection_class)
+    sync_defaults = _init_parameters(sync_connection_class)
     kwargs: dict[str, Any] = {}
     lost: list[str] = []
     for name, value in connection_kwargs.items():
+        if name in _SYNC_POOL_PLUMBING:
+            continue
         if name in accepted:
             kwargs[name] = value
-        elif value not in (None, False):
+        elif not _is_unset(name, value, sync_defaults):
             lost.append(name)
     if lost:
         raise ValueError(
@@ -935,9 +975,10 @@ class RedisConnectionFactory:
         """Convert a synchronous Redis client to an asynchronous one.
 
         The async client is built from the sync client's connection settings:
-        TLS and unix-socket connections (including subclasses) map to their
-        async connection classes, and keywords that only the sync classes
-        accept are dropped when they hold their default.
+        TLS and unix-socket connections map to redis-py's stock async
+        connection classes, so the behaviour of a custom ``SSLConnection``
+        subclass is not carried over. Keywords that only the sync classes
+        accept are dropped when unset.
 
         Raises:
             ValueError: For a ``RedisCluster`` client, a Sentinel-managed
@@ -974,7 +1015,9 @@ class RedisConnectionFactory:
         return AsyncRedis.from_pool(
             AsyncConnectionPool(
                 connection_class=connection_class,
-                **_async_connection_kwargs(pool.connection_kwargs, connection_class),
+                **_async_connection_kwargs(
+                    pool.connection_kwargs, connection_class, pool.connection_class
+                ),
             )
         )
 

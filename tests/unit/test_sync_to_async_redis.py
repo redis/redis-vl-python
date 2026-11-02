@@ -14,85 +14,104 @@ from redis.asyncio.connection import (
 from redis.connection import ConnectionPool, SSLConnection
 from redis.sentinel import Sentinel
 
-from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.connection import (
+    RedisConnectionFactory,
+    _async_connection_kwargs,
+    _init_parameters,
+)
 
 
-def _first_connection(async_client):
-    return async_client.connection_pool.make_connection()
+class _TLS(SSLConnection):
+    pass
 
 
-def test_plain_client_keeps_its_settings():
-    client = Redis(host="example.com", port=6380, db=3, decode_responses=True)
+@pytest.mark.parametrize(
+    "client, expected, settings",
+    [
+        (
+            Redis(host="h", port=6380, db=3, decode_responses=True),
+            AsyncConnection,
+            {"host": "h", "port": 6380, "db": 3, "decode_responses": True},
+        ),
+        # RESP3 makes the sync pool inject maintenance-notification plumbing
+        # that older async classes don't accept (redis-py 7.4 and 8.0).
+        (
+            Redis(host="h", protocol=3),
+            AsyncConnection,
+            {"host": "h", "protocol": 3},
+        ),
+        (
+            Redis(host="h", ssl=True, password="pw", ssl_check_hostname=True),
+            AsyncSSLConnection,
+            {"host": "h", "password": "pw", "ssl_check_hostname": True},
+        ),
+        (
+            Redis(connection_pool=ConnectionPool(connection_class=_TLS, host="h")),
+            AsyncSSLConnection,
+            {"host": "h"},
+        ),
+        (
+            Redis(unix_socket_path="/tmp/redis.sock", db=2),
+            AsyncUnixDomainSocketConnection,
+            {"path": "/tmp/redis.sock", "db": 2},
+        ),
+        # The URL form sets connection_class rather than unix_socket_path.
+        (
+            Redis.from_url("unix:///tmp/redis.sock"),
+            AsyncUnixDomainSocketConnection,
+            {"path": "/tmp/redis.sock"},
+        ),
+    ],
+    ids=["plain", "resp3", "tls", "tls-subclass", "unix", "unix-url"],
+)
+def test_converts_to_the_matching_async_connection(client, expected, settings):
+    pool = RedisConnectionFactory.sync_to_async_redis(client).connection_pool
 
-    async_client = RedisConnectionFactory.sync_to_async_redis(client)
-    conn = _first_connection(async_client)
-
-    assert isinstance(conn, AsyncConnection)
-    assert (conn.host, conn.port, conn.db) == ("example.com", 6380, 3)
-    assert async_client.connection_pool.connection_kwargs["decode_responses"] is True
+    assert type(pool.make_connection()) is expected
+    assert settings.items() <= pool.connection_kwargs.items()
 
 
-def test_tls_keyword_client_converts_and_keeps_tls():
-    client = Redis(
-        host="example.com",
-        ssl=True,
-        password="secret",
-        ssl_cert_reqs="required",
-        ssl_check_hostname=True,
+@pytest.mark.parametrize(
+    "client, match",
+    [
+        (Sentinel([("localhost", 26379)]).master_for("mymaster"), "Sentinel-managed"),
+        (Redis(host="h", ssl=True, ssl_validate_ocsp=True), "ssl_validate_ocsp"),
+    ],
+    ids=["sentinel", "sync-only-setting"],
+)
+def test_unconvertible_client_raises(client, match):
+    with pytest.raises(ValueError, match=match):
+        RedisConnectionFactory.sync_to_async_redis(client)
+
+
+def test_sync_only_keyword_is_unset_only_at_its_own_default():
+    # ssl_validate_ocsp_stapled defaults to False on the sync class; 0 is a
+    # value the user chose, not the default, so it is not silently dropped.
+    assert "ssl_validate_ocsp_stapled" not in _init_parameters(AsyncSSLConnection)
+
+    kwargs = _async_connection_kwargs(
+        {"host": "h", "ssl_validate_ocsp_stapled": False},
+        AsyncSSLConnection,
+        SSLConnection,
     )
+    assert kwargs == {"host": "h"}
 
-    async_client = RedisConnectionFactory.sync_to_async_redis(client)
-    conn = _first_connection(async_client)
-
-    assert isinstance(conn, AsyncSSLConnection)
-    assert conn.host == "example.com"
-    assert conn.ssl_context.check_hostname is True
-    assert async_client.connection_pool.connection_kwargs["password"] == "secret"
-
-
-def test_tls_url_client_still_converts():
-    client = Redis.from_url("rediss://:secret@example.com:6380/1")
-
-    conn = _first_connection(RedisConnectionFactory.sync_to_async_redis(client))
-
-    assert isinstance(conn, AsyncSSLConnection)
-    assert conn.db == 1
-
-
-def test_ssl_connection_subclass_gets_a_tls_async_connection():
-    class CustomSSLConnection(SSLConnection):
-        pass
-
-    client = Redis(
-        connection_pool=ConnectionPool(
-            connection_class=CustomSSLConnection, host="example.com", password="pw"
+    with pytest.raises(ValueError, match="ssl_validate_ocsp_stapled"):
+        _async_connection_kwargs(
+            {"host": "h", "ssl_validate_ocsp_stapled": 0},
+            AsyncSSLConnection,
+            SSLConnection,
         )
-    )
-
-    conn = _first_connection(RedisConnectionFactory.sync_to_async_redis(client))
-
-    assert isinstance(conn, AsyncSSLConnection)
 
 
-def test_unix_socket_client_converts():
-    client = Redis(unix_socket_path="/tmp/redis.sock", db=2)
+def test_explicitly_enabled_maintenance_notifications_are_not_dropped():
+    maint = pytest.importorskip("redis.maint_notifications")
+    config = maint.MaintNotificationsConfig(enabled=True)
+    client = Redis(host="h", protocol=3, maint_notifications_config=config)
 
-    conn = _first_connection(RedisConnectionFactory.sync_to_async_redis(client))
-
-    assert isinstance(conn, AsyncUnixDomainSocketConnection)
-    assert conn.path == "/tmp/redis.sock"
-    assert conn.db == 2
-
-
-def test_sentinel_managed_client_is_rejected_clearly():
-    client = Sentinel([("localhost", 26379)]).master_for("mymaster")
-
-    with pytest.raises(ValueError, match="Sentinel-managed"):
-        RedisConnectionFactory.sync_to_async_redis(client)
-
-
-def test_sync_only_setting_that_is_set_is_not_silently_dropped():
-    client = Redis(host="example.com", ssl=True, ssl_validate_ocsp=True)
-
-    with pytest.raises(ValueError, match="ssl_validate_ocsp"):
-        RedisConnectionFactory.sync_to_async_redis(client)
+    if "maint_notifications_config" in _init_parameters(AsyncConnection):
+        pool = RedisConnectionFactory.sync_to_async_redis(client).connection_pool
+        assert pool.connection_kwargs["maint_notifications_config"] is config
+    else:
+        with pytest.raises(ValueError, match="maint_notifications_config"):
+            RedisConnectionFactory.sync_to_async_redis(client)
