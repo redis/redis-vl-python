@@ -291,9 +291,15 @@ def test_search_and_query(index):
     processed_results = index.query(v)
     assert len(processed_results) == 7
     assert isinstance(processed_results[0], dict)
-    result = results.docs[0].__dict__
-    result.pop("payload")
-    assert processed_results[0] == results.docs[0].__dict__
+    # Compare by id: john and mary share the query vector, so they tie at
+    # distance 0 and Redis may return them in either order on each call.
+    raw_docs = {
+        doc.id: {k: val for k, val in doc.__dict__.items() if k != "payload"}
+        for doc in results.docs
+    }
+    assert {result["id"]: result for result in processed_results} == raw_docs
+    distances = [float(result["vector_distance"]) for result in processed_results]
+    assert distances == sorted(distances)
 
 
 def test_range_query(index):
