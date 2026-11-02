@@ -111,7 +111,10 @@ class MessageHistory(BaseMessageHistory):
         self._index.clear()
 
     async def aclear(self) -> None:
-        """Async version of :meth:`clear`."""
+        """Async version of :meth:`clear`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
         aindex = self._get_async_index()
         await aindex.clear()
 
@@ -139,7 +142,10 @@ class MessageHistory(BaseMessageHistory):
         self._index._redis_client.delete(self._index.key(id))
 
     async def adrop(self, id: str | None = None) -> None:
-        """Async version of :meth:`drop`."""
+        """Async version of :meth:`drop`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
         aindex = self._get_async_index()
         if id is None:
             recent = await self.aget_recent(top_k=1, raw=True)
@@ -161,7 +167,10 @@ class MessageHistory(BaseMessageHistory):
         return self._index.query(self._count_query(session_tag))
 
     async def acount(self, session_tag=None):
-        """Async version of :meth:`count`."""
+        """Async version of :meth:`count`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
         aindex = self._get_async_index()
         return await aindex.query(self._count_query(session_tag))
 
@@ -323,7 +332,10 @@ class MessageHistory(BaseMessageHistory):
     async def astore(
         self, prompt: str, response: str, session_tag: str | None = None
     ) -> None:
-        """Async version of :meth:`store`."""
+        """Async version of :meth:`store`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
         await self.aadd_messages(self._exchange(prompt, response), session_tag)
 
     @staticmethod
@@ -351,7 +363,10 @@ class MessageHistory(BaseMessageHistory):
     async def aadd_messages(
         self, messages: list[dict[str, str]], session_tag: str | None = None
     ) -> None:
-        """Async version of :meth:`add_messages`."""
+        """Async version of :meth:`add_messages`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
         chat_messages = self._chat_messages(messages, session_tag)
         aindex = self._get_async_index()
         await aindex.load(data=chat_messages, id_field=ID_FIELD_NAME)
@@ -395,7 +410,10 @@ class MessageHistory(BaseMessageHistory):
     async def aadd_message(
         self, message: dict[str, str], session_tag: str | None = None
     ) -> None:
-        """Async version of :meth:`add_message`."""
+        """Async version of :meth:`add_message`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
         await self.aadd_messages([message], session_tag)
 
     def _get_async_index(self) -> AsyncSearchIndex:
