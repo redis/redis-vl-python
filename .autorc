@@ -2,7 +2,6 @@
   "plugins": [
     "git-tag",
     "all-contributors",
-    "conventional-commits",
     "released"
   ],
   "owner": "redis",
