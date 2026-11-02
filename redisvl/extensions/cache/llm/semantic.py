@@ -9,6 +9,12 @@ from redisvl.extensions.cache.llm.schema import (
     CacheHit,
     SemanticCacheIndexSchema,
 )
+from redisvl.extensions.cache.llm.stats import (
+    count_astore,
+    count_store,
+    observe_acheck,
+    observe_check,
+)
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
     CREATE_INDEX_OVERWRITE_CONFLICT,
@@ -428,6 +434,7 @@ class SemanticCache(BaseLLMCache):
         ].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
+    @observe_check
     def check(
         self,
         prompt: str | None = None,
@@ -511,6 +518,7 @@ class SemanticCache(BaseLLMCache):
 
         return cache_hits
 
+    @observe_acheck
     async def acheck(
         self,
         prompt: str | None = None,
@@ -696,6 +704,7 @@ class SemanticCache(BaseLLMCache):
 
         return redis_keys, cache_hits
 
+    @count_store
     def store(
         self,
         prompt: str,
@@ -764,6 +773,7 @@ class SemanticCache(BaseLLMCache):
         # Return the key where the entry was stored
         return keys[0]
 
+    @count_astore
     async def astore(
         self,
         prompt: str,

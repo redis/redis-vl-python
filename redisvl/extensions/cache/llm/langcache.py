@@ -9,6 +9,12 @@ from urllib.parse import quote, unquote
 
 from redisvl.extensions.cache.llm.base import BaseLLMCache
 from redisvl.extensions.cache.llm.schema import CacheHit
+from redisvl.extensions.cache.llm.stats import (
+    count_astore,
+    count_store,
+    observe_acheck,
+    observe_check,
+)
 from redisvl.query.filter import FilterExpression
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
@@ -264,6 +270,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             metadata=attributes if attributes else None,
         )
 
+    @observe_check
     def check(
         self,
         prompt: str | None = None,
@@ -338,6 +345,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Convert results to cache hits
         return self._hits_from_response(response, num_results)
 
+    @observe_acheck
     async def acheck(
         self,
         prompt: str | None = None,
@@ -415,6 +423,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Convert results to cache hits
         return self._hits_from_response(response, num_results)
 
+    @count_store
     def store(
         self,
         prompt: str,
@@ -488,6 +497,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Result is a SetResponse Pydantic model with entry_id attribute
         return result.entry_id if hasattr(result, "entry_id") else ""
 
+    @count_astore
     async def astore(
         self,
         prompt: str,

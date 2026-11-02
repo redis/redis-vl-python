@@ -4,9 +4,11 @@ This module defines the abstract base interface for LLM caches, which store
 prompt-response pairs with semantic retrieval capabilities.
 """
 
+import time
 from typing import Any
 
 from redisvl.extensions.cache.base import BaseCache
+from redisvl.extensions.cache.llm.stats import CacheStats, _CacheCounters
 from redisvl.query.filter import FilterExpression
 
 
@@ -26,6 +28,49 @@ class BaseLLMCache(BaseCache):
             **kwargs: Additional arguments passed to the parent class.
         """
         super().__init__(name=name, ttl=ttl, **kwargs)
+        self._stats = _CacheCounters()
+
+    @property
+    def stats(self) -> CacheStats:
+        """A snapshot of this cache's own check and store counters.
+
+        The counters are updated by the bundled caches' ``check``/``acheck`` and
+        ``store``/``astore`` calls, need no setup, and cost one
+        ``perf_counter()`` pair per check. A subclass that overrides one of them
+        is counted only if it calls ``super()``, and must not add the counting
+        decorators itself or the call is counted twice. The counters are per
+        process: workers that share a cache name each count their own traffic.
+        Nothing is written to Redis, and no prompt, response or metadata content
+        is recorded.
+
+        Returns:
+            CacheStats: hits, misses, errors, stores and lookup time, plus the
+            derived ``hit_rate`` and ``avg_lookup_seconds``.
+
+        .. code-block:: python
+
+            cache.check(prompt="What is the capital of France?")
+            cache.store(prompt="What is the capital of Italy?", response="Rome")
+
+            stats = cache.stats
+            print(stats.hits, stats.misses, stats.hit_rate)
+        """
+        return self._stats.snapshot()
+
+    def _record_check(self, start: float, results: list[dict[str, Any]]) -> None:
+        """Count a check that returned; any returned entry makes it a hit."""
+        self._stats.checks += 1
+        self._stats.lookup_seconds += time.perf_counter() - start
+        if results:
+            self._stats.hits += 1
+        else:
+            self._stats.misses += 1
+
+    def _record_error(self, start: float) -> None:
+        """Count a check that raised, so that checks = hits + misses + errors."""
+        self._stats.checks += 1
+        self._stats.errors += 1
+        self._stats.lookup_seconds += time.perf_counter() - start
 
     def delete(self) -> None:
         """Delete the cache and its index entirely."""

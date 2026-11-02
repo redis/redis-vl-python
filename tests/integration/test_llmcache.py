@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from redis.exceptions import ConnectionError, NoPermissionError
 
 from redisvl.exceptions import RedisSearchError
-from redisvl.extensions.cache.llm import SemanticCache
+from redisvl.extensions.cache.llm import CacheStats, SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer
@@ -189,6 +189,52 @@ async def test_async_store_and_check(cache, vectorizer):
     print(check_result, flush=True)
     assert response == check_result[0]["response"]
     assert "metadata" not in check_result[0]
+
+
+def test_stats_count_stores_hits_and_misses(cache, vectorizer):
+    vector = vectorizer.embed("This is a test prompt.")
+    # Cosine distance 2.0 from the stored vector, so this cannot match.
+    opposite = [-component for component in vector]
+    assert cache.stats == CacheStats()
+
+    cache.store("This is a test prompt.", "This is a test response.", vector=vector)
+    assert cache.stats.stores == 1
+
+    assert cache.check(vector=vector)
+    assert cache.check(vector=opposite) == []
+
+    stats = cache.stats
+    assert (stats.checks, stats.hits, stats.misses, stats.errors) == (2, 1, 1, 0)
+    assert stats.hit_rate == 0.5
+    assert stats.lookup_seconds > 0
+
+
+def test_stats_count_checks_that_raise(cache):
+    snapshot = cache.stats
+    with pytest.raises(ValueError):
+        cache.check()
+
+    stats = cache.stats
+    assert (stats.checks, stats.errors, stats.hits, stats.misses) == (1, 1, 0, 0)
+    assert stats.hit_rate is None
+    # An earlier snapshot does not move with the counters.
+    assert snapshot.checks == 0
+
+
+@pytest.mark.asyncio
+async def test_async_stats_count_stores_hits_and_misses(cache, vectorizer):
+    vector = vectorizer.embed("This is a test prompt.")
+    opposite = [-component for component in vector]
+
+    async with cache:
+        await cache.astore(
+            "This is a test prompt.", "This is a test response.", vector=vector
+        )
+        assert await cache.acheck(vector=vector)
+        assert await cache.acheck(vector=opposite) == []
+
+    stats = cache.stats
+    assert (stats.stores, stats.checks, stats.hits, stats.misses) == (1, 2, 1, 1)
 
 
 @pytest.mark.asyncio
