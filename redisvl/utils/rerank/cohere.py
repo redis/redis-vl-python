@@ -1,9 +1,14 @@
+import asyncio
+import logging
 import os
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import PrivateAttr
 
 from redisvl.utils.rerank.base import BaseReranker
+
+logger = logging.getLogger(__name__)
 
 
 class CohereReranker(BaseReranker):
@@ -36,7 +41,10 @@ class CohereReranker(BaseReranker):
     """
 
     _client: Any = PrivateAttr()
-    _aclient: Any = PrivateAttr()
+    _aclient_factory: Callable[[], Any] | None = PrivateAttr(default=None)
+    _aclient: Any = PrivateAttr(default=None)
+    _aclient_loop: asyncio.AbstractEventLoop | None = PrivateAttr(default=None)
+    _aclient_rebuild_on_new_loop: bool = PrivateAttr(default=True)
 
     def __init__(
         self,
@@ -64,6 +72,11 @@ class CohereReranker(BaseReranker):
                 reranked results.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
+            **kwargs: Passed to the Cohere ``Client`` and ``AsyncClient``, for
+                example ``timeout`` or ``base_url``. A custom ``httpx_client`` is
+                synchronous, so it goes to the sync client only and ``arank``
+                falls back to it; pass ``async_httpx_client`` (an
+                ``httpx.AsyncClient``) to give the async client its own.
 
         Raises:
             ImportError: If the cohere library is not installed.
@@ -77,7 +90,8 @@ class CohereReranker(BaseReranker):
     def _initialize_clients(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the Cohere clients using the provided API key or an
-        environment variable.
+        environment variable; see ``__init__`` for ``httpx_client`` and
+        ``async_httpx_client``.
         """
         # Dynamic import of the cohere module
         try:
@@ -95,8 +109,42 @@ class CohereReranker(BaseReranker):
                 "Cohere API key is required. "
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
+
+        async_httpx_client = kwargs.pop("async_httpx_client", None)
         self._client = Client(api_key=api_key, client_name="redisvl", **kwargs)
-        self._aclient = AsyncClient(api_key=api_key, client_name="redisvl", **kwargs)
+
+        # A user-supplied httpx_client is sync and can't be awaited, so without
+        # an async one arank falls back to the sync client.
+        self._aclient_factory = None
+        self._aclient = None
+        self._aclient_loop = None
+        # A user-supplied async httpx client is bound to the caller's loop, so
+        # it is created once and never rebuilt.
+        self._aclient_rebuild_on_new_loop = async_httpx_client is None
+        if kwargs.get("httpx_client") is None or async_httpx_client is not None:
+            async_kwargs = dict(kwargs)
+            if async_httpx_client is not None:
+                async_kwargs["httpx_client"] = async_httpx_client
+            self._aclient_factory = lambda: AsyncClient(
+                api_key=api_key, client_name="redisvl", **async_kwargs
+            )
+
+    def _get_aclient(self) -> Any:
+        """Return the async Cohere client, or ``None`` if async is disabled.
+
+        The client's HTTP connection pool is tied to the event loop it was
+        created on, so a reranker that outlives a loop gets a fresh client
+        on the next one rather than ``Event loop is closed`` errors.
+        """
+        if self._aclient_factory is None:
+            return None
+        loop = asyncio.get_running_loop()
+        if self._aclient is None or (
+            self._aclient_rebuild_on_new_loop and self._aclient_loop is not loop
+        ):
+            self._aclient = self._aclient_factory()
+            self._aclient_loop = loop
+        return self._aclient
 
     def _preprocess(self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs):
         """
@@ -186,8 +234,16 @@ class CohereReranker(BaseReranker):
         Returns:
             Union[Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]]: The reranked list of documents and optionally associated scores.
         """
+        aclient = self._get_aclient()
+        if aclient is None:
+            logger.warning(
+                "CohereReranker was given a sync httpx_client and no "
+                "async_httpx_client. Falling back to sync."
+            )
+            return self.rank(query, docs, **kwargs)
+
         reranker_kwargs, return_score = self._preprocess(query, docs, **kwargs)
-        rankings = await self._aclient.rerank(**reranker_kwargs)
+        rankings = await aclient.rerank(**reranker_kwargs)
         reranked_docs, scores = self._postprocess(docs, rankings)
         if return_score:
             return reranked_docs, scores
