@@ -267,6 +267,7 @@ class TestMessageHistoryRoleFilter:
         history.delete()
 
 
+@pytest.mark.requires_hf
 class TestSemanticMessageHistoryRoleFilter:
     """Test role filtering functionality in SemanticMessageHistory with real Redis."""
 
