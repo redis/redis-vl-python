@@ -793,8 +793,10 @@ class Text(FilterField):
         A value that leaves no term, such as one of nothing but punctuation or
         whitespace, raises ``ValueError``, since it could match no document
         with ``==`` and would match every document with ``!=``. Stopwords are
-        not checked, as they depend on the index. ``%`` is the pattern
-        operator and interpolates its value untouched.
+        not checked, as they depend on the index. An empty or ``None`` value
+        is the exception: it renders ``*``, which matches every document and
+        drops out of a surrounding AND. ``%`` is the pattern operator and
+        interpolates its value untouched.
     """
 
     OPERATORS: dict[FilterOperator, str] = {
