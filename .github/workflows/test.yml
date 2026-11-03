@@ -179,7 +179,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-extras --frozen
+          # otel-test brings the OpenTelemetry SDK for 15_semantic_cache_observability.
+          uv sync --all-extras --group otel-test --frozen
 
       - name: Start Redis
         run: |
