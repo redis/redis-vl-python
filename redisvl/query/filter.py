@@ -817,6 +817,18 @@ class Text(FilterField):
     # opts out here.
     _RAW_VALUE_OPERATORS = frozenset({FilterOperator.LIKE})
 
+    def _set_value(
+        self,
+        val: Any,
+        val_type: type | tuple[type, ...],
+        operator: FilterOperator,
+    ):
+        """Refuse a phrase value without a term before storing it, so that
+        rendering a stored value never raises."""
+        if isinstance(val, str) and val and operator not in self._RAW_VALUE_OPERATORS:
+            _phrase_value(val)
+        super()._set_value(val, val_type, operator)
+
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
         """Create a Text equality filter expression. These expressions yield
@@ -824,6 +836,9 @@ class Text(FilterField):
 
         Args:
             other (str): The text value to filter on.
+
+        Raises:
+            ValueError: If the value leaves no searchable term.
 
         .. code-block:: python
 
@@ -843,6 +858,9 @@ class Text(FilterField):
 
         Args:
             other (str): The text value to filter on.
+
+        Raises:
+            ValueError: If the value leaves no searchable term.
 
         .. code-block:: python
 

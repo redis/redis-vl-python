@@ -382,13 +382,15 @@ def test_text_filter(operation, value, expected):
     assert str(txt_f) == expected
 
 
-@pytest.mark.parametrize("operation", ["__eq__", "__ne__"])
 @pytest.mark.parametrize("value", ['""', "   ", "\\", "$ -", "\t\x01"])
-def test_text_phrase_value_without_a_term_is_refused(operation, value):
-    # Rendered, each would ask for no term: `==` would match nothing and `!=`
-    # everything, so the filter is refused instead.
+def test_text_phrase_value_without_a_term_is_refused(value):
+    # Rendered, each would ask for no term, so `!=` would match every document.
+    field = Text("text_field")
     with pytest.raises(ValueError, match="no searchable term"):
-        getattr(Text("text_field"), operation)(value)
+        field != value
+
+    # Refused before it is stored, so the field still renders.
+    assert str(field) == "*"
 
 
 def test_text_subclass_inherits_containment_for_a_new_quoted_operator():
