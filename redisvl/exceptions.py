@@ -4,6 +4,8 @@ RedisVL Exception Classes
 This module defines all custom exceptions used throughout the RedisVL library.
 """
 
+from redis.exceptions import ResponseError
+
 
 class RedisVLError(Exception):
     """Base exception for all RedisVL errors."""
@@ -78,35 +80,30 @@ class RedisModuleVersionError(RedisVLError):
         return cls(message)
 
 
-# Redis Search reports an absent index as an ordinary error reply whose wording
-# depends on the server version, so matching the message is the only option.
-# Every known wording lives here rather than at each call site. See the "Telling
-# 'the index is missing' apart from other failures" section of docs/api/exceptions.rst.
-_MISSING_INDEX_ERROR_FRAGMENTS = (
-    "unknown index name",
-    "no such index",
-    "search_index_not_found",
-    "index not found",
-)
-
-
 def _is_missing_index_error(exc: RedisSearchError) -> bool:
-    """Check whether a Redis Search error means the index does not exist.
+    """Check whether a failed ``FT.INFO`` means the index does not exist.
 
-    Different Redis Search versions phrase the error differently, so every
-    known wording is matched. The check reads the underlying Redis error rather
-    than the :class:`RedisSearchError` wrapping it, because the wrapper's
-    message interpolates the index name and would otherwise match for an index
-    named after one of the wordings.
+    Redis Search reports an absent index as a plain error reply whose wording
+    changes between versions, so the reply is classified by type, not text.
+    redis-py raises a bare :class:`~redis.exceptions.ResponseError` for an
+    ordinary error reply and a more specific exception for the replies that
+    mean the check itself failed (``NOPERM``, ``NOAUTH``, ``LOADING``,
+    ``READONLY``, ``CLUSTERDOWN``, ``TRYAGAIN`` and others, mapped by prefix in
+    redis-py's parser); connection and timeout failures are not
+    ``ResponseError`` at all. ``FT.INFO`` takes a single index name, so a bare
+    error reply to it is, in practice, the missing-index reply.
+
+    The other known bare reply is ``unknown command``, from a server without
+    Redis Search. It is read as "missing" too. Either way a misread yields
+    ``False``, never ``True``, so :meth:`~redisvl.index.SearchIndex.create`
+    goes on to run ``FT.CREATE``, which raises the server's real error rather
+    than dropping anything.
 
     Args:
         exc: A :class:`RedisSearchError` wrapping the ``redis-py`` exception
-            that Redis raised. Wrappers raised without a cause are matched on
-            their own message.
+            that Redis raised.
 
     Returns:
         bool: True if the error indicates a missing index, False otherwise.
     """
-    cause = exc.__cause__ if exc.__cause__ is not None else exc
-    message = str(cause).lower()
-    return any(fragment in message for fragment in _MISSING_INDEX_ERROR_FRAGMENTS)
+    return type(exc.__cause__) is ResponseError
