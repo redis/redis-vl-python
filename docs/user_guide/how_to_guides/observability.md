@@ -160,7 +160,7 @@ histogram_quantile(0.95, sum by (le, gen_ai_provider_name, gen_ai_request_model)
 
 ## Explore with a local stack
 
-The repository includes a Docker Compose stack for trying all of this on your machine, in [`docs/user_guide/how_to_guides/observability-stack`](https://github.com/redis/redis-vl-python/tree/main/docs/user_guide/how_to_guides/observability-stack). It is for local use only: Grafana allows anonymous admin access.
+The repository includes a Docker Compose stack for trying all of this on your machine, in [`docs/user_guide/how_to_guides/observability-stack`](https://github.com/redis/redis-vl-python/tree/main/docs/user_guide/how_to_guides/observability-stack). It is for local use only: every port listens on `127.0.0.1`, and Grafana lets anyone who reaches it edit dashboards without signing in.
 
 ```bash
 cd docs/user_guide/how_to_guides/observability-stack

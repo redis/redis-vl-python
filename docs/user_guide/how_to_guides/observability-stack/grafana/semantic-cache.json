@@ -432,7 +432,7 @@
     {
       "type": "heatmap",
       "title": "Nearest distance of misses",
-      "description": "Distribution of the nearest candidate's distance on lookups that missed. Misses bunched just above your threshold may be near-duplicates the cache refuses.",
+      "description": "Distribution of the nearest candidate's distance on lookups that missed. Misses bunched just above your threshold may be near-duplicates the cache refuses. Thresholds are per cache, so select one cache, and compare windows from before and after a threshold change rather than mixing them.",
       "id": 6,
       "datasource": {
         "type": "prometheus",
@@ -481,8 +481,8 @@
     },
     {
       "type": "heatmap",
-      "title": "Nearest distance of hites",
-      "description": "Distribution of the nearest candidate's distance on lookups that hit. Hits bunched just below your threshold are the matches most likely to be wrong.",
+      "title": "Nearest distance of hits",
+      "description": "Distribution of the nearest candidate's distance on lookups that hit. Hits bunched just below your threshold are the matches most likely to be wrong. Thresholds are per cache, so select one cache, and compare windows from before and after a threshold change rather than mixing them.",
       "id": 7,
       "datasource": {
         "type": "prometheus",
@@ -532,7 +532,7 @@
     {
       "type": "stat",
       "title": "Misses within the looser threshold",
-      "description": "Share of misses whose nearest distance is at most the 'Looser threshold' variable: the misses that threshold would have served. A distance cannot tell you whether a match is right, so check those prompts with content capture before you loosen it.",
+      "description": "Share of misses whose nearest distance is at most the 'Looser threshold' variable: the misses that threshold would have served. Only misses that found a candidate count: one whose filter excluded every entry records no distance. A distance cannot tell you whether a match is right, so check those prompts with content capture before you loosen it. Thresholds are per cache, so select one cache, and compare windows from before and after a threshold change rather than mixing them.",
       "id": 8,
       "datasource": {
         "type": "prometheus",
@@ -576,7 +576,7 @@
     {
       "type": "stat",
       "title": "Hits beyond the tighter threshold",
-      "description": "Share of hits whose nearest distance is above the 'Tighter threshold' variable: the hits that threshold would have turned into misses.",
+      "description": "Share of hits whose nearest distance is above the 'Tighter threshold' variable: the hits that threshold would have turned into misses. Thresholds are per cache, so select one cache, and compare windows from before and after a threshold change rather than mixing them.",
       "id": 9,
       "datasource": {
         "type": "prometheus",
@@ -675,7 +675,7 @@
     {
       "type": "timeseries",
       "title": "Embedding duration",
-      "description": "50th and 95th percentile duration of embedding calls that reached the provider, per model. Embeddings-cache hits are not included.",
+      "description": "50th and 95th percentile duration of embedding calls that reached the provider, per model. Embeddings-cache hits are not included. Not split by cache: it includes every embedding call the process makes, such as a router's.",
       "id": 12,
       "datasource": {
         "type": "prometheus",
