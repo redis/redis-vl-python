@@ -124,7 +124,7 @@ sum(rate(redisvl_semantic_cache_distance_bucket{redisvl_cache_result="miss", le=
 sum(rate(redisvl_semantic_cache_distance_count{redisvl_cache_result="miss"}[1h]))
 ```
 
-The `le` value must be one of the bucket boundaries: a value between them, such as `0.23`, returns nothing. The metric does not record which threshold a lookup used, so after you change it, compare windows from before and after rather than mixing them.
+The share counts only misses that found a candidate: a lookup whose filter excluded every entry, or that ran against an empty cache, records no distance. The `le` value must be one of the bucket boundaries: a value between them, such as `0.23`, returns nothing. The metric does not record which threshold a lookup used, so after you change it, compare windows from before and after rather than mixing them.
 
 A distance cannot tell you whether a match was right. Before you move the threshold, look at the prompts behind those distances with content capture on, as described under [Privacy](#privacy-and-content-capture).
 
