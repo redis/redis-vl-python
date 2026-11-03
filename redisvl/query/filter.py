@@ -731,11 +731,12 @@ def _phrase_value(value: str) -> str:
     - Any other backslash goes, as the indexer dropped it where the parser
       would keep it (`C:\\Users\\bob` indexes `usersbob`).
     - A `"` or a bare `$` becomes a space: the indexer separated terms at each,
-      and the parser would end the phrase at one and read a parameter at the
-      other.
+      where the parser would end the phrase at a quote and keep a `$` inside
+      the term.
 
-    Two kinds of stored text stay out of reach. An escaped quote cannot be
-    carried, and the parser reads a run of escaped backslashes as one.
+    Some stored text stays out of reach. An escaped quote cannot be carried,
+    and the parser reads an escaped backslash differently from the indexer:
+    before `_` it drops it, and it reads a run of them as one.
 
     A body ending in a backslash makes the parser pair the closing quote with a
     later one, so a space follows it. So does an empty body, since `@f:("")`
@@ -773,11 +774,11 @@ class Text(FilterField):
         the document's own text was indexed: a ``"`` separates terms, and a
         ``\\`` joins what follows it into the term, so ``C:\\Users\\bob`` and
         ``foo\\-bar`` each match a document holding that text. Stored text
-        with an escaped quote (``\\"``) or a run of escaped backslashes cannot
-        be matched this way. A value that leaves no term, such as one of
-        nothing but quotes, matches no document with ``==`` and every
-        document with ``!=``. ``%`` is the pattern operator and interpolates
-        its value untouched.
+        with an escaped quote (``\\"``), or with an escaped backslash before
+        ``_`` or before another escaped backslash, cannot be matched this way.
+        A value that leaves no term, such as one of nothing but quotes,
+        matches no document with ``==`` and every document with ``!=``. ``%``
+        is the pattern operator and interpolates its value untouched.
     """
 
     OPERATORS: dict[FilterOperator, str] = {

@@ -340,7 +340,8 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
         ("__eq__", 'say \\"hi', '@text_field:("say  hi")'),
         ("__eq__", "back\\\\", '@text_field:("back\\\\ ")'),
         # Control characters go, escaped or not, and so does an escaped tab. A
-        # bare `$` would start a parameter, so it separates terms as indexed.
+        # bare `$` separates terms as the indexer did, though the parser would
+        # keep it inside one.
         ("__eq__", "a\nb\\\x01c\\\td\x00", '@text_field:("abcd")'),
         ("__eq__", "a\tb $1 \\$2", '@text_field:("a\tb  1 \\$2")'),
         # Everything else survives untouched. Replacing any of it would ask for a

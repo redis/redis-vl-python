@@ -535,7 +535,7 @@ def phrase_index(client, worker_id):
         ("C:\\Users\\bob", "C: Users bob"),
         # A control character, which the indexer drops.
         ("hello world\nnext", "hello world next"),
-        # A bare `$`, which the parser would read as a parameter.
+        # A bare `$`, where the indexer splits terms and the parser does not.
         ("price $100", "price100"),
     ],
 )
