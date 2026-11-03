@@ -716,6 +716,10 @@ _PHRASE_DROPPED = frozenset(map(chr, [*range(0x09), *range(0x0A, 0x20), 0x7F]))
 # What the indexer drops together with the backslash escaping it.
 _PHRASE_UNESCAPED = _PHRASE_DROPPED | {"\t"}
 
+# What the indexer splits terms at, among the characters a rendered phrase body
+# can still hold unescaped.
+_TERM_SEPARATORS = (_PHRASE_ESCAPABLE - {"\\"}) | {"\t"}
+
 
 def _phrase_value(value: str) -> str:
     """Return `value` as the body of a quoted phrase that ends where it appears to.
@@ -739,9 +743,13 @@ def _phrase_value(value: str) -> str:
     before `_` it drops it, and it reads a run of them as one.
 
     A body ending in a backslash makes the parser pair the closing quote with a
-    later one, so a space follows it. So does an empty body, since `@f:("")`
-    errors on a field without `INDEXEMPTY` and matches empty values on one with
-    it. (The membership tests rely on an empty slice being in neither set.)
+    later one, so a space follows it. (The membership tests rely on an empty
+    slice being in neither set.)
+
+    Raises:
+        ValueError: If `value` leaves no term, such as one of nothing but
+            separators, since the phrase would then match no document with
+            `==` and every document with `!=`.
     """
     body = []
     position = 0
@@ -761,7 +769,13 @@ def _phrase_value(value: str) -> str:
         position += 1
 
     rendered = "".join(body)
-    if not rendered or rendered.endswith("\\"):
+    # A kept escape pair is a term of its own; otherwise a term needs a
+    # character the indexer does not separate at.
+    if "\\" not in rendered and all(c in _TERM_SEPARATORS for c in rendered):
+        raise ValueError(
+            f"Text value {value!r} leaves no searchable term to match as a phrase"
+        )
+    if rendered.endswith("\\"):
         rendered += " "
     return rendered
 
@@ -776,9 +790,11 @@ class Text(FilterField):
         ``foo\\-bar`` each match a document holding that text. Stored text
         with an escaped quote (``\\"``), or with an escaped backslash before
         ``_`` or before another escaped backslash, cannot be matched this way.
-        A value that leaves no term, such as one of nothing but quotes,
-        matches no document with ``==`` and every document with ``!=``. ``%``
-        is the pattern operator and interpolates its value untouched.
+        A value that leaves no term, such as one of nothing but punctuation or
+        whitespace, raises ``ValueError``, since it could match no document
+        with ``==`` and would match every document with ``!=``. Stopwords are
+        not checked, as they depend on the index. ``%`` is the pattern
+        operator and interpolates its value untouched.
     """
 
     OPERATORS: dict[FilterOperator, str] = {

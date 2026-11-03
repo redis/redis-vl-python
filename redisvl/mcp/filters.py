@@ -125,7 +125,13 @@ def _parse_expression(value: dict[str, Any], schema: IndexSchema) -> FilterExpre
     if field.type == "tag":
         return _parse_tag_expression(field_name, normalized_op, operand)
     if field.type == "text":
-        return _parse_text_expression(field_name, normalized_op, operand)
+        try:
+            return _parse_text_expression(field_name, normalized_op, operand)
+        except ValueError as exc:
+            # `Text` refuses a phrase value that leaves no term to match.
+            raise RedisVLMCPError(
+                str(exc), code=MCPErrorCode.INVALID_FILTER, retryable=False
+            ) from exc
     if field.type == "numeric":
         return _parse_numeric_expression(field_name, normalized_op, operand)
 

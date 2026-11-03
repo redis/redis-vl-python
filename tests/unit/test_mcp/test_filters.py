@@ -115,6 +115,16 @@ def test_parse_filter_rejects_empty_logical_array():
     assert exc_info.value.code == MCPErrorCode.INVALID_FILTER
 
 
+def test_parse_filter_rejects_a_text_value_without_a_term():
+    # Through `in` as well, where a term-less item would silently match nothing.
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        parse_filter(
+            {"field": "content", "op": "in", "value": ["ok", "..."]}, _schema()
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_FILTER
+
+
 def test_parse_filter_rejects_malformed_payload():
     with pytest.raises(RedisVLMCPError) as exc_info:
         parse_filter({"field": "category", "value": "science"}, _schema())

@@ -470,10 +470,15 @@ def test_filters(index, query, sample_datetimes):
 
     # Backslashes with a phrase after them. Left raw, one makes the parser pair
     # the first phrase's closing quote with the second's opening one, and the
-    # re-paired query silently matches nothing. The one inside `engi\neer` must
-    # vanish rather than split the term, or that phrase matches nothing either.
+    # re-paired query silently matches nothing. The one inside `engi\neer` is
+    # dropped rather than splitting the term, or that phrase matches nothing.
     t = (Text("job") == "engi\\neer\\") | (Text("job") == "doctor\\")
     search(query, index, t, 4)
+
+    # A kept escape pair at the end of a phrase is spaced off its closing quote,
+    # which only Redis can confirm: unspaced, the next phrase is a syntax error.
+    t = (Text("job") == "engineer\\\\") | (Text("job") == "doctor")
+    search(query, index, t, 2)
 
     # Test empty filters
     t = Text("job") % ""
