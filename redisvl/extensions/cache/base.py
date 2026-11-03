@@ -77,8 +77,8 @@ class BaseCache:
         self._async_redis_client = async_redis_client
         self._redis_client = redis_client
         # Guards lazy async client creation, which suspends on an await and so
-        # cannot rely on a bare check-then-set. Loop-local so the cache
-        # survives a change of event loop.
+        # cannot rely on a bare check-then-set. Loop-local so a reconnect
+        # after adisconnect() works on a new event loop.
         self._async_client_lock = LoopLocal(asyncio.Lock)
 
         # Caches never close a caller-supplied client and register no GC

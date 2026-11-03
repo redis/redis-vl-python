@@ -512,7 +512,8 @@ def test_server_restarts_on_a_second_event_loop():
         shutdowns = [asyncio.create_task(server.shutdown()) for _ in range(2)]
         await asyncio.sleep(0)  # both shutdowns now block, one per primitive
         release.set()
-        await asyncio.gather(*shutdowns)
+        # Bounded so a lost wakeup fails the test instead of hanging the run.
+        await asyncio.wait_for(asyncio.gather(*shutdowns), timeout=1)
         return await asyncio.gather(*requests)
 
     assert asyncio.run(serve_then_stop()) == ["ok", "ok"]

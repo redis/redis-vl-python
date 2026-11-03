@@ -470,10 +470,11 @@ def test_base_cache_async_client_reconnects_on_a_second_event_loop():
 def test_async_search_index_reconnects_on_a_second_event_loop():
     """Reconnecting after ``disconnect`` must work on a fresh event loop.
 
-    The lock guarding lazy client creation used to live for the index's
-    lifetime; an ``asyncio.Lock`` rejects any loop but the one that first
-    contended it. Two racing callers per loop force the lock's slow path,
-    the only one that checks the loop -- a single caller passes either way.
+    The locks guarding lazy client and SQL executor creation used to live for
+    the index's lifetime; an ``asyncio.Lock`` rejects any loop but the one
+    that first contended it. Two racing SQL queries per loop contend both
+    locks, since each query fetches the client first -- a single caller
+    passes either way.
     """
     index = AsyncSearchIndex(
         IndexSchema.from_dict(_schema_dict("async-index")),
@@ -487,16 +488,28 @@ def test_async_search_index_reconnects_on_a_second_event_loop():
         created.append(client)
         return client
 
+    async def create_async_executor(client, **kwargs):
+        await asyncio.sleep(0)  # suspends while holding the executor lock
+        executor = MagicMock()
+        executor.execute = AsyncMock(return_value=SimpleNamespace(rows=[]))
+        return executor
+
+    sql_redis = SimpleNamespace(create_async_executor=create_async_executor)
+    query = SQLQuery("SELECT * FROM idx")
+
     async def race():
-        await asyncio.gather(index._get_client(), index._get_client())
+        await asyncio.gather(index._sql_query(query), index._sql_query(query))
 
     async def connect_then_disconnect():
         await race()
         await index.disconnect()
 
-    with patch(
-        "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
-        new=factory,
+    with (
+        patch.dict("sys.modules", {"sql_redis": sql_redis}),
+        patch(
+            "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+            new=factory,
+        ),
     ):
         asyncio.run(connect_then_disconnect())
         asyncio.run(race())

@@ -290,8 +290,9 @@ class LoopLocal(Generic[T]):
     from ``factory`` whenever it is called from a loop other than the one the
     current primitive was built on.
 
-    Only the contended path performs the loop check, so code that never
-    waits on the primitive will not show the bug; test with racing callers.
+    Only a call that actually waits performs the loop check: an uncontended
+    ``Lock.acquire()`` or an ``Event.wait()`` on a set event returns without
+    it, so tests need callers that really wait.
     """
 
     __slots__ = ("_factory", "_value", "_loop")

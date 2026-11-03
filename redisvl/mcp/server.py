@@ -120,8 +120,9 @@ class RedisVLMCPServer(FastMCP):
 
         # Lifecycle management
         self._lifecycle_state = _LifecycleState.INITIAL  # Server lifecycle
-        # Loop-local, so a server stopped on one event loop can start again
-        # on another (a second ``run()``, a fresh test loop).
+        # The two locks and the drained event below are loop-local, so a
+        # server stopped on one event loop can start again on another (a
+        # second ``run()``, a fresh test loop).
         # Prevents overlapping startup/shutdown
         self._transition_lock = LoopLocal(asyncio.Lock)
         # Guards request admission state

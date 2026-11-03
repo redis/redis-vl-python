@@ -2498,7 +2498,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
         # Guard lazy client and SQL executor creation, which suspend on an
-        # await. Loop-local so the index survives a change of event loop.
+        # await. Loop-local so a reconnect after disconnect() works on a new
+        # event loop.
         self._lock = LoopLocal(asyncio.Lock)
         self._sql_executors: dict[str, Any] = {}
         self._sql_executors_lock = LoopLocal(asyncio.Lock)
