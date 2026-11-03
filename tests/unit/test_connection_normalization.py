@@ -433,8 +433,8 @@ def test_base_cache_async_client_reconnects_on_a_second_event_loop():
     An ``asyncio.Lock`` records the loop that first contends it and rejects
     every other, so a lock held for the cache's lifetime turned the
     documented reconnect into a ``RuntimeError`` whenever it landed on a new
-    loop -- a second ``asyncio.run``, a fresh pytest-asyncio loop, a notebook
-    cell. Driven from a sync test because it needs two real loops.
+    loop -- a second ``asyncio.run`` or a fresh pytest-asyncio loop. Driven
+    from a sync test because it needs two real loops.
     """
     cache = EmbeddingsCache(redis_url="redis://localhost:6379")
     created = []

@@ -283,11 +283,12 @@ class LoopLocal(Generic[T]):
     ``asyncio.Lock``, ``Event``, ``Semaphore`` and ``Condition`` record the
     loop that first makes them wait and raise ``RuntimeError`` if awaited from
     any other. An object that holds one for its whole lifetime therefore
-    breaks as soon as it is used on a second loop -- a later ``asyncio.run``,
-    a fresh pytest-asyncio loop, a notebook cell. A primitive that only has to
-    coordinate tasks within one loop can be discarded when the loop changes,
-    so :meth:`get` builds a fresh one from ``factory`` whenever it is called
-    from a loop other than the one the current primitive was built on.
+    breaks as soon as it is used on a second loop -- a later ``asyncio.run``
+    in a worker that starts one per job, or a fresh pytest-asyncio loop per
+    test. A primitive that only has to coordinate tasks within one loop can
+    be discarded when the loop changes, so :meth:`get` builds a fresh one
+    from ``factory`` whenever it is called from a loop other than the one the
+    current primitive was built on.
 
     Only the contended path performs the loop check, so code that never
     waits on the primitive will not show the bug; test with racing callers.
