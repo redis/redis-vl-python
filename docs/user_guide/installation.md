@@ -55,6 +55,10 @@ To install **all** optional dependencies at once:
 $ pip install redisvl[all]
 ```
 
+```{note}
+The `voyageai` package declares support for Python below 3.15, and `sql-redis` for Python below 3.14. On newer versions, `pip` refuses those extras, and `all` with them, until their maintainers lift the limit. `uv` installs them regardless.
+```
+
 ## Install RedisVL from Source
 
 To install RedisVL from source, clone the repository and install the package using `pip`:
