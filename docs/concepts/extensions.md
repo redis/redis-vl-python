@@ -21,6 +21,24 @@ When a prompt arrives, the cache embeds it and searches for similar cached promp
 
 The key insight is "similar" rather than "identical." Traditional caching requires exact matches. Semantic caching matches by meaning, so "What's the capital of France?" and "Tell me France's capital city" can hit the same cache entry.
 
+### Embedding Model
+
+Without a `vectorizer` argument, `SemanticCache` embeds prompts with `HFTextVectorizer(model="redis/langcache-embed-v2")`, a model trained for cache matching. Earlier releases defaulted to `redis/langcache-embed-v1`.
+
+A cache must be read with the model that wrote it. The two models produce vectors of the same size, so a v1 cache accepts v2 lookups without an error and returns the wrong hits and misses. RedisVL logs a warning whenever it opens an existing cache without an explicit vectorizer. To keep a v1 cache working, pass the model explicitly:
+
+```python
+from redisvl.extensions.cache.llm import SemanticCache
+from redisvl.utils.vectorize import HFTextVectorizer
+
+cache = SemanticCache(
+    name="llmcache",
+    vectorizer=HFTextVectorizer(model="redis/langcache-embed-v1"),
+)
+```
+
+To move an existing cache to v2, call `clear()` on it or recreate it with `overwrite=True`, then let it refill. Distances differ between models, so check your `distance_threshold` after switching.
+
 ### Threshold Tuning
 
 The distance threshold controls how similar prompts must be to match. A strict threshold (low value, like 0.05) requires near-identical prompts. A loose threshold (higher value, like 0.3) matches more liberally.
