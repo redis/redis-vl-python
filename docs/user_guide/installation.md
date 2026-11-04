@@ -250,6 +250,7 @@ RedisVL does not guess its way around this. A credential that cannot ask whether
 ```python
 cache = SemanticCache(
     name="llmcache",
+    vectorizer=HFTextVectorizer(model="redis/langcache-embed-v2"),
     redis_url="redis://localhost:6379",
     create_index=False,
 )

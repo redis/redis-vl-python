@@ -1,4 +1,5 @@
 from typing import Any
+from warnings import warn
 
 from pydantic import ValidationError
 from redis import Redis
@@ -14,6 +15,7 @@ from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     ENTRY_ID_FIELD_NAME,
     EXTERNAL_INDEX_DROP_CONFLICT,
+    IMPLICIT_VECTORIZER_DEPRECATED,
     INSERTED_AT_FIELD_NAME,
     METADATA_FIELD_NAME,
     PROMPT_FIELD_NAME,
@@ -37,23 +39,9 @@ from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger("[RedisVL]")
 
-DEFAULT_VECTORIZER_MODEL = "redis/langcache-embed-v2"
-
-# Emitted when the caller did not choose a vectorizer and the index predates this
-# call, so its vectors may have been written with the previous default model.
-# Both models emit 768-dimension vectors, so the schema check below cannot tell
-# them apart and a mismatch shows up only as wrong hits and misses.
-# Remove this warning once v1-era caches are no longer expected.
-DEFAULT_VECTORIZER_CHANGED_WARNING = (
-    "The default SemanticCache vectorizer is now `redis/langcache-embed-v2`; it "
-    "was `redis/langcache-embed-v1`. This cache's index already exists, and if its "
-    "entries were embedded with v1, lookups embedded with v2 return wrong hits and "
-    "misses without raising an error. To keep using v1, pass "
-    "vectorizer=HFTextVectorizer(model='redis/langcache-embed-v1'). To move to v2, "
-    "call clear() and let the cache refill; overwrite=True keeps the old entries. "
-    "Pass a vectorizer explicitly to silence this warning. "
-    "See https://huggingface.co/redis/langcache-embed-v2."
-)
+# Used only when the caller passes no vectorizer, which is deprecated. It stays
+# at the model existing caches were written with until the fallback is removed.
+DEFAULT_VECTORIZER_MODEL = "redis/langcache-embed-v1"
 
 
 class SemanticCache(BaseLLMCache):
@@ -88,11 +76,11 @@ class SemanticCache(BaseLLMCache):
             ttl (Optional[int], optional): The time-to-live for records cached
                 in Redis. Defaults to None.
             vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
-                Defaults to ``HFTextVectorizer(model="redis/langcache-embed-v2")``.
-                Before this default changed it was ``redis/langcache-embed-v1``;
-                an existing cache written with v1 must pass that model explicitly
-                or be emptied with ``clear()``, since v2 query vectors fit a v1 index without error
-                but match the wrong entries.
+                Pass one explicitly. Omitting it is deprecated: it falls back to
+                ``HFTextVectorizer(model="redis/langcache-embed-v1")``
+                with a ``DeprecationWarning``, and a future major release will make it
+                required. Data already stored under the fallback only matches queries
+                embedded with that same model.
             filterable_fields (Optional[List[Dict[str, Any]]]): An optional list of RedisVL fields
                 that can be used to customize cache retrieval with filters.
             redis_client(Optional[Redis], optional): A redis client connection instance.
@@ -124,14 +112,22 @@ class SemanticCache(BaseLLMCache):
         .. code-block:: python
 
             from redisvl.extensions.cache.llm import SemanticCache
+            from redisvl.utils.vectorize import HFTextVectorizer
+
+            vectorizer = HFTextVectorizer(model="redis/langcache-embed-v2")
 
             # RedisVL creates the index if it is missing
-            cache = SemanticCache(name="llmcache", redis_url="redis://localhost:6379")
+            cache = SemanticCache(
+                name="llmcache",
+                vectorizer=vectorizer,
+                redis_url="redis://localhost:6379",
+            )
 
             # the index is managed externally, or this credential cannot run
             # FT.INFO -- assume the index exists and issue no index command
             cache = SemanticCache(
                 name="llmcache",
+                vectorizer=vectorizer,
                 redis_url="redis://localhost:6379",
                 create_index=False,
             )
@@ -162,7 +158,13 @@ class SemanticCache(BaseLLMCache):
                 )
             self._vectorizer = vectorizer
         else:
-            # Create the default vectorizer
+            warn(
+                IMPLICIT_VECTORIZER_DEPRECATED.format(
+                    owner="SemanticCache", model=DEFAULT_VECTORIZER_MODEL
+                ),
+                DeprecationWarning,
+                stacklevel=3,
+            )
             vectorizer_kwargs = kwargs
 
             if dtype:
@@ -207,9 +209,6 @@ class SemanticCache(BaseLLMCache):
 
         if create_index:
             if not self.overwrite and self._index.exists():
-                if not vectorizer:
-                    logger.warning(DEFAULT_VECTORIZER_CHANGED_WARNING)
-
                 existing_index = SearchIndex.from_existing(
                     name, redis_client=self._index._redis_client
                 )
@@ -222,11 +221,6 @@ class SemanticCache(BaseLLMCache):
             # Create the search index in Redis
             self._index.create(overwrite=self.overwrite, drop=False)
         else:
-            # The flag asserts the index already exists, which is exactly this
-            # warning's precondition -- so it still applies here.
-            if not vectorizer:
-                logger.warning(DEFAULT_VECTORIZER_CHANGED_WARNING)
-
             logger.debug(
                 f"create_index=False: assuming index {name!r} exists over prefix "
                 f"{schema.index.prefix!r} with {self._vectorizer.dims} vector "

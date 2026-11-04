@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any, NoReturn
+from warnings import warn
 
 import redis.commands.search.reducers as reducers
 import yaml
@@ -11,6 +12,7 @@ from redisvl.exceptions import PartialDeletionError
 from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     EXTERNAL_INDEX_DROP_CONFLICT,
+    IMPLICIT_VECTORIZER_DEPRECATED,
     ROUTE_VECTOR_FIELD_NAME,
 )
 from redisvl.extensions.router.schema import (
@@ -37,6 +39,10 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger(__name__)
+
+# Used only when the caller passes no vectorizer, which is deprecated. It stays
+# at the model existing data was written with until the fallback is removed.
+DEFAULT_VECTORIZER_MODEL = "sentence-transformers/all-mpnet-base-v2"
 
 
 class SemanticRouter(BaseModel):
@@ -78,7 +84,12 @@ class SemanticRouter(BaseModel):
         Args:
             name (str): The name of the semantic router.
             routes (List[Route]): List of Route objects.
-            vectorizer (BaseVectorizer, optional): The vectorizer used to embed route references. Defaults to default HFTextVectorizer.
+            vectorizer (BaseVectorizer, optional): The vectorizer used to embed route references.
+                Pass one explicitly. Omitting it is deprecated: it falls back to
+                ``HFTextVectorizer(model="sentence-transformers/all-mpnet-base-v2")``
+                with a ``DeprecationWarning``, and a future major release will make it
+                required. Data already stored under the fallback only matches queries
+                embedded with that same model.
             routing_config (RoutingConfig, optional): Configuration for routing behavior. Defaults to the default RoutingConfig.
             redis_client (Optional[SyncRedisClient], optional): Redis client for connection. Defaults to None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
@@ -117,13 +128,20 @@ class SemanticRouter(BaseModel):
                     f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
                 )
         else:
+            warn(
+                IMPLICIT_VECTORIZER_DEPRECATED.format(
+                    owner="SemanticRouter", model=DEFAULT_VECTORIZER_MODEL
+                ),
+                DeprecationWarning,
+                stacklevel=3,
+            )
             vectorizer_kwargs = kwargs
 
             if dtype:
                 vectorizer_kwargs.update(**{"dtype": dtype})
 
             vectorizer = HFTextVectorizer(
-                model="sentence-transformers/all-mpnet-base-v2",
+                model=DEFAULT_VECTORIZER_MODEL,
                 **vectorizer_kwargs,
             )
 
@@ -973,7 +991,16 @@ class SemanticRouter(BaseModel):
         .. code-block:: python
 
             from redisvl.extensions.router import SemanticRouter
-            router = SemanticRouter(name="example_router", routes=[], redis_url="redis://localhost:6379")
+            from redisvl.utils.vectorize import HFTextVectorizer
+
+            router = SemanticRouter(
+                name="example_router",
+                routes=[],
+                vectorizer=HFTextVectorizer(
+                    model="sentence-transformers/all-mpnet-base-v2"
+                ),
+                redis_url="redis://localhost:6379",
+            )
             router_dict = router.to_dict()
         """
         return {
@@ -1037,10 +1064,15 @@ class SemanticRouter(BaseModel):
         .. code-block:: python
 
             from redisvl.extensions.router import SemanticRouter
+            from redisvl.utils.vectorize import HFTextVectorizer
+
             router = SemanticRouter(
                 name="example_router",
                 routes=[],
-                redis_url="redis://localhost:6379"
+                vectorizer=HFTextVectorizer(
+                    model="sentence-transformers/all-mpnet-base-v2"
+                ),
+                redis_url="redis://localhost:6379",
             )
             router.to_yaml("router.yaml")
         """

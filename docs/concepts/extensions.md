@@ -11,6 +11,26 @@ Extensions are opinionated, higher-level abstractions built on RedisVL's core pr
 
 You don't need to understand schemas, indexes, or queries to use extensions—they handle that complexity for you.
 
+## Choosing a Vectorizer
+
+`SemanticCache`, `SemanticMessageHistory` and `SemanticRouter` embed text, so each needs a {doc}`vectorizer </concepts/utilities>`. Pass one explicitly:
+
+```python
+from redisvl.extensions.cache.llm import SemanticCache
+from redisvl.utils.vectorize import HFTextVectorizer
+
+cache = SemanticCache(
+    name="llmcache",
+    vectorizer=HFTextVectorizer(model="redis/langcache-embed-v2"),
+)
+```
+
+`redis/langcache-embed-v2` is trained for matching cache prompts. Any vectorizer works, including hosted providers that need no local model.
+
+Leaving the argument out is deprecated. The extension still falls back to a local Hugging Face model, which needs the `sentence-transformers` extra and downloads the model on first use: `redis/langcache-embed-v1` for `SemanticCache`, and `sentence-transformers/all-mpnet-base-v2` for the other two. It also emits a `DeprecationWarning` naming the model. A future major release will require the argument.
+
+Stored data only matches queries embedded with the model that wrote it. If you relied on the fallback, pass that same model explicitly to keep using what you have stored. Two models with the same output size, such as `langcache-embed-v1` and `-v2`, fit the same index without an error, so a mismatch shows up only as wrong matches. To move a cache to a different model, call `clear()` and let it refill. `overwrite=True` rebuilds the index but keeps the stored entries and their old vectors. Distances also differ between models, so check your distance threshold after switching.
+
 ## Semantic Cache
 
 LLM API calls are expensive and slow. If users ask similar questions, you're paying to generate similar answers repeatedly. Semantic caching solves this by storing responses and returning cached answers when similar prompts are seen again.
@@ -20,24 +40,6 @@ LLM API calls are expensive and slow. If users ask similar questions, you're pay
 When a prompt arrives, the cache embeds it and searches for similar cached prompts. If a match is found within the configured distance threshold, the cached response is returned immediately—no LLM call needed. If no match is found, you call the LLM, store the prompt-response pair, and return the response.
 
 The key insight is "similar" rather than "identical." Traditional caching requires exact matches. Semantic caching matches by meaning, so "What's the capital of France?" and "Tell me France's capital city" can hit the same cache entry.
-
-### Embedding Model
-
-Without a `vectorizer` argument, `SemanticCache` embeds prompts with `HFTextVectorizer(model="redis/langcache-embed-v2")`, a model trained for cache matching. Earlier releases defaulted to `redis/langcache-embed-v1`.
-
-A cache must be read with the model that wrote it. The two models produce vectors of the same size, so a v1 cache accepts v2 lookups without an error and returns the wrong hits and misses. RedisVL logs a warning whenever it opens an existing cache without an explicit vectorizer. To keep a v1 cache working, pass the model explicitly:
-
-```python
-from redisvl.extensions.cache.llm import SemanticCache
-from redisvl.utils.vectorize import HFTextVectorizer
-
-cache = SemanticCache(
-    name="llmcache",
-    vectorizer=HFTextVectorizer(model="redis/langcache-embed-v1"),
-)
-```
-
-To move an existing cache to v2, call `clear()` on it and let it refill. `overwrite=True` is not enough: it rebuilds the index but keeps the stored entries, which are then indexed again with their v1 vectors. From then on, pass `vectorizer=HFTextVectorizer(model="redis/langcache-embed-v2")` explicitly, since the warning fires for any existing cache opened without one. Distances differ between models: v2 places the same pair of prompts slightly further apart than v1 does, so at an unchanged `distance_threshold` it matches somewhat fewer paraphrases. Check your threshold after switching.
 
 ### Threshold Tuning
 

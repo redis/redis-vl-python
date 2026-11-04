@@ -50,3 +50,15 @@ EXTERNAL_INDEX_DROP_CONFLICT: str = (
     "path to drop it. To remove every entry while leaving the index in place, "
     "use clear()."
 )
+
+# Warned by SemanticCache, SemanticMessageHistory and SemanticRouter when the
+# caller passes no vectorizer. Format with ``owner`` (the class name) and
+# ``model`` (the fallback model). The fallback stays unchanged until it is
+# removed, so data stored under it keeps matching.
+IMPLICIT_VECTORIZER_DEPRECATED: str = (
+    "{owner} was created without a vectorizer, so it fell back to "
+    "HFTextVectorizer(model='{model}'). This fallback is deprecated, and a future "
+    "major release will require the vectorizer argument. Pass a vectorizer "
+    "explicitly; to keep matching data already stored under the fallback, pass "
+    "the same model: vectorizer=HFTextVectorizer(model='{model}')."
+)

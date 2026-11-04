@@ -1,4 +1,5 @@
 from typing import Any
+from warnings import warn
 
 from redis import Redis
 
@@ -7,6 +8,7 @@ from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     EXTERNAL_INDEX_DROP_CONFLICT,
     ID_FIELD_NAME,
+    IMPLICIT_VECTORIZER_DEPRECATED,
     MESSAGE_VECTOR_FIELD_NAME,
     METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
@@ -27,6 +29,10 @@ from redisvl.utils.utils import deprecated_argument, serialize, validate_vector_
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 logger = get_logger(__name__)
+
+# Used only when the caller passes no vectorizer, which is deprecated. It stays
+# at the model existing data was written with until the fallback is removed.
+DEFAULT_VECTORIZER_MODEL = "sentence-transformers/all-mpnet-base-v2"
 
 
 class SemanticMessageHistory(BaseMessageHistory):
@@ -60,6 +66,11 @@ class SemanticMessageHistory(BaseMessageHistory):
             prefix (Optional[str]): Prefix for the keys for this message data.
                 Defaults to None and will be replaced with the index name.
             vectorizer (Optional[BaseVectorizer]): The vectorizer used to create embeddings.
+                Pass one explicitly. Omitting it is deprecated: it falls back to
+                ``HFTextVectorizer(model="sentence-transformers/all-mpnet-base-v2")``
+                with a ``DeprecationWarning``, and a future major release will make it
+                required. Data already stored under the fallback only matches queries
+                embedded with that same model.
             distance_threshold (float): The maximum semantic distance to be
                 included in the context. Defaults to 0.3.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
@@ -102,13 +113,20 @@ class SemanticMessageHistory(BaseMessageHistory):
                     f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
                 )
         else:
+            warn(
+                IMPLICIT_VECTORIZER_DEPRECATED.format(
+                    owner="SemanticMessageHistory", model=DEFAULT_VECTORIZER_MODEL
+                ),
+                DeprecationWarning,
+                stacklevel=3,
+            )
             vectorizer_kwargs = kwargs
 
             if dtype:
                 vectorizer_kwargs.update(**{"dtype": dtype})
 
             vectorizer = HFTextVectorizer(
-                model="sentence-transformers/all-mpnet-base-v2",
+                model=DEFAULT_VECTORIZER_MODEL,
                 **vectorizer_kwargs,
             )
 
