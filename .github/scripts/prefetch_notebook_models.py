@@ -13,7 +13,6 @@ from redisvl.utils.rerank import HFCrossEncoderReranker
 from redisvl.utils.vectorize import HFTextVectorizer
 
 EMBEDDING_MODELS = [
-    "redis/langcache-embed-v1",  # SemanticCache default
     "redis/langcache-embed-v2",
     "sentence-transformers/all-mpnet-base-v2",  # HFTextVectorizer default
 ]
