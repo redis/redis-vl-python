@@ -15,13 +15,13 @@ from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     ENTRY_ID_FIELD_NAME,
     EXTERNAL_INDEX_DROP_CONFLICT,
-    IMPLICIT_VECTORIZER_DEPRECATED,
     INSERTED_AT_FIELD_NAME,
     METADATA_FIELD_NAME,
     PROMPT_FIELD_NAME,
     REDIS_KEY_FIELD_NAME,
     RESPONSE_FIELD_NAME,
     UPDATED_AT_FIELD_NAME,
+    implicit_vectorizer_deprecation,
 )
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import VectorQuery
@@ -124,7 +124,8 @@ class SemanticCache(BaseLLMCache):
             )
 
             # the index is managed externally, or this credential cannot run
-            # FT.INFO -- assume the index exists and issue no index command
+            # FT.INFO -- assume the index exists and issue no index command.
+            # The vectorizer must be the model that populated the index.
             cache = SemanticCache(
                 name="llmcache",
                 vectorizer=vectorizer,
@@ -159,8 +160,8 @@ class SemanticCache(BaseLLMCache):
             self._vectorizer = vectorizer
         else:
             warn(
-                IMPLICIT_VECTORIZER_DEPRECATED.format(
-                    owner="SemanticCache", model=DEFAULT_VECTORIZER_MODEL
+                implicit_vectorizer_deprecation(
+                    "SemanticCache", DEFAULT_VECTORIZER_MODEL, dtype
                 ),
                 DeprecationWarning,
                 stacklevel=3,

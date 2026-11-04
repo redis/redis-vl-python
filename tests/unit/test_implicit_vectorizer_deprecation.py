@@ -97,3 +97,17 @@ def test_an_explicit_vectorizer_does_not_warn(case):
 
     assert built_with == []
     assert _deprecations(caught) == []
+
+
+def test_the_suggested_replacement_keeps_the_dtype(case):
+    # A replacement that drops dtype embeds at a different width than the
+    # data already stored, so the warning must carry it over.
+    _, model, build, _ = case
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        build(dtype="float16")
+
+    messages = [str(w.message) for w in _deprecations(caught)]
+    expected = f"vectorizer=HFTextVectorizer(model='{model}', dtype='float16')"
+    assert any(expected in message for message in messages)

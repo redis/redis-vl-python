@@ -8,13 +8,13 @@ from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     EXTERNAL_INDEX_DROP_CONFLICT,
     ID_FIELD_NAME,
-    IMPLICIT_VECTORIZER_DEPRECATED,
     MESSAGE_VECTOR_FIELD_NAME,
     METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
     SESSION_FIELD_NAME,
     TIMESTAMP_FIELD_NAME,
     TOOL_FIELD_NAME,
+    implicit_vectorizer_deprecation,
 )
 from redisvl.extensions.message_history import BaseMessageHistory
 from redisvl.extensions.message_history.schema import (
@@ -114,8 +114,8 @@ class SemanticMessageHistory(BaseMessageHistory):
                 )
         else:
             warn(
-                IMPLICIT_VECTORIZER_DEPRECATED.format(
-                    owner="SemanticMessageHistory", model=DEFAULT_VECTORIZER_MODEL
+                implicit_vectorizer_deprecation(
+                    "SemanticMessageHistory", DEFAULT_VECTORIZER_MODEL, dtype
                 ),
                 DeprecationWarning,
                 stacklevel=3,

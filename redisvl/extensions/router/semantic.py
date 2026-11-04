@@ -12,8 +12,8 @@ from redisvl.exceptions import PartialDeletionError
 from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     EXTERNAL_INDEX_DROP_CONFLICT,
-    IMPLICIT_VECTORIZER_DEPRECATED,
     ROUTE_VECTOR_FIELD_NAME,
+    implicit_vectorizer_deprecation,
 )
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
@@ -129,8 +129,8 @@ class SemanticRouter(BaseModel):
                 )
         else:
             warn(
-                IMPLICIT_VECTORIZER_DEPRECATED.format(
-                    owner="SemanticRouter", model=DEFAULT_VECTORIZER_MODEL
+                implicit_vectorizer_deprecation(
+                    "SemanticRouter", DEFAULT_VECTORIZER_MODEL, dtype
                 ),
                 DeprecationWarning,
                 stacklevel=3,
