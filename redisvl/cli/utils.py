@@ -5,11 +5,17 @@ from typing import Any, Mapping, Union
 from urllib.parse import quote, urlparse, urlunparse
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
-from redisvl.utils.log import get_logger
+from redisvl.utils.log import _has_application_handlers, get_logger
 
 logger = get_logger("[RedisVL]")
 DEFAULT_REDIS_HOST = "localhost"
 DEFAULT_REDIS_PORT = 6379
+
+
+def log_cli_exception(exc: BaseException) -> None:
+    """Record a CLI failure when the host application configured logging."""
+    if _has_application_handlers(logger.name):
+        logger.error(exc, exc_info=True)
 
 
 def _has_explicit_connection_options(args: Namespace) -> bool:
