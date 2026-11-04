@@ -333,14 +333,14 @@ def build_combination_method(
     method_params: dict[str, Any] = {}
     if combination_method == "RRF":
         method = CombinationMethods.RRF
-        if rrf_window:
+        if rrf_window is not None:
             method_params["WINDOW"] = rrf_window
-        if rrf_constant:
+        if rrf_constant is not None:
             method_params["CONSTANT"] = rrf_constant
 
     elif combination_method == "LINEAR":
         method = CombinationMethods.LINEAR
-        if linear_alpha:
+        if linear_alpha is not None:
             method_params["ALPHA"] = linear_alpha
             method_params["BETA"] = 1 - linear_alpha
 

@@ -259,6 +259,49 @@ def test_hybrid_query_alpha(index, alpha):
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_zero_alpha_scores_by_vector_only(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
+    hybrid_query = HybridQuery(
+        text="a medical professional with expertise in lung cancer",
+        text_field_name="description",
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        combination_method="LINEAR",
+        linear_alpha=0.0,
+        yield_vsim_score_as="vector_similarity",
+        yield_combined_score_as="hybrid_score",
+    )
+
+    results = index.query(hybrid_query)
+    assert len(results) == 7
+    for result in results:
+        assert float(result["hybrid_score"]) == pytest.approx(
+            float(result["vector_similarity"])
+        )
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_zero_rrf_constant_is_applied(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
+    hybrid_query = HybridQuery(
+        text="a medical professional with expertise in lung cancer",
+        text_field_name="description",
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        combination_method="RRF",
+        rrf_constant=0,
+        yield_combined_score_as="hybrid_score",
+    )
+
+    results = index.query(hybrid_query)
+    # With a constant of 0, a top-ranked result scores at least 1/1. The server's
+    # default constant of 60 caps the score of any result at 2/61.
+    assert max(float(result["hybrid_score"]) for result in results) >= 1.0
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords(index):
     skip_if_redis_version_below(index.client, "8.4.0")
 
