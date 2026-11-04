@@ -43,14 +43,15 @@ DEFAULT_VECTORIZER_MODEL = "redis/langcache-embed-v2"
 # call, so its vectors may have been written with the previous default model.
 # Both models emit 768-dimension vectors, so the schema check below cannot tell
 # them apart and a mismatch shows up only as wrong hits and misses.
+# Remove this warning once v1-era caches are no longer expected.
 DEFAULT_VECTORIZER_CHANGED_WARNING = (
     "The default SemanticCache vectorizer is now `redis/langcache-embed-v2`; it "
     "was `redis/langcache-embed-v1`. This cache's index already exists, and if its "
     "entries were embedded with v1, lookups embedded with v2 return wrong hits and "
     "misses without raising an error. To keep using v1, pass "
     "vectorizer=HFTextVectorizer(model='redis/langcache-embed-v1'). To move to v2, "
-    "clear the cache or recreate it with overwrite=True. Pass a vectorizer "
-    "explicitly to silence this warning. "
+    "call clear() and let the cache refill; overwrite=True keeps the old entries. "
+    "Pass a vectorizer explicitly to silence this warning. "
     "See https://huggingface.co/redis/langcache-embed-v2."
 )
 
@@ -90,7 +91,7 @@ class SemanticCache(BaseLLMCache):
                 Defaults to ``HFTextVectorizer(model="redis/langcache-embed-v2")``.
                 Before this default changed it was ``redis/langcache-embed-v1``;
                 an existing cache written with v1 must pass that model explicitly
-                or be rebuilt, since v2 query vectors fit a v1 index without error
+                or be emptied with ``clear()``, since v2 query vectors fit a v1 index without error
                 but match the wrong entries.
             filterable_fields (Optional[List[Dict[str, Any]]]): An optional list of RedisVL fields
                 that can be used to customize cache retrieval with filters.

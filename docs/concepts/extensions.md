@@ -37,7 +37,7 @@ cache = SemanticCache(
 )
 ```
 
-To move an existing cache to v2, call `clear()` on it or recreate it with `overwrite=True`, then let it refill. Distances differ between models, so check your `distance_threshold` after switching.
+To move an existing cache to v2, call `clear()` on it and let it refill. `overwrite=True` is not enough: it rebuilds the index but keeps the stored entries, which are then indexed again with their v1 vectors. From then on, pass `vectorizer=HFTextVectorizer(model="redis/langcache-embed-v2")` explicitly, since the warning fires for any existing cache opened without one. Distances differ between models, so check your `distance_threshold` after switching.
 
 ### Threshold Tuning
 
