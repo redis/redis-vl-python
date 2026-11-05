@@ -151,8 +151,7 @@ class MessageHistory(BaseMessageHistory):
             recent = await self.aget_recent(top_k=1, raw=True)
             id = recent[0][ID_FIELD_NAME]  # type: ignore
 
-        client = await aindex._get_client()
-        await client.delete(aindex.key(id))
+        await aindex.drop_keys(aindex.key(id))
 
     def _count_query(self, session_tag: str | None) -> CountQuery:
         return CountQuery(
@@ -249,8 +248,8 @@ class MessageHistory(BaseMessageHistory):
         :class:`~redisvl.index.AsyncSearchIndex`, without blocking the loop.
 
         Pass ``redis_url`` rather than a client to the history if you need the
-        async methods over SSL, a unix socket, Sentinel or Redis Cluster: those
-        clients cannot be converted to their async form. The async client is
+        async methods over Sentinel or Redis Cluster: those clients cannot be
+        converted to their async form. The async client is
         bound to the event loop that made the first call, so call
         :meth:`adisconnect` before switching loops.
         """
