@@ -5,7 +5,12 @@ from typing import Any
 
 from redisvl.exceptions import RedisVLError
 from redisvl.mcp.auth import ensure_write_scope
-from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
+from redisvl.mcp.errors import (
+    MCPErrorCode,
+    RedisVLMCPError,
+    map_exception,
+    with_partial_write_warning,
+)
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import StorageType
 from redisvl.schema.validation import validate_object
@@ -348,8 +353,7 @@ async def upsert_records(
             mapped = map_exception(exc)
             # load raises its invalid_request errors before it writes anything,
             # and run_guarded's own errors mean load never ran. Any other load
-            # failure, or a timeout, may have left records behind. Clients see
-            # only the message, so the warning goes there.
+            # failure, or a timeout, may have left records behind.
             if mapped.code is MCPErrorCode.INVALID_REQUEST or not isinstance(
                 exc, (RedisVLError, TimeoutError, asyncio.TimeoutError)
             ):
@@ -359,12 +363,7 @@ async def upsert_records(
                 warning += (
                     "; retrying without id_field writes them again under new keys"
                 )
-            raise RedisVLMCPError(
-                f"{mapped}; {warning}",
-                code=mapped.code,
-                retryable=mapped.retryable,
-                metadata={**mapped.metadata, "partial_write_possible": True},
-            ) from exc
+            raise with_partial_write_warning(mapped, warning) from exc
 
         return {
             "index": rt.binding_id,

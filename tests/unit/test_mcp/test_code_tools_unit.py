@@ -12,11 +12,13 @@ from typing import Any
 
 import pytest
 from conftest import _schema
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 fastmcp = pytest.importorskip(
     "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
 )
 
+from redisvl.exceptions import RedisVLError
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.context import IndexHandle, ToolContext, WritableIndexHandle
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
@@ -452,6 +454,28 @@ async def test_an_mcp_error_from_the_tool_passes_through_unchanged(monkeypatch):
         await _registered(failing)(query="refund")
 
     assert exc_info.value is error
+
+
+@pytest.mark.parametrize("writes", [True, False])
+@pytest.mark.parametrize(
+    "raised", [RedisVLError("Failed to load data"), asyncio.TimeoutError()]
+)
+async def test_only_a_writing_tool_warns_that_a_retryable_failure_may_be_partial(
+    monkeypatch, writes, raised
+):
+    _as_caller(monkeypatch)
+    if isinstance(raised, RedisVLError):
+        raised.__cause__ = RedisConnectionError("down")
+
+    async def failing(ctx: ToolContext, ticket_id: str) -> dict:
+        """Close a ticket."""
+        raise raised
+
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await _registered(failing, writes=writes)(ticket_id="t1")
+
+    assert exc_info.value.retryable is True
+    assert ("may have written" in str(exc_info.value)) is writes
 
 
 # --------------------------------------------------------------------------

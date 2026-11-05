@@ -26,7 +26,12 @@ from pydantic import TypeAdapter
 from redisvl.mcp.auth import ensure_read_scope, ensure_tool_scope, ensure_write_scope
 from redisvl.mcp.config import validate_tool_name
 from redisvl.mcp.context import ToolContext
-from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
+from redisvl.mcp.errors import (
+    MCPErrorCode,
+    RedisVLMCPError,
+    map_exception,
+    with_partial_write_warning,
+)
 
 # Where `code_tool` leaves a function's spec for the loader to find. An attribute on
 # the function rather than a module-level registry, so importing a module
@@ -193,6 +198,18 @@ def build_code_tool_spec(
 def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None:
     """Register one code tool against ``binding_id``."""
 
+    def retryable_write_warned(error: RedisVLMCPError) -> RedisVLMCPError:
+        # A retry runs the whole tool again, including any writes it made
+        # before it failed. A tool that raises RedisVLMCPError itself has
+        # chosen its own message, so only errors mapped here get the warning.
+        if spec.writes and error.retryable:
+            return with_partial_write_warning(
+                error,
+                "the tool may have written some records before it failed, "
+                "and a retry runs it again",
+            )
+        return error
+
     async def code_tool(**kwargs: Any) -> Any:
         # Before anything else, so a caller without the scope never reaches the
         # binding or the function. The tool's own scope is required on top of
@@ -221,15 +238,17 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
                 # code too, so a tool cannot hold a request open indefinitely.
                 return await asyncio.wait_for(spec.fn(ctx, **kwargs), timeout)
             except asyncio.TimeoutError as exc:
-                raise RedisVLMCPError(
-                    f"tool '{spec.name}' did not finish within {timeout:g}s",
-                    code=MCPErrorCode.BACKEND_UNAVAILABLE,
-                    retryable=True,
+                raise retryable_write_warned(
+                    RedisVLMCPError(
+                        f"tool '{spec.name}' did not finish within {timeout:g}s",
+                        code=MCPErrorCode.BACKEND_UNAVAILABLE,
+                        retryable=True,
+                    )
                 ) from exc
         except RedisVLMCPError:
             raise
         except Exception as exc:
-            raise map_exception(exc) from exc
+            raise retryable_write_warned(map_exception(exc)) from exc
 
     code_tool.__name__ = spec.name.replace("-", "_")
     code_tool.__doc__ = spec.description

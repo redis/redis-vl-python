@@ -87,3 +87,17 @@ def map_exception(exc: Exception) -> RedisVLMCPError:
         code=MCPErrorCode.INTERNAL_ERROR,
         retryable=False,
     )
+
+
+def with_partial_write_warning(error: RedisVLMCPError, warning: str) -> RedisVLMCPError:
+    """Return ``error`` with a warning that a failed write may be partial.
+
+    FastMCP sends a client the message alone, not ``code``, ``retryable`` or
+    ``metadata``, so the warning goes in the message.
+    """
+    return RedisVLMCPError(
+        f"{error}; {warning}",
+        code=error.code,
+        retryable=error.retryable,
+        metadata={**error.metadata, "partial_write_possible": True},
+    )
