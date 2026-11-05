@@ -57,6 +57,32 @@ def builtin_tool_names() -> frozenset[str]:
     return _BUILTIN_TOOL_NAMES
 
 
+def validate_tool_name(name: str, *, kind: str) -> None:
+    """Raise ``ValueError`` unless ``name`` is usable for a custom tool.
+
+    Shared by every kind of custom tool so that one set of rules decides what a
+    tool may be called. ``kind`` names the source in the message, so an error
+    points at the config section or decorator that produced the name.
+    """
+    # fullmatch, because `$` also matches before a trailing newline.
+    if not _TOOL_NAME_PATTERN.fullmatch(name):
+        raise ValueError(
+            f"{kind} name '{name}' is invalid; names must start with a "
+            "lowercase letter and contain only lowercase letters, digits, "
+            "hyphens, or underscores (max 64 characters)"
+        )
+    if name in builtin_tool_names():
+        raise ValueError(
+            f"{kind} name '{name}' collides with a built-in tool; "
+            "built-in names are reserved"
+        )
+    if name.startswith(_RESERVED_TOOL_NAME_PREFIXES):
+        raise ValueError(
+            f"{kind} name '{name}' uses a reserved prefix "
+            f"({', '.join(_RESERVED_TOOL_NAME_PREFIXES)})"
+        )
+
+
 class MCPRuntimeConfig(BaseModel):
     """Runtime limits and validated field mappings for MCP requests."""
 
@@ -229,6 +255,32 @@ class MCPServerConfig(BaseModel):
     builtin_tools: dict[str, Literal["enabled", "disabled"]] = Field(
         default_factory=dict
     )
+    # Importing a module runs its code with the server's privileges, so naming
+    # modules does nothing until the operator opts in separately.
+    code_tool_modules: list[str] = Field(default_factory=list)
+    allow_code_tools: bool = False
+
+    @model_validator(mode="after")
+    def _validate_code_tool_modules(self) -> "MCPServerConfig":
+        """Require the opt-in, and a usable module name, for each code module."""
+        if self.code_tool_modules and not self.allow_code_tools:
+            raise ValueError(
+                "server.code_tool_modules imports Python code, which runs with "
+                "the server's privileges; set server.allow_code_tools: true to "
+                "allow it"
+            )
+        seen: set[str] = set()
+        for module in self.code_tool_modules:
+            if not module or module != module.strip():
+                raise ValueError(
+                    f"server.code_tool_modules entry {module!r} is not a " "module name"
+                )
+            if module in seen:
+                raise ValueError(
+                    f"server.code_tool_modules lists '{module}' more than once"
+                )
+            seen.add(module)
+        return self
 
     @model_validator(mode="after")
     def _validate_builtin_tools(self) -> "MCPServerConfig":
@@ -765,22 +817,7 @@ class MCPCustomToolConfig(BaseModel):
             raise ValueError(
                 f"custom_tools '{self.name}' description must not be blank"
             )
-        if not _TOOL_NAME_PATTERN.match(self.name):
-            raise ValueError(
-                f"custom_tools name '{self.name}' is invalid; names must start with a "
-                "lowercase letter and contain only lowercase letters, digits, "
-                "hyphens, or underscores (max 64 characters)"
-            )
-        if self.name in builtin_tool_names():
-            raise ValueError(
-                f"custom_tools name '{self.name}' collides with a built-in tool; "
-                "built-in names are reserved"
-            )
-        if self.name.startswith(_RESERVED_TOOL_NAME_PREFIXES):
-            raise ValueError(
-                f"custom_tools name '{self.name}' uses a reserved prefix "
-                f"({', '.join(_RESERVED_TOOL_NAME_PREFIXES)})"
-            )
+        validate_tool_name(self.name, kind="custom_tools")
 
         unknown_params = sorted(set(self.params) - _PROFILE_PARAM_NAMES)
         if unknown_params:
