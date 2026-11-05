@@ -181,12 +181,11 @@ async def test_validate_async_redis_custom_lib_name(async_client):
 async def test_converted_client_recovers_after_client_kill(client, redis_url):
     """The converted client's retry policy must run on the async connection.
 
-    After CLIENT KILL the pooled connection's socket is closed. On redis-py
-    8.1+ the pool hands it out as is, so the next command fails once and only
-    the async Retry's reconnect-and-retry makes it succeed; a sync Retry would
-    raise ConnectionError. Earlier pools reconnect a dead connection at
-    checkout, so there this test does not exercise the policy; the unit tests
-    pin the conversion on every version.
+    After CLIENT KILL the pooled connection's socket is closed. When the ping
+    follows straight away, the event loop has not yet seen the server close
+    it, so the pool hands the connection out and the first attempt fails. Only
+    the async Retry's reconnect-and-retry makes the ping succeed; with a sync
+    Retry it raises ConnectionError.
     """
     sync_client = Redis.from_url(redis_url, retry=Retry(NoBackoff(), 1))
     converted = RedisConnectionFactory.sync_to_async_redis(sync_client)
