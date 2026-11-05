@@ -92,9 +92,10 @@ def _is_missing_index_error(exc: RedisSearchError) -> bool:
 
     An absent index is a bare :class:`~redis.exceptions.ResponseError` whose
     wording changes between Redis versions, so the reply is classified by type
-    and error code, never by text. Error codes redis-py maps to a subclass
-    (``NOPERM``, ``READONLY``, ``LOADING`` and others), connection failures and
-    an unmapped ``BUSY`` reply all mean the check failed.
+    and leading error code, never by the wording after the code. Error codes
+    redis-py maps to a subclass (``NOPERM``, ``LOADING``, ``CLUSTERDOWN`` and
+    others), connection failures and an unmapped ``BUSY`` reply all mean the
+    check failed.
 
     Args:
         exc: A :class:`RedisSearchError` wrapping the ``redis-py`` exception

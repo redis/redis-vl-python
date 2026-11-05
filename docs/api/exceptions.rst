@@ -193,7 +193,7 @@ to one of those wordings.
 message, which is the reason to prefer it over catching errors from
 :meth:`~redisvl.index.SearchIndex.info`. redis-py raises a plain ``ResponseError`` for an
 ordinary error reply, and a more specific exception for the replies that mean the check
-itself failed, such as ``NoPermissionError``, ``ReadOnlyError`` or ``ClusterDownError``;
+itself failed, such as ``NoPermissionError``, ``BusyLoadingError`` or ``ClusterDownError``;
 connection failures are not ``ResponseError`` at all. The exception is ``BUSY``, sent while
 a script or function is running, which redis-py leaves as a plain ``ResponseError``.
 ``exists()`` returns ``False`` only for a plain ``ResponseError`` whose reply does not start

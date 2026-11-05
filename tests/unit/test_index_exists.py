@@ -23,7 +23,6 @@ from redis.exceptions import (
     ClusterDownError,
     ConnectionError,
     NoPermissionError,
-    ReadOnlyError,
     ResponseError,
 )
 
@@ -47,14 +46,13 @@ MISSING_INDEX_MESSAGES = [
 # Failures that must never be read as "the index is absent": reporting False
 # here would send callers on to create an index that already exists, and would
 # skip the schema-compatibility check the extensions perform first. redis-py
-# raises most of these as ResponseError subclasses (NOPERM, READONLY,
-# CLUSTERDOWN) or outside ResponseError entirely (connection); BUSY it leaves
+# raises most of these as ResponseError subclasses (NOPERM, CLUSTERDOWN) or
+# outside ResponseError entirely (connection); BUSY it leaves
 # unmapped, so exists() excludes it by error code.
 # _info() catches bare Exception, so narrowing it to ResponseError would let the
 # connection case escape unwrapped.
 NON_MISSING_INDEX_ERRORS = [
     NoPermissionError("User acl_user has no permissions to run the 'FT.INFO' command"),
-    ReadOnlyError("You can't write against a read only replica."),
     ClusterDownError("The cluster is down"),
     # redis-py does not map BUSY, so it arrives as a bare ResponseError.
     ResponseError(
