@@ -137,8 +137,8 @@ class TestExistsClassifiesRedisResponse:
 class TestExistsOnCluster:
     """On a cluster, exists() must go through _info()'s node-targeted path.
 
-    Index metadata is cluster-wide, so any single node can answer -- but the
-    command has to carry target_nodes to get there. These are the only cluster
+    The command has to carry target_nodes, and it must name the default node,
+    where FT.CREATE goes: a replica may not have the new index yet. These are the only cluster
     checks that run by default; the live cluster suite needs
     --run-cluster-tests. Sync and async _info() each have their own cluster
     branch, and exists() reaches both for the first time with this change.
@@ -147,7 +147,7 @@ class TestExistsOnCluster:
     def test_ft_info_is_routed_to_a_node(self):
         node = Mock()
         client = MagicMock(spec=RedisCluster)
-        client.get_random_node.return_value = node
+        client.get_default_node.return_value = node
         client.execute_command.return_value = ["index_name", INDEX_NAME]
         index = SearchIndex(schema=_schema(), redis_client=client)
 
@@ -161,7 +161,8 @@ class TestExistsOnCluster:
         node = Mock()
         client = MagicMock()
         client.__class__ = AsyncRedisCluster  # isinstance drives the branch
-        client.get_random_node.return_value = node
+        client.initialize = AsyncMock()
+        client.get_default_node.return_value = node
         client.execute_command = AsyncMock(return_value=["index_name", INDEX_NAME])
         index = AsyncSearchIndex(schema=_schema(), redis_client=client)
 
