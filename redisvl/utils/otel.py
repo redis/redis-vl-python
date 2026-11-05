@@ -8,7 +8,7 @@ application configures an SDK. When the API is not installed, or
 returned instead, so instrumented code never needs to check.
 
 The stand-in span leaves the active context alone, so write to a span through
-the handle from ``start_as_current_span(...) as span``, never through
+the handle from ``start_span(...) as span``, never through
 ``trace.get_current_span()``, which would reach the caller's span instead.
 
 RedisVL never constructs a provider and never initialises redis-py's own
@@ -27,10 +27,10 @@ from redisvl.version import __version__
 logger = get_logger(__name__)
 
 try:
-    from opentelemetry import metrics, trace
+    from opentelemetry import context, metrics, trace
     from opentelemetry.trace import SpanKind, Status, StatusCode
 except ImportError:  # the redisvl[otel] extra is not installed
-    metrics = trace = Status = StatusCode = None  # type: ignore[assignment,misc]
+    context = metrics = trace = Status = StatusCode = None  # type: ignore[assignment,misc]
 
     class SpanKind(Enum):  # type: ignore[no-redef]
         """Stand-in for ``opentelemetry.trace.SpanKind``."""
@@ -136,11 +136,17 @@ class _NoOpSpan(ContextDecorator):
     def record_exception(self, *args: Any, **kwargs: Any) -> None:
         pass
 
+    def end(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
 
 class _NoOpTracer:
     _span = _NoOpSpan()
 
     def start_as_current_span(self, *args: Any, **kwargs: Any) -> _NoOpSpan:
+        return self._span
+
+    def start_span(self, *args: Any, **kwargs: Any) -> _NoOpSpan:
         return self._span
 
 
@@ -207,22 +213,52 @@ def start_span(
     """Start a RedisVL span as the current span.
 
     A failure marks the span with an error status and ``error.type``, then
-    re-raises unchanged. The SDK's own exception recording stays off, because
-    it would put the exception's message, which can carry prompt text, on the
-    span.
+    re-raises unchanged. The SDK's own exception recording is never used,
+    because it would put the exception's message, which can carry prompt text,
+    on the span.
+
+    Telemetry never changes the operation's outcome: a sampler or span
+    processor that raises while the span starts or ends is logged at debug
+    level, and the operation still runs and returns or raises as it would
+    without telemetry.
     """
-    with get_tracer().start_as_current_span(
-        name,
-        kind=kind,
-        attributes=attributes,
-        record_exception=False,
-        set_status_on_exception=False,
-    ) as span:
+    span, token = _open_span(name, attributes, kind)
+    try:
+        yield span
+    except Exception as error:
+        _mark_failed(span, error)
+        raise
+    finally:
+        _close_span(span, token)
+
+
+def _open_span(
+    name: str, attributes: dict[str, Any], kind: SpanKind
+) -> tuple["Span", Any]:
+    try:
+        span = get_tracer().start_span(name, kind=kind, attributes=attributes)
+    except Exception:
+        logger.debug("Could not start a RedisVL span", exc_info=True)
+        return _NoOpTracer._span, None  # type: ignore[return-value]
+    if isinstance(span, _NoOpSpan):  # the stand-in leaves the context alone
+        return span, None
+    try:
+        return span, context.attach(trace.set_span_in_context(span))
+    except Exception:
+        logger.debug("Could not make a RedisVL span current", exc_info=True)
+        return span, None
+
+
+def _close_span(span: "Span", token: Any) -> None:
+    if token is not None:
         try:
-            yield span
-        except Exception as error:
-            _mark_failed(span, error)
-            raise
+            context.detach(token)
+        except Exception:
+            logger.debug("Could not restore the context", exc_info=True)
+    try:
+        span.end()
+    except Exception:
+        logger.debug("Could not end a RedisVL span", exc_info=True)
 
 
 def _mark_failed(span: "Span", error: Exception) -> None:
