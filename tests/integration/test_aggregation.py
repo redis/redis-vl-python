@@ -163,6 +163,7 @@ def test_aggregate_cosine_similarity_does_not_exceed_one(redis_url, redis_test_n
 
     try:
         rng = np.random.default_rng(0)
+        # Vector 7 deterministically produces a slightly negative FLOAT32 self-distance.
         vector = rng.standard_normal((8, 384)).astype(np.float32)[7]
         index.load([{"id": "self", "text": "match", "embedding": vector.tobytes()}])
 
