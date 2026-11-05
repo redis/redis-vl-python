@@ -3,10 +3,14 @@
 #
 # Each CI segment uploads under its own flag (see the `coverage` job in
 # .github/workflows/test.yml):
-#   core     the PR test matrix: unit and integration tests, no API keys
-#   service  the API-key suite; skipped on fork and Dependabot PRs
-# A segment that a PR does not run is carried forward from the last commit
-# that did, so it does not show up as a drop.
+#   core     every leg of the PR test matrix; skips the API-key tests
+#   service  the full suite plus the API-key tests (`make test-all` on
+#            Python 3.11); fork PRs skip it, and Dependabot PRs upload
+#            nothing because they get no token
+# Only `service` is carried forward (individual_flags below): on a fork PR,
+# Codecov uses main's last service report. A new segment that PRs can skip
+# needs its own entry there, plus a loop entry and an upload step in the
+# `coverage` job in .github/workflows/test.yml.
 coverage:
   status:
     project:
