@@ -81,10 +81,11 @@ class RedisModuleVersionError(RedisVLError):
 
 
 # redis-py raises a ResponseError subclass for most error codes that mean the
-# check itself failed, but leaves BUSY (a script or function is running)
-# unmapped, so it arrives as a bare ResponseError with the code still leading
-# the message.
-_UNMAPPED_TRANSIENT_ERROR_CODES = frozenset({"BUSY"})
+# check itself failed, but leaves these unmapped, so they arrive as a bare
+# ResponseError with the code still leading the message: BUSY while a script or
+# function runs, and ERRCLUSTER, which Redis Search's FT.INFO sends on a cluster
+# whose topology is not yet initialized.
+_UNMAPPED_TRANSIENT_ERROR_CODES = frozenset({"BUSY", "ERRCLUSTER"})
 
 
 def _is_missing_index_error(exc: RedisSearchError) -> bool:
@@ -94,8 +95,8 @@ def _is_missing_index_error(exc: RedisSearchError) -> bool:
     wording changes between Redis versions, so the reply is classified by type
     and leading error code, never by the wording after the code. Error codes
     redis-py maps to a subclass (``NOPERM``, ``LOADING``, ``CLUSTERDOWN`` and
-    others), connection failures and an unmapped ``BUSY`` reply all mean the
-    check failed.
+    others), connection failures and the unmapped ``BUSY`` and ``ERRCLUSTER``
+    replies all mean the check failed.
 
     Args:
         exc: A :class:`RedisSearchError` wrapping the ``redis-py`` exception

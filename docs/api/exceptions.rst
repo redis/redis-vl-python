@@ -194,11 +194,12 @@ message, which is the reason to prefer it over catching errors from
 :meth:`~redisvl.index.SearchIndex.info`. redis-py raises a plain ``ResponseError`` for an
 ordinary error reply, and a more specific exception for the replies that mean the check
 itself failed, such as ``NoPermissionError``, ``BusyLoadingError`` or ``ClusterDownError``;
-connection failures are not ``ResponseError`` at all. The exception is ``BUSY``, sent while
-a script or function is running, which redis-py leaves as a plain ``ResponseError``.
-``exists()`` returns ``False`` only for a plain ``ResponseError`` whose reply does not start
-with ``BUSY``, and re-raises everything else, so a permission, connection or busy-server
-failure is never reported as an absent index.
+connection failures are not ``ResponseError`` at all. The exceptions are ``BUSY``, sent
+while a script or function is running, and ``ERRCLUSTER``, which Redis Search sends on a
+cluster whose topology is not yet initialized; redis-py leaves both as a plain
+``ResponseError``. ``exists()`` returns ``False`` only for a plain ``ResponseError`` whose
+reply starts with neither code, and re-raises everything else, so a permission, connection,
+busy-server or cluster-startup failure is never reported as an absent index.
 
 .. code-block:: python
 
@@ -215,8 +216,8 @@ failure is never reported as an absent index.
             index.create()
 
 When you do need the distinction elsewhere, apply the same rule to ``e.__cause__``, the
-original redis-py exception: a plain ``ResponseError`` that does not start with ``BUSY``
-means the index is absent, and anything else means the check failed.
+original redis-py exception: a plain ``ResponseError`` that starts with neither ``BUSY`` nor
+``ERRCLUSTER`` means the index is absent, and anything else means the check failed.
 
 Catching everything
 -------------------
