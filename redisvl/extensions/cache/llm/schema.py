@@ -128,6 +128,8 @@ class SemanticCacheIndexSchema(IndexSchema):
                         "dims": vector_dims,
                         "datatype": dtype,
                         "distance_metric": "cosine",
+                        # SemanticCache.check() filters an exact KNN by
+                        # threshold; HNSW would make its hits approximate.
                         "algorithm": "flat",
                     },
                 },
