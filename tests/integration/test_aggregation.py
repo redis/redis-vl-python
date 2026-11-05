@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from redisvl.index import SearchIndex
@@ -133,6 +134,59 @@ def test_hybrid_query(index):
         >= results[1]["hybrid_score"]
         >= results[2]["hybrid_score"]
     )
+
+
+def test_aggregate_cosine_similarity_does_not_exceed_one(redis_url, redis_test_name):
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": redis_test_name("aggregate_cosine_clamp"),
+                "prefix": redis_test_name("aggregate_cosine_clamp"),
+            },
+            "fields": [
+                {"name": "text", "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 384,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+    index.create(overwrite=True, drop=True)
+
+    try:
+        rng = np.random.default_rng(0)
+        vector = rng.standard_normal((8, 384)).astype(np.float32)[7]
+        index.load([{"id": "self", "text": "match", "embedding": vector.tobytes()}])
+
+        hybrid_results = index.query(
+            AggregateHybridQuery(
+                text="match",
+                text_field_name="text",
+                vector=vector.tobytes(),
+                vector_field_name="embedding",
+                num_results=1,
+                stopwords=None,
+            )
+        )
+        assert float(hybrid_results[0]["vector_similarity"]) <= 1
+
+        multi_vector_results = index.query(
+            MultiVectorQuery(
+                vectors=Vector(vector=vector.tobytes(), field_name="embedding"),
+                num_results=1,
+            )
+        )
+        assert float(multi_vector_results[0]["score_0"]) <= 1
+    finally:
+        index.delete(drop=True)
 
 
 def test_empty_query_string():
