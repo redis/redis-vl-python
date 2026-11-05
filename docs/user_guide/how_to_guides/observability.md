@@ -193,7 +193,7 @@ export OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=SPAN_ONLY
 With `SPAN_ONLY` or `SPAN_AND_EVENT`, the `retrieval` span also records:
 
 - `gen_ai.retrieval.query.text`: the prompt, whenever the lookup was passed one, even alongside a vector.
-- `gen_ai.retrieval.documents`: a JSON list of the candidates' entry ids and scores. Each `score` is the raw vector distance, so lower is closer, unlike the relevance score the GenAI conventions describe. Entry ids are unsalted SHA-256 hashes of the stored prompt and filters, so treat them as content too.
+- `gen_ai.retrieval.documents`: a JSON list of the candidates' entry ids and scores. Each `score` is the cosine similarity, `1 - distance`, so higher is closer, as the GenAI conventions define a relevance score; the nearest raw distance stays on `redisvl.cache.distance`. Entry ids are unsalted SHA-256 hashes of the stored prompt and filters, so treat them as content too.
 
 RedisVL never records response text, but the variable is process-wide: other GenAI instrumentations that read it may also start recording prompts and responses. Unlike some of them, RedisVL does not treat `true` as a span mode, and needs no stability opt-in. It reads the variable once, on the first cache lookup.
 

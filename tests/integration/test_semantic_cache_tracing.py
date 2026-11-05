@@ -263,4 +263,6 @@ def test_span_content_capture_records_the_query_and_documents(
     assert span.attributes[otel.GEN_AI_RETRIEVAL_QUERY_TEXT] == "near paris"
     (document,) = json.loads(span.attributes[otel.GEN_AI_RETRIEVAL_DOCUMENTS])
     assert document["id"] == hit["entry_id"]
-    assert document["score"] == pytest.approx(0.02, abs=0.005)
+    # A relevance score, higher for closer matches, beside the raw distance.
+    assert document["score"] == pytest.approx(0.98, abs=0.005)
+    assert document["score"] == pytest.approx(1 - span.attributes[otel.CACHE_DISTANCE])

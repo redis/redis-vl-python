@@ -124,9 +124,10 @@ def record_lookup(
 ) -> None:
     """Record on the retrieval span what a lookup found, on a miss as well as a hit.
 
-    With content capture on, each document's ``score`` is its raw vector
-    distance, so lower is closer, unlike the relevance score the GenAI
-    conventions describe. No single conversion suits every distance metric.
+    With content capture on, each document's ``score`` is its cosine
+    similarity, ``1 - distance``, so higher is closer, as the GenAI conventions
+    define a relevance score. The cache's index always uses cosine distance.
+    The nearest raw distance stays on ``redisvl.cache.distance``.
     """
     try:
         scored = _scored(candidates)
@@ -140,7 +141,7 @@ def record_lookup(
             documents = [
                 {
                     "id": candidate.get(ENTRY_ID_FIELD_NAME),
-                    "score": float(candidate[VectorQuery.DISTANCE_ID]),
+                    "score": 1.0 - float(candidate[VectorQuery.DISTANCE_ID]),
                 }
                 for candidate in scored
             ]
