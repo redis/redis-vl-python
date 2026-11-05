@@ -26,6 +26,16 @@ from redisvl.utils.utils import match_pattern
 logger = get_logger(__name__)
 
 
+def parse_percent_indexed(info: Dict[str, Any]) -> float:
+    """Return ``percent_indexed`` from FT.INFO as a float.
+
+    RESP2 reports it as a string and RESP3 as a float. Preserve zero in
+    either representation; only a missing value defaults to fully indexed.
+    """
+    progress = info.get("percent_indexed")
+    return float(progress) if progress is not None else 1.0
+
+
 def list_indexes(
     *, redis_url: Optional[str] = None, redis_client: Optional[Any] = None
 ):
