@@ -198,15 +198,15 @@ def build_code_tool_spec(
 def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None:
     """Register one code tool against ``binding_id``."""
 
-    def retryable_write_warned(error: RedisVLMCPError) -> RedisVLMCPError:
-        # A retry runs the whole tool again, including any writes it made
-        # before it failed. A tool that raises RedisVLMCPError itself has
-        # chosen its own message, so only errors mapped here get the warning.
-        if spec.writes and error.retryable:
+    def warn_if_writing(error: RedisVLMCPError) -> RedisVLMCPError:
+        # A writing tool may have stored records before it failed, and clients
+        # see only the message, not whether the error is retryable, so the
+        # warning goes on every failure the server maps except invalid_request,
+        # which a tool usually raises before it writes. A tool that raises
+        # RedisVLMCPError itself has chosen its own message and gets none.
+        if spec.writes and error.code is not MCPErrorCode.INVALID_REQUEST:
             return with_partial_write_warning(
-                error,
-                "the tool may have written some records before it failed, "
-                "and a retry runs it again",
+                error, "the tool may have written some records before it failed"
             )
         return error
 
@@ -238,7 +238,7 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
                 # code too, so a tool cannot hold a request open indefinitely.
                 return await asyncio.wait_for(spec.fn(ctx, **kwargs), timeout)
             except asyncio.TimeoutError as exc:
-                raise retryable_write_warned(
+                raise warn_if_writing(
                     RedisVLMCPError(
                         f"tool '{spec.name}' did not finish within {timeout:g}s",
                         code=MCPErrorCode.BACKEND_UNAVAILABLE,
@@ -248,7 +248,7 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
         except RedisVLMCPError:
             raise
         except Exception as exc:
-            raise retryable_write_warned(map_exception(exc)) from exc
+            raise warn_if_writing(map_exception(exc)) from exc
 
     code_tool.__name__ = spec.name.replace("-", "_")
     code_tool.__doc__ = spec.description

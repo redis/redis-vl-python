@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from conftest import _schema
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ResponseError
 
 fastmcp = pytest.importorskip(
     "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
@@ -456,16 +457,35 @@ async def test_an_mcp_error_from_the_tool_passes_through_unchanged(monkeypatch):
     assert exc_info.value is error
 
 
+def _wrapped(cause: Exception) -> RedisVLError:
+    error = RedisVLError("Failed to load data")
+    error.__cause__ = cause
+    return error
+
+
 @pytest.mark.parametrize("writes", [True, False])
 @pytest.mark.parametrize(
-    "raised", [RedisVLError("Failed to load data"), asyncio.TimeoutError()]
+    "raised, warned",
+    [
+        pytest.param(
+            _wrapped(RedisConnectionError("down")), True, id="lost-connection"
+        ),
+        pytest.param(asyncio.TimeoutError(), True, id="timeout"),
+        pytest.param(_wrapped(ResponseError("WRONGTYPE")), True, id="reply-error"),
+        pytest.param(ValueError("bad sku"), False, id="invalid-request"),
+        pytest.param(
+            RedisVLMCPError(
+                "down", code=MCPErrorCode.BACKEND_UNAVAILABLE, retryable=True
+            ),
+            False,
+            id="tool-chose-message",
+        ),
+    ],
 )
-async def test_only_a_writing_tool_warns_that_a_retryable_failure_may_be_partial(
-    monkeypatch, writes, raised
+async def test_a_writing_tool_warns_that_a_failure_may_have_written_records(
+    monkeypatch, writes, raised, warned
 ):
     _as_caller(monkeypatch)
-    if isinstance(raised, RedisVLError):
-        raised.__cause__ = RedisConnectionError("down")
 
     async def failing(ctx: ToolContext, ticket_id: str) -> dict:
         """Close a ticket."""
@@ -474,8 +494,7 @@ async def test_only_a_writing_tool_warns_that_a_retryable_failure_may_be_partial
     with pytest.raises(RedisVLMCPError) as exc_info:
         await _registered(failing, writes=writes)(ticket_id="t1")
 
-    assert exc_info.value.retryable is True
-    assert ("may have written" in str(exc_info.value)) is writes
+    assert ("may have written" in str(exc_info.value)) is (writes and warned)
 
 
 # --------------------------------------------------------------------------
