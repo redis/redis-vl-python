@@ -321,7 +321,7 @@ def test_svs_vamana_compression_yaml_round_trip(tmp_path, member):
                     "attrs": {
                         "algorithm": "svs-vamana",
                         "dims": 8,
-                        "compression": member.value,
+                        "compression": member.value.lower(),
                     },
                 }
             ],
@@ -332,3 +332,6 @@ def test_svs_vamana_compression_yaml_round_trip(tmp_path, member):
 
     loaded_schema = IndexSchema.from_yaml(str(yaml_file))
     assert loaded_schema.fields["vector"].attrs.compression == member
+    # Lower-case input is normalized; pin the canonical FT.CREATE argument
+    args = loaded_schema.fields["vector"].as_redis_field().args
+    assert args[args.index("COMPRESSION") + 1] == member.value
