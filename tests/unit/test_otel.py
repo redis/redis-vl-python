@@ -76,14 +76,16 @@ def test_error_type_qualifies_all_but_builtin_exceptions():
 
 def _broken_tracer(monkeypatch, sampler=None, processor=None):
     """Point RedisVL at an SDK tracer whose sampler or span processor raises."""
-    sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
-    provider = sdk_trace.TracerProvider(**({"sampler": sampler} if sampler else {}))
+    from opentelemetry.sdk.trace import TracerProvider
+
+    provider = TracerProvider(**({"sampler": sampler} if sampler else {}))
     if processor:
         provider.add_span_processor(processor)
     monkeypatch.setattr(otel, "get_tracer", lambda: provider.get_tracer("redisvl"))
 
 
 def test_a_raising_sampler_still_runs_the_operation(monkeypatch):
+    pytest.importorskip("opentelemetry.sdk")
     from opentelemetry.sdk.trace.sampling import Sampler
 
     class RaisingSampler(Sampler):
@@ -101,6 +103,7 @@ def test_a_raising_sampler_still_runs_the_operation(monkeypatch):
 
 
 def test_a_raising_processor_keeps_the_operation_outcome(monkeypatch):
+    pytest.importorskip("opentelemetry.sdk")
     from opentelemetry.sdk.trace import SpanProcessor
 
     class RaisingProcessor(SpanProcessor):
