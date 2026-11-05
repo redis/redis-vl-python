@@ -98,7 +98,8 @@ class HybridQuery:
                 fusion scope.
             rrf_constant: The constant to use for the reciprocal rank fusion (RRF) combination method. Controls decay
                 of rank influence.
-            linear_alpha: The weight of the text query for the linear combination method (LINEAR).
+            linear_alpha: The weight of the text query for the linear combination method (LINEAR). Both the text and
+                vector searches still run at 0 and 1, so use `VectorQuery` or `TextQuery` when only one is needed.
             yield_combined_score_as: The name of the field to yield the combined score as.
             dtype: The data type of the vector. Defaults to "float32".
             num_results: The number of results to return.
@@ -333,14 +334,14 @@ def build_combination_method(
     method_params: dict[str, Any] = {}
     if combination_method == "RRF":
         method = CombinationMethods.RRF
-        if rrf_window:
+        if rrf_window is not None:
             method_params["WINDOW"] = rrf_window
-        if rrf_constant:
+        if rrf_constant is not None:
             method_params["CONSTANT"] = rrf_constant
 
     elif combination_method == "LINEAR":
         method = CombinationMethods.LINEAR
-        if linear_alpha:
+        if linear_alpha is not None:
             method_params["ALPHA"] = linear_alpha
             method_params["BETA"] = 1 - linear_alpha
 
