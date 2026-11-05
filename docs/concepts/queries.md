@@ -136,6 +136,15 @@ Use when neither pure keyword search nor pure semantic search gives good enough 
 HybridQuery requires Redis >= 8.4.0 and redis-py >= 7.1.0.
 ```
 
+For explicit `vector_search_method="KNN"` or `"RANGE"`, the optional tuning
+parameters default to `None`. RedisVL omits these parameters and leaves tuning
+to Redis. Set `knn_ef_runtime` only for HNSW,
+and `range_epsilon` only for HNSW or SVS-VAMANA. FLAT supports neither option.
+Explicit values, including zero, are sent to Redis for validation.
+
+`"RANGE"` requires `range_radius`. A radius of `0` is valid. Omitting the radius
+raises `ValueError`.
+
 ### AggregateHybridQuery
 
 Similar to HybridQuery but uses Redis aggregation pipelines. Provides more control over score combination and result processing.
