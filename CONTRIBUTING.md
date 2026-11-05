@@ -174,11 +174,15 @@ uv run pytest tests/unit/test_fields.py -v
 # Run the Redis Cluster tests, which are skipped by default
 uv run pytest --run-cluster-tests -m requires_cluster
 
-# Run tests with coverage
-uv run pytest --cov=redisvl --cov-report=html
+# Run tests with coverage (writes an HTML report to htmlcov/)
+make test ARGS="--cov --cov-report=html"
 ```
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
+
+#### Coverage in CI
+
+CI measures coverage in segments and uploads each to Codecov under its own flag: `core` (the pull-request test matrix) and `service` (the tests that need API keys). Fork and Dependabot pull requests skip the service tests, so Codecov carries that segment forward from `main`. The `Coverage` job's summary on each workflow run shows the totals per segment. Coverage is reported, not enforced.
 
 Where such an API is a *shared, stateful* service -- one managed instance reached by
 every xdist worker and every concurrent CI run -- tests must namespace everything
