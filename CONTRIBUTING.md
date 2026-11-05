@@ -182,7 +182,7 @@ make test ARGS="--cov --cov-report=html"
 
 #### Coverage in CI
 
-CI measures coverage in segments and uploads each to Codecov under its own flag: `core` (the pull-request test matrix) and `service` (the tests that need API keys). Fork and Dependabot pull requests skip the service tests, so Codecov carries that segment forward from `main`. The `Coverage` job's summary on each workflow run shows the totals per segment. Coverage is reported, not enforced.
+CI measures coverage in segments and uploads each to Codecov under its own flag: `core` (every leg of the pull-request test matrix, which skips the tests that need API keys) and `service` (the full suite including those tests, run by `make test-all` on Python 3.11). Fork pull requests skip the service job, so Codecov fills in `service` from `main`. Because `service` covers nearly the whole suite, the headline number on a fork pull request can hide a drop; read the `core` row in the Codecov comment for the change itself. Dependabot pull requests get no Codecov token, so they aren't reported to Codecov. Either way, the `Coverage` job's summary on each workflow run shows the totals per segment. Coverage is reported, not enforced.
 
 Where such an API is a *shared, stateful* service -- one managed instance reached by
 every xdist worker and every concurrent CI run -- tests must namespace everything
