@@ -170,9 +170,10 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     # Runs whenever the test jobs finish, pass or fail: coverage from a red run
-    # is still a measurement, and a skipped service run (fork PRs) just leaves
-    # that segment out. Codecov carries the missing segment forward.
-    needs: [test, service-tests]
+    # is still a measurement. A skipped job (service-tests on fork PRs,
+    # cluster-tests on every PR and push) just leaves its segment out, and
+    # Codecov carries that segment forward.
+    needs: [test, service-tests, cluster-tests]
     if: ${{ !cancelled() }}
     steps:
       - name: Check out repository
@@ -225,7 +226,9 @@ jobs:
           # absorb any ./.coverage.* file beside it.
           mkdir -p coverage-segments
           segments=()
-          for seg in core service; do
+          # A new segment also needs its job in `needs` above, an upload step
+          # below, and a carryforward entry in codecov.yml if PRs can skip it.
+          for seg in core service cluster; do
             files=(coverage-data/.coverage."$seg"*)
             if [ ${#files[@]} -eq 0 ]; then
               echo "| $seg | 0 | not run |" >> "$GITHUB_STEP_SUMMARY"
@@ -285,6 +288,16 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-service.xml
           flags: service
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload cluster coverage to Codecov
+        if: ${{ steps.combine.outputs.cluster == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-cluster.xml
+          flags: cluster
           disable_search: true
           fail_ci_if_error: false
 
@@ -364,7 +377,18 @@ jobs:
         # -n 0: the cluster publishes fixed ports 7001-7006, so per-worker
         # clusters under xdist would collide.
         run: |
-          uv run python -m pytest -n 0 --log-level=CRITICAL --run-cluster-tests -m requires_cluster tests/
+          leg="cluster-redis-py-${REDIS_PY_VERSION}"
+          echo "COVERAGE_LEG=$leg" >> "$GITHUB_ENV"
+          COVERAGE_FILE=".coverage.$leg" uv run python -m pytest -n 0 --log-level=CRITICAL --run-cluster-tests -m requires_cluster --cov --cov-report= tests/
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ env.COVERAGE_LEG }}
+          path: .coverage.${{ env.COVERAGE_LEG }}
+          include-hidden-files: true   # the data file is a dotfile
+          retention-days: 7
 
   notebooks:
     name: Notebook Validation
