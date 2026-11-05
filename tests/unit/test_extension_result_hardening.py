@@ -61,6 +61,15 @@ def test_process_cache_results_bad_then_valid_ordering():
     assert redis_keys == ["llmcache:key1"]  # only the valid hit's key
 
 
+def test_within_threshold_leaves_id_only_hit_for_the_skip_path():
+    """The threshold filter must not raise on a hit with no distance."""
+    far_hit = {**_valid_cache_hit(), "vector_distance": "0.3"}
+    candidates = [{"id": "llmcache:expired"}, far_hit]
+    assert SemanticCache._within_threshold(candidates, 0.2) == [
+        {"id": "llmcache:expired"}
+    ]
+
+
 @pytest.mark.parametrize("as_text", [True, False])
 def test_format_context_drops_id_only_message(as_text, caplog):
     """A message with 'id' but no entry_id/session_tag hits the KeyError arm."""

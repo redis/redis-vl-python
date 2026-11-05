@@ -10,6 +10,7 @@ import yaml
 from redis.asyncio.client import Redis as AsyncRedis
 
 from redisvl.migration import AsyncMigrationPlanner, MigrationPlanner
+from redisvl.migration.models import SchemaPatch
 from redisvl.schema.schema import IndexSchema
 
 
@@ -160,6 +161,32 @@ async def test_async_create_plan_from_schema_patch(monkeypatch, tmp_path):
     written_plan = yaml.safe_load(plan_path.read_text())
     assert written_plan["mode"] == "drop_recreate"
     assert written_plan["diff_classification"]["supported"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("progress, expect_warning", [(0.0, True), (1.0, False)])
+async def test_async_plan_warns_when_source_still_indexing(
+    monkeypatch, progress, expect_warning
+):
+    dummy_index = AsyncDummyIndex(
+        _make_source_schema(), {"percent_indexed": progress}, []
+    )
+
+    async def mock_from_existing(*args, **kwargs):
+        return dummy_index
+
+    monkeypatch.setattr(
+        "redisvl.migration.async_planner.AsyncSearchIndex.from_existing",
+        mock_from_existing,
+    )
+
+    plan = await AsyncMigrationPlanner().create_plan_from_patch(
+        "docs", schema_patch=SchemaPatch()
+    )
+
+    assert (
+        any("still building" in warning for warning in plan.warnings) is expect_warning
+    )
 
 
 @pytest.mark.asyncio
