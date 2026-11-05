@@ -1,11 +1,14 @@
-"""RedisVL's OpenTelemetry plumbing: scope, off switch and the no-SDK path."""
+"""RedisVL's OpenTelemetry plumbing: scope, off switch, and running with only
+the API or with no OpenTelemetry at all."""
 
+import importlib.metadata
 import json
 import subprocess
 import sys
 import textwrap
 
 import pytest
+from packaging.requirements import Requirement
 
 from redisvl.utils import otel
 from redisvl.version import __version__
@@ -111,3 +114,85 @@ def test_without_an_sdk_redisvl_configures_nothing_and_costs_microseconds():
         "meter_provider": "_ProxyMeterProvider",
         "redis_py_initialised": False,
     }
+
+
+def test_opentelemetry_is_only_ever_an_optional_dependency():
+    requirements = [
+        Requirement(line)
+        for line in importlib.metadata.requires("redisvl") or []
+        if Requirement(line).name.startswith("opentelemetry")
+    ]
+    assert requirements, "expected the otel extra to require opentelemetry-api"
+    for requirement in requirements:
+        assert requirement.marker is not None and not requirement.marker.evaluate(
+            {"extra": ""}
+        ), f"{requirement} is installed without an extra"
+
+
+def test_without_opentelemetry_redisvl_imports_and_uses_its_stand_ins():
+    """With OpenTelemetry hidden, no RedisVL module may fail to import because
+    of it, and the stand-ins must work.
+
+    Runs in a fresh interpreter, where an import hook makes every
+    ``opentelemetry`` import fail as it would if the package were absent. A
+    failure counts only when RedisVL's own code made the import: fastmcp, for
+    one, requires OpenTelemetry itself, and other modules may lack their own
+    optional dependencies.
+    """
+    code = textwrap.dedent("""
+        import importlib, json, pkgutil, sys, traceback
+        from importlib.abc import MetaPathFinder
+        from pathlib import Path
+
+        class HideOpenTelemetry(MetaPathFinder):
+            def find_spec(self, name, path=None, target=None):
+                if name == "opentelemetry" or name.startswith("opentelemetry."):
+                    raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+                return None
+
+        sys.meta_path.insert(0, HideOpenTelemetry())
+
+        import redisvl
+        from redisvl.utils import otel
+
+        package = Path(redisvl.__file__).parent
+
+        def importer(error):
+            # The innermost frame that is not the import machinery or this hook.
+            frames = [
+                frame.filename
+                for frame in traceback.extract_tb(error.__traceback__)
+                if not frame.filename.startswith("<")
+            ]
+            return Path(frames[-1]) if frames else None
+
+        broken = {}
+        for module in pkgutil.walk_packages(redisvl.__path__, "redisvl."):
+            try:
+                importlib.import_module(module.name)
+            except ImportError as error:
+                source = importer(error)
+                if (error.name or "").startswith("opentelemetry") and (
+                    source is not None and package in source.parents
+                ):
+                    broken[module.name] = f"{source.name}: {error}"
+
+        with otel.get_tracer().start_as_current_span("probe") as span:
+            span.set_attribute(otel.CACHE_NAME, "cache")
+        otel.get_meter().create_histogram("probe").record(1.0)
+
+        print(json.dumps({
+            "broken": broken,
+            "recording": span.is_recording(),
+            "opentelemetry_loaded": any(
+                name.startswith("opentelemetry") for name in sys.modules
+            ),
+        }))
+        """)
+    result = json.loads(
+        subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        ).stdout
+    )
+
+    assert result == {"broken": {}, "recording": False, "opentelemetry_loaded": False}
