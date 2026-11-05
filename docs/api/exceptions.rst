@@ -194,12 +194,11 @@ message, which is the reason to prefer it over catching errors from
 :meth:`~redisvl.index.SearchIndex.info`. redis-py raises a plain ``ResponseError`` for an
 ordinary error reply, and a more specific exception for the replies that mean the check
 itself failed, such as ``NoPermissionError``, ``ReadOnlyError`` or ``ClusterDownError``;
-connection failures are not ``ResponseError`` at all. ``exists()`` returns ``False`` only
-for a plain ``ResponseError`` and re-raises everything else, so a permission or connection
-failure is never reported as an absent index. A server without Redis Search answers
-``FT.INFO`` with a plain ``unknown command`` reply, so ``exists()`` returns ``False`` there
-too, and :meth:`~redisvl.index.SearchIndex.create` then raises the same error from
-``FT.CREATE``.
+connection failures are not ``ResponseError`` at all. The exception is ``BUSY``, sent while
+a script or function is running, which redis-py leaves as a plain ``ResponseError``.
+``exists()`` returns ``False`` only for a plain ``ResponseError`` whose reply does not start
+with ``BUSY``, and re-raises everything else, so a permission, connection or busy-server
+failure is never reported as an absent index.
 
 .. code-block:: python
 
@@ -215,10 +214,9 @@ too, and :meth:`~redisvl.index.SearchIndex.create` then raises the same error fr
         if "no such index" in str(e):  # breaks on Redis 8.8
             index.create()
 
-When you do need the distinction elsewhere, check the type of ``e.__cause__``, the
-original redis-py exception, rather than the :class:`RedisSearchError` message: the
-wrapper interpolates the index name, so an index whose name happens to contain one of the
-wordings above would make an unrelated failure look like an absence.
+When you do need the distinction elsewhere, apply the same rule to ``e.__cause__``, the
+original redis-py exception: a plain ``ResponseError`` that does not start with ``BUSY``
+means the index is absent, and anything else means the check failed.
 
 Catching everything
 -------------------

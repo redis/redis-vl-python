@@ -80,24 +80,21 @@ class RedisModuleVersionError(RedisVLError):
         return cls(message)
 
 
+# redis-py raises a ResponseError subclass for most error codes that mean the
+# check itself failed, but leaves BUSY (a script or function is running)
+# unmapped, so it arrives as a bare ResponseError with the code still leading
+# the message.
+_UNMAPPED_TRANSIENT_ERROR_CODES = frozenset({"BUSY"})
+
+
 def _is_missing_index_error(exc: RedisSearchError) -> bool:
     """Check whether a failed ``FT.INFO`` means the index does not exist.
 
-    Redis Search reports an absent index as a plain error reply whose wording
-    changes between versions, so the reply is classified by type, not text.
-    redis-py raises a bare :class:`~redis.exceptions.ResponseError` for an
-    ordinary error reply and a more specific exception for the replies that
-    mean the check itself failed (``NOPERM``, ``NOAUTH``, ``LOADING``,
-    ``READONLY``, ``CLUSTERDOWN``, ``TRYAGAIN`` and others, mapped by prefix in
-    redis-py's parser); connection and timeout failures are not
-    ``ResponseError`` at all. ``FT.INFO`` takes a single index name, so a bare
-    error reply to it is, in practice, the missing-index reply.
-
-    The other known bare reply is ``unknown command``, from a server without
-    Redis Search. It is read as "missing" too. Either way a misread yields
-    ``False``, never ``True``, so :meth:`~redisvl.index.SearchIndex.create`
-    goes on to run ``FT.CREATE``, which raises the server's real error rather
-    than dropping anything.
+    An absent index is a bare :class:`~redis.exceptions.ResponseError` whose
+    wording changes between Redis versions, so the reply is classified by type
+    and error code, never by text. Error codes redis-py maps to a subclass
+    (``NOPERM``, ``READONLY``, ``LOADING`` and others), connection failures and
+    an unmapped ``BUSY`` reply all mean the check failed.
 
     Args:
         exc: A :class:`RedisSearchError` wrapping the ``redis-py`` exception
@@ -106,4 +103,7 @@ def _is_missing_index_error(exc: RedisSearchError) -> bool:
     Returns:
         bool: True if the error indicates a missing index, False otherwise.
     """
-    return type(exc.__cause__) is ResponseError
+    cause = exc.__cause__
+    if type(cause) is not ResponseError:
+        return False
+    return str(cause).split(" ", 1)[0] not in _UNMAPPED_TRANSIENT_ERROR_CODES
