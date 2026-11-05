@@ -1,0 +1,28 @@
+# Coverage is reported, not enforced: both statuses are informational until
+# we have enough history to choose a target.
+#
+# Each CI segment uploads under its own flag (see the `coverage` job in
+# .github/workflows/test.yml):
+#   core     the PR test matrix: unit and integration tests, no API keys
+#   service  the API-key suite; skipped on fork and Dependabot PRs
+# A segment that a PR does not run is carried forward from the last commit
+# that did, so it does not show up as a drop.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+flag_management:
+  default_rules:
+    carryforward: false
+  individual_flags:
+    - name: service
+      carryforward: true
+
+comment:
+  layout: "condensed_header, diff, flags"
+  require_changes: true

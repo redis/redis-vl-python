@@ -8,6 +8,10 @@ inputs:
   uv-version:
     description: 'uv version to use'
     required: true
+  pytest-args:
+    description: 'Extra arguments passed to pytest through `make test-all`'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -61,5 +65,7 @@ runs:
 
     - name: Run full test suite
       shell: bash
+      env:
+        PYTEST_ARGS: ${{ inputs.pytest-args }}
       run: |
-        make test-all
+        make test-all ARGS="$PYTEST_ARGS"
