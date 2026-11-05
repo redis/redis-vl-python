@@ -10,9 +10,10 @@
 #   cluster  the `requires_cluster` tests, on the nightly schedule and manual
 #            runs only
 # `service` and `cluster` are carried forward (individual_flags below): on a
-# run that skips one, Codecov uses the last report for that flag. A new
-# segment that PRs can skip needs its own entry there, plus a loop entry and
-# an upload step in the `coverage` job in .github/workflows/test.yml.
+# run that skips one, Codecov copies that flag from the nearest ancestor
+# commit with a report for it. A new segment that PRs can skip needs its own
+# entry there, plus a loop entry and an upload step in the `coverage` job in
+# .github/workflows/test.yml.
 coverage:
   status:
     project:
