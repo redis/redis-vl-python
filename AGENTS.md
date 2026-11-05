@@ -76,6 +76,8 @@ RedisVL uses `pytest` with `testcontainers` for testing.
 - `pytest --run-api-tests` - explicitly run API-dependent tests (e.g., LangCache,
   external vectorizer/reranker providers). These require the appropriate API
   keys and environment variables to be set.
+- Coverage: `make test ARGS="--cov"`. CI uploads it to Codecov per segment (flags `core`
+  and `service`); see "Coverage in CI" in CONTRIBUTING.md. It is reported, not enforced.
 
 ## Project Structure
 

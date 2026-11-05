@@ -32,6 +32,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           uv-version: ${{ env.UV_VERSION }}
+          pytest-args: --cov --cov-report=
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -61,6 +62,16 @@ jobs:
           LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
           LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
           LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
+          COVERAGE_FILE: .coverage.service
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-service
+          path: .coverage.service
+          include-hidden-files: true   # the data file is a dotfile
+          retention-days: 7
 
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
@@ -140,7 +151,142 @@ jobs:
 
       - name: Run tests
         run: |
-          make test
+          # One data file per leg; the coverage job combines them. Artifact
+          # names cannot contain ':', so `redis:8.4` becomes `redis-8.4`.
+          leg="core-py${{ matrix.python-version }}-redis-py-${REDIS_PY_VERSION}-${REDIS_IMAGE//:/-}"
+          echo "COVERAGE_LEG=$leg" >> "$GITHUB_ENV"
+          COVERAGE_FILE=".coverage.$leg" make test ARGS="--cov --cov-report="
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ env.COVERAGE_LEG }}
+          path: .coverage.${{ env.COVERAGE_LEG }}
+          include-hidden-files: true   # the data file is a dotfile
+          retention-days: 7
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    # Runs whenever the test jobs finish, pass or fail: coverage from a red run
+    # is still a measurement, and a skipped service run (fork PRs) just leaves
+    # that segment out. Codecov carries the missing segment forward.
+    needs: [test, service-tests]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install coverage
+        # The dev group pins coverage through pytest-cov, so this reads the
+        # data with the same coverage version that wrote it.
+        run: |
+          uv sync --frozen --only-group dev --no-install-project
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: coverage-data
+          merge-multiple: true
+
+      - name: Combine coverage
+        id: combine
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cov() { uv run --no-sync coverage "$@"; }
+
+          {
+            echo "## Coverage"
+            echo
+            echo "| Segment | Data files | Total |"
+            echo "|---|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Segment data lives in its own directory: `patch = ["subprocess"]`
+          # turns on parallel mode, so reporting on ./.coverage would otherwise
+          # absorb any ./.coverage.* file beside it.
+          mkdir -p coverage-segments
+          segments=()
+          for seg in core service; do
+            files=(coverage-data/.coverage."$seg"*)
+            if [ ${#files[@]} -eq 0 ]; then
+              echo "| $seg | 0 | not run |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            data="coverage-segments/$seg"
+            cov combine --keep --data-file="$data" "${files[@]}"
+            cov xml --data-file="$data" -o "coverage-$seg.xml"
+            echo "| $seg | ${#files[@]} | $(cov report --data-file="$data" --format=total)% |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$seg=true" >> "$GITHUB_OUTPUT"
+            segments+=("$data")
+          done
+
+          if [ ${#segments[@]} -eq 0 ]; then
+            echo "::warning title=No coverage data::No test job uploaded coverage data in this run."
+            exit 0
+          fi
+
+          cov combine --keep --data-file=.coverage "${segments[@]}"
+          cov html -d htmlcov
+          {
+            echo
+            echo "All segments combined: **$(cov report --format=total)%**"
+            echo
+            echo "<details><summary>Per-file report</summary>"
+            echo
+            cov report --format=markdown --skip-covered --sort=cover
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        if: ${{ hashFiles('htmlcov/index.html') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: htmlcov
+          retention-days: 14
+
+      # One upload per segment, each under its own flag. Codecov outages and
+      # tokenless refusals (Dependabot PRs) must never fail CI, hence
+      # fail_ci_if_error: false.
+      - name: Upload core coverage to Codecov
+        if: ${{ steps.combine.outputs.core == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-core.xml
+          flags: core
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload service coverage to Codecov
+        if: ${{ steps.combine.outputs.service == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-service.xml
+          flags: service
+          disable_search: true
+          fail_ci_if_error: false
 
   notebooks:
     name: Notebook Validation

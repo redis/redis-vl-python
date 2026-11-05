@@ -125,6 +125,7 @@ dev = [
     "pylint>=3.1.0,<5",
     "pytest>=9.0.3,<10",
     "pytest-asyncio>=1,<2",
+    "pytest-cov>=7,<8",
     "pytest-xdist[psutil]>=3.6.1,<4",
     "pre-commit>=4.1.0,<5",
     "mypy>=1.11.0,<2",
@@ -177,6 +178,24 @@ exclude = '''
 log_cli = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["redisvl"]
+branch = true
+# Paths are stored relative to the checkout, so data from different CI
+# runners combines into one report.
+relative_files = true
+# The CLI tests run `python -m redisvl.cli.runner` in a subprocess; without
+# this, the CLI is measured as untested.
+patch = ["subprocess"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@overload",
+    "raise NotImplementedError",
+    "^\\s*\\.\\.\\.$",
+]
 
 [tool.mypy]
 warn_unused_configs = true
