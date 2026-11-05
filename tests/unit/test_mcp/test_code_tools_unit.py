@@ -472,7 +472,7 @@ def _wrapped(cause: Exception) -> RedisVLError:
         ),
         pytest.param(asyncio.TimeoutError(), True, id="timeout"),
         pytest.param(_wrapped(ResponseError("WRONGTYPE")), True, id="reply-error"),
-        pytest.param(ValueError("bad sku"), False, id="invalid-request"),
+        pytest.param(ValueError("bad sku"), True, id="invalid-request"),
         pytest.param(
             RedisVLMCPError(
                 "down", code=MCPErrorCode.BACKEND_UNAVAILABLE, retryable=True

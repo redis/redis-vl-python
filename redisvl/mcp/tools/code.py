@@ -199,12 +199,11 @@ def register_code_tool(server: Any, spec: CodeToolSpec, binding_id: str) -> None
     """Register one code tool against ``binding_id``."""
 
     def warn_if_writing(error: RedisVLMCPError) -> RedisVLMCPError:
-        # A writing tool may have stored records before it failed, and clients
-        # see only the message, not whether the error is retryable, so the
-        # warning goes on every failure the server maps except invalid_request,
-        # which a tool usually raises before it writes. A tool that raises
+        # A writing tool may have stored records before it failed, even one
+        # that then rejects its input, and clients see only the message, so
+        # every failure the server maps gets the warning. A tool that raises
         # RedisVLMCPError itself has chosen its own message and gets none.
-        if spec.writes and error.code is not MCPErrorCode.INVALID_REQUEST:
+        if spec.writes:
             return with_partial_write_warning(
                 error, "the tool may have written some records before it failed"
             )
