@@ -11,11 +11,13 @@ RedisVL can report what `SemanticCache` does through [OpenTelemetry](https://ope
 
 RedisVL depends only on the OpenTelemetry API. Your application owns the SDK and the exporters, and RedisVL emits nothing until you configure them. With no SDK configured, the instrumentation adds about 11 µs to a lookup that embeds, measured on an Apple M4 Pro.
 
+`LangCacheSemanticCache` emits the same operation spans and duration points for the operations it implements; it has no retrieval span and no distance, for the reasons under [LangCache](#langcache).
+
 See [Cache LLM Responses](../03_llmcache.ipynb) for how to use the cache itself.
 
 ## Install
 
-Install RedisVL with the `otel` extra, plus the SDK and an exporter of your choice:
+Install RedisVL with the `otel` extra, plus the SDK and an exporter of your choice (a `LangCacheSemanticCache` deployment adds the `langcache` extra too):
 
 ```bash
 pip install "redisvl[otel]" "opentelemetry-sdk>=1.32" opentelemetry-exporter-otlp-proto-http
@@ -99,6 +101,12 @@ A failed operation sets an error status and `error.type` on every RedisVL span i
 There is no counter: the duration histogram's count is the number of operations. Cache-operation buckets start at 100 µs, because a lookup against local Redis takes about 250 µs before embedding, while embedding-duration buckets follow the GenAI conventions' advice, from 10 ms. Distance buckets are 0.01 wide up to 0.1, then coarser up to 2, the maximum cosine distance. To change any of them, use an SDK [View](https://opentelemetry.io/docs/languages/python/instrumentation/#metrics).
 
 Names in the `gen_ai.*` namespace follow the OpenTelemetry GenAI conventions, which are still in Development status and may change in a future release.
+
+## LangCache
+
+`LangCacheSemanticCache` reports the operations it has: `check` and `acheck` carry `redisvl.cache.result`, `store` and `astore` record `store`, and the four `delete_by_*` methods record `drop`. `update` raises `NotImplementedError` for this backend, so no `update` point is recorded and the starter queries skip it; filter on `redisvl.cache.name` to separate the two caches.
+
+Two signals are missing, both because the managed service runs the search: there is no `retrieval` span, since LangCache is one HTTP call with no separate vector search to time, and no `redisvl.semantic_cache.distance` point, since a miss returns no candidates to take a distance from. The tuning below needs `SemanticCache`.
 
 ## Tune the distance threshold
 
