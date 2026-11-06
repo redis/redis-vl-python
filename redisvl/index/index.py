@@ -1077,6 +1077,37 @@ class SearchIndex(BaseSearchIndex):
             self.__redis_client.close()
         self.__redis_client = None
 
+    def _to_async(self) -> "AsyncSearchIndex":
+        """Build an AsyncSearchIndex over the same Redis index.
+
+        An index that manages its own connection passes its URL on, so
+        URL-only setups such as Sentinel keep working. Otherwise the sync
+        client is converted with ``RedisConnectionFactory.sync_to_async_redis``.
+        Either way the new index owns a fresh client and shares this index's
+        schema object; the caller must ``disconnect()`` it.
+
+        Raises:
+            ValueError: If the client cannot be converted (see
+                ``sync_to_async_redis``).
+        """
+        if self._owns_redis_client and self._redis_url:
+            return AsyncSearchIndex(
+                schema=self.schema,
+                redis_url=self._redis_url,
+                connection_kwargs=self._connection_kwargs or None,
+                validate_on_load=self._validate_on_load,
+                lib_name=self._lib_name,
+            )
+        return AsyncSearchIndex(
+            schema=self.schema,
+            redis_client=RedisConnectionFactory.sync_to_async_redis(
+                self._redis_client  # type: ignore[arg-type]
+            ),
+            owns_client=True,
+            validate_on_load=self._validate_on_load,
+            lib_name=self._lib_name,
+        )
+
     @classmethod
     def from_existing(
         cls,
