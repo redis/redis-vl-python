@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Self
 
 from redis.commands.search.query import Query as RedisQuery
 
@@ -134,9 +134,7 @@ class BaseQuery(RedisQuery):
 
         return result
 
-    def sort_by(
-        self, sort_spec: SortSpec | None = None, asc: bool = True
-    ) -> "BaseQuery":
+    def sort_by(self, sort_spec: SortSpec | None = None, asc: bool = True) -> Self:
         """Set the sort order for query results.
 
         This method supports sorting by single or multiple fields. Note that Redis Search
@@ -233,7 +231,7 @@ class BaseQuery(RedisQuery):
         return self._filter_expression
 
     @property
-    def query(self) -> "BaseQuery":
+    def query(self) -> Self:
         """Return self as the query object."""
         return self
 
