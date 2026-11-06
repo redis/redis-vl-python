@@ -2,12 +2,14 @@ from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.utils.vectorize.base import BaseVectorizer, Vectorizers
 from redisvl.utils.vectorize.bedrock import BedrockVectorizer
 from redisvl.utils.vectorize.custom import CustomVectorizer
+from redisvl.utils.vectorize.googlegenai import GoogleGenAIVectorizer
 from redisvl.utils.vectorize.text.azureopenai import AzureOpenAITextVectorizer
 from redisvl.utils.vectorize.text.bedrock import BedrockTextVectorizer
 from redisvl.utils.vectorize.text.cohere import CohereTextVectorizer
 from redisvl.utils.vectorize.text.custom import CustomTextVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
+from redisvl.utils.vectorize.text.ollama import OllamaTextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
 from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
 from redisvl.utils.vectorize.text.voyageai import VoyageAITextVectorizer
@@ -19,10 +21,12 @@ __all__ = [
     "CohereTextVectorizer",
     "HFTextVectorizer",
     "OpenAITextVectorizer",
+    "GoogleGenAIVectorizer",
     "VertexAIVectorizer",
     "VertexAITextVectorizer",
     "AzureOpenAITextVectorizer",
     "MistralAITextVectorizer",
+    "OllamaTextVectorizer",
     "CustomVectorizer",
     "CustomTextVectorizer",
     "BedrockVectorizer",
@@ -55,8 +59,12 @@ def vectorizer_from_dict(
         return HFTextVectorizer(**args)
     elif vectorizer_type == Vectorizers.mistral:
         return MistralAITextVectorizer(**args)
+    elif vectorizer_type == Vectorizers.ollama:
+        return OllamaTextVectorizer(**args)
     elif vectorizer_type == Vectorizers.vertexai:
         return VertexAIVectorizer(**args)
+    elif vectorizer_type == Vectorizers.google_genai:
+        return GoogleGenAIVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:
         return VoyageAIVectorizer(**args)
     else:

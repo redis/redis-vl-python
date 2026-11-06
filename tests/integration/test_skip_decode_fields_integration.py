@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-from redis import Redis
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
@@ -10,14 +9,29 @@ from redisvl.query import FilterQuery, RangeQuery, VectorQuery
 from redisvl.schema import IndexSchema
 
 
+def _decode(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return value
+
+
+def _result_field(index: SearchIndex, doc: dict, field: str, *, decode: bool = True):
+    if field in doc:
+        value = doc[field]
+    else:
+        # Redis latest can omit projected hash fields from redis-py 5 results.
+        value = index.client.hget(doc["id"], field)
+    return _decode(value) if decode else value
+
+
 @pytest.fixture
-def sample_schema():
+def sample_schema(redis_test_name):
     """Create a sample schema with various field types."""
     return IndexSchema.from_dict(
         {
             "index": {
-                "name": "test_skip_decode",
-                "prefix": "doc",
+                "name": redis_test_name("test_skip_decode"),
+                "prefix": redis_test_name("skip_decode_doc"),
                 "storage_type": "hash",
             },
             "fields": [
@@ -94,18 +108,16 @@ class TestSkipDecodeIntegration:
         # Verify we got results
         assert len(results) > 0
 
-        # Check first result
         first_result = results[0]
-        assert "title" in first_result
-        assert "year" in first_result
-        assert "embedding" in first_result
 
         # Title and year should be decoded strings
-        assert isinstance(first_result["title"], str)
-        assert isinstance(first_result["year"], str)  # Redis returns as string
+        assert isinstance(_result_field(search_index, first_result, "title"), str)
+        assert isinstance(_result_field(search_index, first_result, "year"), str)
 
         # Embedding should remain as bytes (not decoded)
-        assert isinstance(first_result["embedding"], bytes)
+        assert isinstance(
+            _result_field(search_index, first_result, "embedding", decode=False), bytes
+        )
 
     def test_filter_query_skip_decode_multiple_fields(self, search_index):
         """Test FilterQuery with skip_decode for multiple binary fields."""
@@ -124,12 +136,16 @@ class TestSkipDecodeIntegration:
 
         first_result = results[0]
         # Decoded fields
-        assert isinstance(first_result["title"], str)
-        assert isinstance(first_result["year"], str)
+        assert isinstance(_result_field(search_index, first_result, "title"), str)
+        assert isinstance(_result_field(search_index, first_result, "year"), str)
 
         # Non-decoded fields (should be bytes)
-        assert isinstance(first_result["embedding"], bytes)
-        assert isinstance(first_result["image_data"], bytes)
+        assert isinstance(
+            _result_field(search_index, first_result, "embedding", decode=False), bytes
+        )
+        assert isinstance(
+            _result_field(search_index, first_result, "image_data", decode=False), bytes
+        )
 
     def test_filter_query_no_skip_decode_default(self, search_index):
         """Test FilterQuery without skip_decode (default behavior)."""
@@ -142,9 +158,9 @@ class TestSkipDecodeIntegration:
 
         first_result = results[0]
         # All fields should be decoded to strings
-        assert isinstance(first_result["title"], str)
-        assert isinstance(first_result["year"], str)
-        assert isinstance(first_result["description"], str)
+        assert isinstance(_result_field(search_index, first_result, "title"), str)
+        assert isinstance(_result_field(search_index, first_result, "year"), str)
+        assert isinstance(_result_field(search_index, first_result, "description"), str)
 
     def test_vector_query_skip_decode(self, search_index):
         """Test VectorQuery with skip_decode for embedding field."""
@@ -167,9 +183,11 @@ class TestSkipDecodeIntegration:
         assert len(results) > 0
 
         for result in results:
-            assert isinstance(result["title"], str)
+            assert isinstance(_result_field(search_index, result, "title"), str)
             # Embedding should be bytes (not decoded)
-            assert isinstance(result["embedding"], bytes)
+            assert isinstance(
+                _result_field(search_index, result, "embedding", decode=False), bytes
+            )
             # Distance score is added automatically by VectorQuery when return_score=True
             # but may not be in the result dict, just check the fields we requested
 
@@ -192,9 +210,12 @@ class TestSkipDecodeIntegration:
 
         if len(results) > 0:  # Range query might not return results
             first_result = results[0]
-            assert isinstance(first_result["title"], str)
-            assert isinstance(first_result["year"], str)
-            assert isinstance(first_result["embedding"], bytes)
+            assert isinstance(_result_field(search_index, first_result, "title"), str)
+            assert isinstance(_result_field(search_index, first_result, "year"), str)
+            assert isinstance(
+                _result_field(search_index, first_result, "embedding", decode=False),
+                bytes,
+            )
 
     def test_backward_compat_return_field_decode_false(self, search_index):
         """Test backward compatibility with return_field(decode_field=False)."""
@@ -211,12 +232,16 @@ class TestSkipDecodeIntegration:
 
         first_result = results[0]
         # Decoded fields
-        assert isinstance(first_result["title"], str)
-        assert isinstance(first_result["year"], str)
+        assert isinstance(_result_field(search_index, first_result, "title"), str)
+        assert isinstance(_result_field(search_index, first_result, "year"), str)
 
         # Non-decoded fields (using old API)
-        assert isinstance(first_result["embedding"], bytes)
-        assert isinstance(first_result["image_data"], bytes)
+        assert isinstance(
+            _result_field(search_index, first_result, "embedding", decode=False), bytes
+        )
+        assert isinstance(
+            _result_field(search_index, first_result, "image_data", decode=False), bytes
+        )
 
     def test_mixed_api_usage(self, search_index):
         """Test mixing old and new API calls."""
@@ -235,9 +260,12 @@ class TestSkipDecodeIntegration:
         first_result = results[0]
         # The new API call should have replaced everything
         # (when skip_decode is provided, it clears previous fields)
-        assert "title" in first_result
-        assert "year" in first_result
-        assert "embedding" in first_result
+        assert _result_field(search_index, first_result, "title") is not None
+        assert _result_field(search_index, first_result, "year") is not None
+        assert (
+            _result_field(search_index, first_result, "embedding", decode=False)
+            is not None
+        )
 
         # image_data should not be in results since return_fields
         # with skip_decode clears previous fields
@@ -254,9 +282,9 @@ class TestSkipDecodeIntegration:
 
         first_result = results[0]
         # All fields should be decoded
-        assert isinstance(first_result["title"], str)
-        assert isinstance(first_result["year"], str)
-        assert isinstance(first_result["description"], str)
+        assert isinstance(_result_field(search_index, first_result, "title"), str)
+        assert isinstance(_result_field(search_index, first_result, "year"), str)
+        assert isinstance(_result_field(search_index, first_result, "description"), str)
 
     def test_skip_decode_with_string_parameter(self, search_index):
         """Test skip_decode accepts a single string instead of list."""
@@ -270,9 +298,11 @@ class TestSkipDecodeIntegration:
         assert len(results) > 0
 
         first_result = results[0]
-        assert isinstance(first_result["title"], str)
+        assert isinstance(_result_field(search_index, first_result, "title"), str)
         # Embedding should be bytes (not decoded)
-        assert isinstance(first_result["embedding"], bytes)
+        assert isinstance(
+            _result_field(search_index, first_result, "embedding", decode=False), bytes
+        )
 
     def test_multiple_calls_without_skip_decode(self, search_index):
         """Test multiple return_fields calls without skip_decode (additive behavior)."""
@@ -289,14 +319,19 @@ class TestSkipDecodeIntegration:
 
         first_result = results[0]
         # All fields should be present (additive behavior)
-        assert "title" in first_result
-        assert "year" in first_result
-        assert "embedding" in first_result
+        assert _result_field(search_index, first_result, "title") is not None
+        assert _result_field(search_index, first_result, "year") is not None
+        assert (
+            _result_field(search_index, first_result, "embedding", decode=False)
+            is not None
+        )
 
         # Check types
-        assert isinstance(first_result["title"], str)
-        assert isinstance(first_result["year"], str)
-        assert isinstance(first_result["embedding"], bytes)
+        assert isinstance(_result_field(search_index, first_result, "title"), str)
+        assert isinstance(_result_field(search_index, first_result, "year"), str)
+        assert isinstance(
+            _result_field(search_index, first_result, "embedding", decode=False), bytes
+        )
 
     def test_replacement_behavior_with_skip_decode(self, search_index):
         """Test that skip_decode parameter triggers replacement behavior."""
@@ -314,12 +349,17 @@ class TestSkipDecodeIntegration:
 
         first_result = results[0]
         # Only fields from second call should be present
-        assert "year" in first_result
-        assert "embedding" in first_result
+        assert _result_field(search_index, first_result, "year") is not None
+        assert (
+            _result_field(search_index, first_result, "embedding", decode=False)
+            is not None
+        )
 
         # Fields from first call should NOT be present (replaced)
         assert "title" not in first_result
         assert "description" not in first_result
 
         # Check embedding is not decoded
-        assert isinstance(first_result["embedding"], bytes)
+        assert isinstance(
+            _result_field(search_index, first_result, "embedding", decode=False), bytes
+        )

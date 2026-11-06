@@ -31,7 +31,7 @@ Here's how to get started with your code contribution:
 
 ### Prerequisites
 
-- **Python**: RedisVL supports Python 3.9 and above
+- **Python**: RedisVL supports Python 3.10 through 3.15
 - **Docker**: Required for running Redis and integration tests
 - **UV**: Modern Python package manager for fast dependency management
 
@@ -80,6 +80,14 @@ uv sync --all-extras
 ```
 
 This will create a virtual environment and install all necessary dependencies for development.
+
+### Changing Dependencies
+
+`uv.lock` is checked in, and CI verifies it matches `pyproject.toml`. If you add, remove, or re-bound a dependency, re-lock and commit the result:
+
+```bash
+uv lock
+```
 
 ## Using the Makefile
 
@@ -163,11 +171,23 @@ make test-all
 # Run tests on a specific file
 uv run pytest tests/unit/test_fields.py -v
 
+# Run the Redis Cluster tests, which are skipped by default
+uv run pytest --run-cluster-tests -m requires_cluster
+
 # Run tests with coverage
 uv run pytest --cov=redisvl --cov-report=html
 ```
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
+
+Where such an API is a *shared, stateful* service -- one managed instance reached by
+every xdist worker and every concurrent CI run -- tests must namespace everything
+they write and must never issue a whole-service flush, which would delete data
+belonging to other workers and other pull requests' CI runs. See the module
+docstring in `tests/integration/test_langcache_semantic_cache_integration.py` for a
+worked example.
+
+**Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running.
 
 ## Documentation
 
@@ -264,6 +284,46 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
+### CI for fork and Dependabot PRs
+
+GitHub withholds repository secrets from PRs opened from forks and from runs that Dependabot triggers, so the **Service Tests** and **Notebook Validation** jobs are skipped on those PRs, and a skipped job shows as passing. Before merging one, a maintainer should read the change and then run the service tests with secrets:
+
+```bash
+gh workflow run test-fork-pr.yml -f pr_number=<PR number>
+```
+
+The result appears on the PR as the **Fork PR - Service Tests** check. Notebook Validation has no manual equivalent; it runs on `main` after merge and nightly.
+
+### Reviewer Brief
+
+Maintainer PRs, and any PR written with a coding agent, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Outside contributors are welcome to add one but don't have to.
+
+#### Writing one
+
+Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review looks at the change from six angles (correctness, security, design, tests, docs and Redis behaviour), checks each finding against the code, fixes what holds up, and then writes the brief under the `## Reviewer Brief` heading of the PR template. Run it again after any substantive push.
+
+A brief tells the reviewer:
+
+- where to start reading, and why;
+- where the change could still fail, with file and line;
+- what wasn't verified, for example cluster behaviour or provider APIs;
+- any evidence CI doesn't show, such as a regression test confirmed to fail without the fix;
+- which commit was reviewed, by which agent and model.
+
+It deliberately leaves out what the review fixed. You see the change as it is now, so problems that no longer exist would only cost you time.
+
+#### Reading one
+
+The brief is the author's account of their own review. It isn't an approval and it isn't proof. Use it to decide where to look first, not as a reason to look less. A quick way to review a PR that has one:
+
+1. Read the summary Bugbot adds to the PR description for what the change does and how risky it is.
+2. Check that the commit in the brief's footer matches the PR's head commit, or that a "Since the last brief" line covers the later commits. If it doesn't, ask the author to re-run the review.
+3. Start reading where the brief says, then look at each spot under "Where it could fail".
+4. Decide whether anything under "Not verified" matters for this change, and read the Notes section, if there is one, for trade-offs the author made on purpose.
+5. Check that every open Bugbot or reviewer thread has a reply giving its outcome.
+
+If the brief, Bugbot and what you see in the diff agree, approve. Where they disagree is where to review in depth.
+
 ### PR Labels
 
 This project uses an automated release process powered by [Auto](https://intuit.github.io/auto/). PRs must be labeled to indicate the type of change:
@@ -291,6 +351,7 @@ Before submitting your PR, ensure:
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear and descriptive
 - [ ] PR description explains what changes were made and why
+- [ ] For maintainer or agent-assisted PRs, the Reviewer Brief covers the PR's head commit
 - [ ] Appropriate `auto:*` label is applied to indicate the change type
 
 ## Getting Help

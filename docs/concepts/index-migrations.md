@@ -1,0 +1,364 @@
+---
+myst:
+  html_meta:
+    "description lang=en": |
+      Learn how RedisVL index migrations work and which schema changes are supported.
+---
+
+# Index Migrations
+
+```{warning}
+The index migrator is an **experimental** feature. APIs, CLI commands, and on-disk formats (plans, checkpoints, backups) may change in future releases. Review migration plans carefully before applying to production indexes.
+```
+
+Redis Search indexes are immutable. To change an index schema, you must drop the existing index and create a new one. RedisVL provides a migration workflow that automates this process while preserving your data.
+
+This page explains how migrations work and which changes are supported. For step by step instructions, see the [migration guide](../user_guide/how_to_guides/migrate-indexes.md).
+
+## Supported and blocked changes
+
+The migrator classifies schema changes into two categories:
+
+| Change | Status |
+|--------|--------|
+| Add or remove a field | Supported |
+| Rename a field | Supported |
+| Change field options (sortable, separator) | Supported |
+| Change key prefix | Supported |
+| Rename the index | Supported |
+| Change vector algorithm (FLAT, HNSW, SVS-VAMANA) | Supported |
+| Change distance metric (COSINE, L2, IP) | Supported |
+| Tune algorithm parameters (M, EF_CONSTRUCTION) | Supported |
+| Quantize vectors (float32 to float16/bfloat16/int8/uint8) | Supported |
+| Change vector dimensions | Blocked |
+| Change storage type (hash to JSON) | Blocked |
+| Add a new vector field | Blocked |
+
+**Note:** INT8 and UINT8 vector datatypes require Redis 8.0+. SVS-VAMANA algorithm requires Redis 8.2+ and Intel AVX-512 hardware.
+
+**Supported** changes can be applied automatically using `rvl migrate`. The migrator handles the index rebuild and any necessary data transformations.
+
+**Blocked** changes require manual intervention because they involve incompatible data formats or missing data. The migrator will reject these changes and explain why.
+
+## How the migrator works
+
+The migrator uses a plan first workflow:
+
+1. **Plan**: Capture the current schema, classify your changes, and generate a migration plan
+2. **Review**: Inspect the plan before making any changes
+3. **Apply**: Drop the index, transform data if needed, and recreate with the new schema
+4. **Validate**: Verify the result matches expectations
+
+This separation ensures you always know what will happen before any changes are made.
+
+## Migration mode: drop_recreate
+
+The `drop_recreate` mode rebuilds the index in place while preserving your documents.
+
+The process:
+
+1. Drop only the index structure (documents remain in Redis)
+2. For datatype changes, re-encode vectors to the target precision
+3. Recreate the index with the new schema
+4. Wait for Redis to re-index the existing documents
+5. Validate the result
+
+**Tradeoff**: The index is unavailable during the rebuild. Review the migration plan carefully before applying.
+
+## Index only vs document dependent changes
+
+Schema changes fall into two categories based on whether they require modifying stored data.
+
+**Index only changes** affect how Redis Search indexes data, not the data itself:
+
+- Algorithm changes: The stored vector bytes are identical. Only the index structure differs.
+- Distance metric changes: Same vectors, different similarity calculation.
+- Adding or removing fields: The documents already contain the data. The index just starts or stops indexing it.
+
+These changes complete quickly because they only require rebuilding the index.
+
+**Document dependent changes** require modifying the stored data:
+
+- Datatype changes (float32 to float16): Stored vector bytes must be re-encoded.
+- Field renames: Stored field names must be updated in every document.
+- Dimension changes: Vectors must be re-embedded with a different model.
+
+The migrator handles datatype changes and field renames automatically. Dimension changes are blocked because they require re-embedding with a different model (application level logic).
+
+## Vector quantization
+
+Changing vector precision from float32 to float16 reduces memory usage at the cost of slight precision loss. The migrator handles this automatically by:
+
+1. Reading all vectors from Redis
+2. Converting to the target precision
+3. Writing updated vectors back
+4. Recreating the index with the new schema
+
+Typical reductions:
+
+| Metric | Value |
+|--------|-------|
+| Index size reduction | ~50% |
+| Memory reduction | ~35% |
+
+Quantization time is proportional to document count. Plan for downtime accordingly.
+
+## Vector backups (mandatory for quantization)
+
+Quantization mutates the raw bytes of every vector in place. If the
+migration is interrupted partway through, or if the converted bytes turn
+out to be unacceptable for your application, there is no way to recover
+the original precision from the quantized values. To make these
+migrations safe to run, the migrator **always writes a vector backup
+before mutating any data** when a quantization step is needed.
+
+There is no opt-out. The previous `--keep-backup` flag and any code path
+that allowed quantizing without a backup have been removed.
+
+### Where backups are written
+
+Pass `--backup-dir <dir>` (CLI) or `backup_dir="<dir>"` (Python API) to
+choose the location. If you do not supply one, or if you pass an empty
+string, the migrator raises a `ValueError` before any data is touched.
+This argument is required for every migration apply. Quantization
+migrations write `.header` and `.data` backup files there; multi-worker
+quantization also writes a `.manifest` file that lets the executor resume
+from worker shards after the source index has been dropped. Index-only
+migrations record the resolved directory in the report but do not write
+vector backup files.
+
+Each hash index that mutates vector bytes produces backup files like:
+
+```
+<backup-dir>/
+  migration_backup_<index_name>.header   # JSON: phase, progress counters, field metadata
+  migration_backup_<index_name>.data     # Binary: length-prefixed batches of original vectors
+  migration_backup_<index_name>.manifest # JSON: multi-worker shard resume metadata, when workers > 1
+```
+
+The migration report records the resolved `backup_dir` and any backup file
+prefixes used for the run. For index-only migrations and JSON datatype
+changes, the directory is still validated and recorded, but no vector backup
+files are written. Batch checkpoint state also records `backup_dir` so
+`batch-resume` can verify it is using the same recovery location.
+
+Disk usage is roughly `num_docs × dims × bytes_per_element`. For 1M
+documents with 768-dimensional float32 vectors that is approximately
+2.9 GB.
+
+### What backups enable
+
+1. **Crash-safe resume.** If the executor dies mid-migration (process
+   killed, network drop, OOM), re-running the same command with the same
+   `--backup-dir` reads the header file, detects partial progress, and
+   resumes from the last completed batch instead of re-quantizing the
+   keys that already converted successfully. If the header is already
+   `completed`, the executor only treats it as a no-op resume when the live
+   index already matches the target schema. If the live index has been
+   rolled back to the source schema, the completed backup is stale for the
+   new run and the executor creates a fresh backup.
+2. **Manual rollback.** The data file contains the original
+   pre-quantization vector bytes. After a migration, you can use the
+   rollback CLI (`rvl migrate rollback`) or the Python API to restore
+   those bytes if you need to back out the change.
+
+### Retention
+
+Backup files are **retained on disk** after a successful migration.
+Cleanup is now a deliberate operator action, performed only after the
+new vectors have been verified and rollback is no longer needed. Delete
+the backup directory manually when you are done.
+
+## Shared keys and overlapping indexes
+
+Hash vector quantization rewrites the vector bytes stored in the Redis
+document key. It is supported only when the documents being quantized are
+not also indexed by another live RediSearch index that still expects the
+old vector datatype.
+
+If the same Redis key is covered by multiple indexes, quantizing it for
+one index mutates the bytes seen by all other indexes. Those other
+indexes are not migrated at the same time, so the document can disappear
+from those indexes or fail to re-index because the stored vector bytes no
+longer match their schemas. The migrator does not support this topology
+for hash vector datatype changes.
+
+Before applying a quantization migration, verify that the migrating
+index's keyspace is exclusive for the vector field being changed. If
+documents must be searchable through multiple indexes, use a coordinated
+application-level migration instead: create new physical keys or new
+vector fields, migrate every affected index schema together, and then
+switch traffic after validation.
+
+For batch migrations, `batch-plan` performs a conservative prefix overlap
+check across every applicable index. Two indexes whose key prefixes
+overlap (one prefix is a literal string-prefix of the other, matching
+`FT.CREATE PREFIX` semantics) are refused because a batch quantization
+migration could re-read vectors that an earlier index in the batch has
+already quantized. The error names the conflicting indexes and the
+specific prefix pairs that overlap.
+
+The batch overlap check is plan-time only — no data is mutated when a
+batch is refused. Resolve by splitting the indexes into prefix-disjoint
+groups and creating one batch plan per group. Indexes that are skipped
+for other reasons (e.g. `applicable: false` because a field is missing)
+do not participate in the check.
+
+## Why some changes are blocked
+
+### Vector dimension changes
+
+Vector dimensions are determined by your embedding model. A 384 dimensional vector from one model is mathematically incompatible with a 768 dimensional index expecting vectors from a different model. There is no way to resize an embedding.
+
+**Resolution**: Re-embed your documents using the new model and load them into a new index.
+
+### Storage type changes
+
+Hash and JSON have different data layouts. Hash stores flat key value pairs. JSON stores nested structures. Converting between them requires understanding your schema and restructuring each document.
+
+**Resolution**: Export your data, transform it to the new format, and reload into a new index.
+
+### Adding a vector field
+
+Adding a vector field means all existing documents need vectors for that field. The migrator cannot generate these vectors because it does not know which embedding model to use or what content to embed.
+
+**Resolution**: Add vectors to your documents using your application, then run the migration.
+
+## Downtime considerations
+
+With `drop_recreate`, your index is unavailable between the drop and when re-indexing completes.
+
+**CRITICAL**: Downtime requires both reads AND writes to be paused:
+
+| Requirement | Reason |
+|-------------|--------|
+| **Pause reads** | Index is unavailable during migration |
+| **Pause writes** | Redis updates indexes synchronously. Writes during migration may conflict with vector re-encoding or be missed |
+
+Plan for:
+
+- Search unavailability during the migration window
+- Partial results while indexing is in progress
+- Resource usage from the re-indexing process
+- Quantization time if changing vector datatypes
+
+The duration depends on document count, field count, and vector dimensions. For large indexes, consider running migrations during low traffic periods.
+
+## Sync vs async execution
+
+The migrator provides both synchronous and asynchronous execution modes.
+
+### What becomes async and what stays sync
+
+The migration workflow has distinct phases. Here is what each mode affects:
+
+| Phase | Sync mode | Async mode | Notes |
+|-------|-----------|------------|-------|
+| **Plan generation** | `MigrationPlanner.create_plan()` | `AsyncMigrationPlanner.create_plan()` | Reads index metadata from Redis |
+| **Schema snapshot** | Sync Redis calls | Async Redis calls | Single `FT.INFO` command |
+| **Enumeration** | FT.AGGREGATE (or SCAN fallback) | FT.AGGREGATE (or SCAN fallback) | Before drop, only if quantization needed |
+| **Drop index** | `index.delete()` | `await index.delete()` | Single `FT.DROPINDEX` command |
+| **Quantization** | Sequential HGET + HSET | Sequential HGET + batched HSET | Uses pre-enumerated keys |
+| **Create index** | `index.create()` | `await index.create()` | Single `FT.CREATE` command |
+| **Readiness polling** | `time.sleep()` loop | `asyncio.sleep()` loop | Polls `FT.INFO` until indexed |
+| **Validation** | Sync Redis calls | Async Redis calls | Schema and doc count checks |
+| **CLI interaction** | Always sync | Always sync | User prompts, file I/O |
+| **YAML read/write** | Always sync | Always sync | Local filesystem only |
+
+### When to use sync (default)
+
+Sync execution is simpler and sufficient for most migrations:
+
+- Small to medium indexes (under 100K documents)
+- Index-only changes (algorithm, distance metric, field options)
+- Interactive CLI usage where blocking is acceptable
+
+For migrations without quantization, the Redis operations are fast single commands. Sync mode adds no meaningful overhead.
+
+### When to use async
+
+Async execution (`--async` flag) provides benefits in specific scenarios:
+
+**Large quantization jobs (1M+ vectors)**
+
+Converting float32 to float16 requires reading every vector, converting it, and writing it back. The async executor:
+
+- Enumerates documents using `FT.AGGREGATE WITHCURSOR` for index-specific enumeration (falls back to `SCAN` only if indexing failures exist)
+- Pipelines `HSET` operations in batches (100-1000 operations per pipeline is optimal for Redis)
+- Yields to the event loop between batches so other tasks can proceed
+
+**Large keyspaces (40M+ keys)**
+
+When your Redis instance has many keys and the index has indexing failures (requiring SCAN fallback), async mode yields between batches.
+
+**Async application integration**
+
+If your application uses asyncio, you can integrate migration directly:
+
+```python
+import asyncio
+from redisvl.migration import AsyncMigrationPlanner, AsyncMigrationExecutor
+
+async def migrate():
+    planner = AsyncMigrationPlanner()
+    plan = await planner.create_plan("myindex", redis_url="redis://localhost:6379")
+
+    executor = AsyncMigrationExecutor()
+    report = await executor.apply(
+        plan,
+        redis_url="redis://localhost:6379",
+        backup_dir="/tmp/migration_backups",
+    )
+
+asyncio.run(migrate())
+```
+
+### Why async helps with quantization
+
+The migrator uses an optimized enumeration strategy:
+
+1. **Index-based enumeration**: Uses `FT.AGGREGATE WITHCURSOR` to enumerate only indexed documents (not the entire keyspace)
+2. **Fallback for safety**: If the index has indexing failures (`hash_indexing_failures > 0`), falls back to `SCAN` to ensure completeness
+3. **Enumerate before drop**: Captures the document list while the index still exists, then drops and quantizes
+
+This optimization provides 10-1000x speedup for sparse indexes (where only a small fraction of prefix-matching keys are indexed).
+
+**Sync quantization:**
+```
+enumerate keys (FT.AGGREGATE or SCAN) -> store list
+for each batch of 500 keys:
+    for each key:
+        HGET field (blocks)
+        convert array
+        pipeline.HSET(field, new_bytes)
+    pipeline.execute() (blocks)
+```
+
+**Async quantization:**
+```
+enumerate keys (FT.AGGREGATE or SCAN) -> store list
+for each batch of 500 keys:
+    for each key:
+        await HGET field (yields)
+        convert array
+        pipeline.HSET(field, new_bytes)
+    await pipeline.execute() (yields)
+```
+
+Each `await` is a yield point where other coroutines can run. For millions of vectors, this prevents your application from freezing.
+
+### What async does NOT improve
+
+Async execution does not reduce:
+
+- **Total migration time**: Same work, different scheduling
+- **Redis server load**: Same commands execute on the server
+- **Downtime window**: Index remains unavailable during rebuild
+- **Network round trips**: Same number of Redis calls
+
+The benefit is application responsiveness, not faster migration.
+
+## Learn more
+
+- [Migration guide](../user_guide/how_to_guides/migrate-indexes.md): Step by step instructions
+- [Search and indexing](search-and-indexing.md): How Redis Search indexes work

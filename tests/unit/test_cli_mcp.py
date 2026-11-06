@@ -382,6 +382,7 @@ def test_mcp_command_passes_streamable_http_transport(monkeypatch):
             "0.0.0.0",
             "--port",
             "9000",
+            "--allow-unauthenticated",
         ],
     )
 
@@ -487,6 +488,7 @@ def test_mcp_command_fallback_run_path_passes_http_transport_kwargs(monkeypatch)
             "0.0.0.0",
             "--port",
             "7777",
+            "--allow-unauthenticated",
         ],
     )
 

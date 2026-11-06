@@ -11,7 +11,7 @@ This module tests the enhanced error handling behavior introduced for:
 
 import asyncio
 from collections.abc import Mapping
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import redis.exceptions
@@ -190,7 +190,8 @@ class TestConnectionKwargsValidation:
             await cache._get_async_redis_client()
 
         error_msg = str(exc_info.value)
-        assert "argument after ** must be a mapping" in error_msg
+        # CPython 3.15 reworded this from "argument after **" to "Value after **".
+        assert "after ** must be a mapping" in error_msg
 
     @pytest.mark.asyncio
     async def test_connection_kwargs_valid_dict(self):
@@ -204,11 +205,11 @@ class TestConnectionKwargsValidation:
             "redisvl.extensions.cache.base.RedisConnectionFactory"
         ) as mock_factory:
             mock_client = Mock()
-            mock_factory.get_async_redis_connection.return_value = mock_client
+            mock_factory._get_aredis_connection = AsyncMock(return_value=mock_client)
 
             result = await cache._get_async_redis_client()
             assert result == mock_client
-            mock_factory.get_async_redis_connection.assert_called_once()
+            mock_factory._get_aredis_connection.assert_awaited_once()
 
 
 class TestRouterConfigErrorHandling:
@@ -452,12 +453,19 @@ class TestClusterOperationsErrorHandling:
             1,  # Third succeeds
         ]
 
-        # Mock the .info() and ._query() methods to return test data
+        # info() is stubbed to raise, not to return: clear() must never call
+        # it, because FT.INFO is @search only and would deny the whole method
+        # to a +@read +@write credential.
         with (
-            patch.object(SearchIndex, "info") as mock_info,
+            patch.object(
+                SearchIndex,
+                "info",
+                side_effect=AssertionError("clear() must not call info()"),
+            ),
+            patch.object(SearchIndex, "query") as mock_count,
             patch.object(SearchIndex, "_query") as mock_query,
         ):
-            mock_info.return_value = {"num_docs": 3}
+            mock_count.return_value = 3
             mock_query.side_effect = [
                 [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}],
                 [],
@@ -473,12 +481,68 @@ class TestClusterOperationsErrorHandling:
 
                 # Should have attempted to delete all 3 keys
                 assert mock_cluster_client.delete.call_count == 3
-                # Should have logged the error for the failed key
+                # Should have logged the error for the failed key. The key is
+                # repr'd: it comes from user-supplied data, so quoting it keeps a
+                # newline in a key from forging a second log line.
                 mock_logger.warning.assert_called_once_with(
-                    "Failed to delete key test:key2: Some cluster error"
+                    "Failed to delete key 'test:key2': Some cluster error"
                 )
                 # Should return count of successfully deleted keys (2 out of 3)
                 assert result == 2
+
+    def test_clear_terminates_when_no_key_can_be_deleted(self):
+        """clear() must not spin when every delete in a page fails.
+
+        Reachable through `_delete_batch`'s cluster branch, which swallows
+        per-key `RedisError` and returns 0 while the page stays non-empty.
+        Asserted hermetically because cluster never runs in CI, so this covers
+        control flow only -- not CROSSSLOT behaviour or node targeting.
+        """
+        from redisvl.index import SearchIndex
+        from redisvl.schema import IndexSchema
+
+        schema = Mock(spec=IndexSchema)
+        schema.index = Mock()
+        schema.index.name = "stalled"
+        schema.index.prefix = "test"
+        schema.index.key_separator = ":"
+        schema.index.storage_type = StorageType.HASH
+
+        mock_cluster_client = Mock(spec=RedisCluster)
+        mock_cluster_client.delete.side_effect = redis.exceptions.NoPermissionError(
+            "this user has no permissions to run the 'del' command"
+        )
+
+        page = [{"id": "test:key1"}, {"id": "test:key2"}]
+        # pytest-timeout is not installed, so without this cap a regression
+        # would hang the suite rather than fail it.
+        max_calls = 200
+        calls = {"n": 0}
+
+        def always_a_full_page(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] > max_calls:
+                raise AssertionError(
+                    f"clear() did not terminate within {max_calls} queries"
+                )
+            return page
+
+        with (
+            patch.object(SearchIndex, "query", return_value=2),
+            patch.object(SearchIndex, "_query", side_effect=always_a_full_page),
+        ):
+            index = SearchIndex(schema)
+            index._SearchIndex__redis_client = mock_cluster_client
+
+            with patch("redisvl.index.index.logger") as mock_logger:
+                result = index.clear()
+
+        assert result == 0
+        # It gave up by paging past the backstop rather than by deleting.
+        assert any(
+            "paged past its runaway backstop" in str(call)
+            for call in mock_logger.warning.call_args_list
+        )
 
     @patch("redisvl.redis.connection.RedisConnectionFactory.validate_async_redis")
     @pytest.mark.asyncio
@@ -505,10 +569,11 @@ class TestClusterOperationsErrorHandling:
             ]
         )
 
-        # Mock the .info() and ._query() methods to return test data
+        # See the sync twin: info() must never be reached from clear().
         async def mock_info(*args, **kwargs):
-            return {"num_docs": 3}
+            raise AssertionError("clear() must not call info()")
 
+        mock_count = AsyncMock(return_value=3)
         mock_query = AsyncMock(
             side_effect=[
                 [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}],
@@ -518,6 +583,7 @@ class TestClusterOperationsErrorHandling:
 
         with (
             patch.object(AsyncSearchIndex, "info", mock_info),
+            patch.object(AsyncSearchIndex, "query", mock_count),
             patch.object(AsyncSearchIndex, "_query", mock_query),
         ):
             # Create index with mocked client
@@ -532,7 +598,7 @@ class TestClusterOperationsErrorHandling:
                 assert mock_cluster_client.delete.call_count == 3
                 # Should have logged the error for the failed key
                 mock_logger.warning.assert_called_once_with(
-                    "Failed to delete key test:key2: Some cluster error"
+                    "Failed to delete key 'test:key2': Some cluster error"
                 )
                 # Should return count of successfully deleted keys (2 out of 3)
                 assert result == 2

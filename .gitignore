@@ -230,10 +230,12 @@ libs/redis/docs/.Trash*
 .python-version
 tests/data
 .git
-.cursor
+.cursor/*
+!.cursor/BUGBOT.md
 .junie
 .undodir
 .claude/settings.local.json
 
 # Local working directory (personal scripts, docs, tools)
 local/
+local_docs/

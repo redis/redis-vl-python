@@ -1,9 +1,6 @@
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, intersect_with_filter
+from redisvl.utils.stopwords import get_stopwords
 from redisvl.utils.token_escaper import TokenEscaper
-from redisvl.utils.utils import lazy_import
-
-nltk = lazy_import("nltk")
-nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 
 
 def _parse_text_weights(weights: dict[str, float] | None) -> dict[str, float]:
@@ -59,15 +56,11 @@ class FullTextQueryHelper:
         filter_expression: str | FilterExpression | None = None,
     ) -> str:
         """Build the full-text query string for text search with optional filtering."""
-        if isinstance(filter_expression, FilterExpression):
-            filter_expression = str(filter_expression)
+        # The text clause is optional (~) so that it contributes to scoring
+        # without excluding documents; the filter stays required.
+        text_clause = f"~@{text_field_name}:({self._tokenize_and_escape_query(text)})"
 
-        query = f"(~@{text_field_name}:({self._tokenize_and_escape_query(text)})"
-
-        if filter_expression and filter_expression != "*":
-            query += f" AND {filter_expression}"
-
-        return query + ")"
+        return f"({intersect_with_filter(text_clause, filter_expression)})"
 
     def _get_stopwords(self, stopwords: str | set[str] | None = "english") -> set[str]:
         """Get the stopwords to use in the query.
@@ -88,21 +81,7 @@ class FullTextQueryHelper:
         if not stopwords:
             return set()
         elif isinstance(stopwords, str):
-            try:
-                # Try loading first; only download if not already present.
-                # This avoids race conditions when parallel workers (e.g.
-                # pytest-xdist) call nltk.download() concurrently.
-                try:
-                    return set(nltk_stopwords.words(stopwords))
-                except LookupError:
-                    nltk.download("stopwords", quiet=True)
-                    return set(nltk_stopwords.words(stopwords))
-            except ImportError:
-                raise ValueError(
-                    f"Loading stopwords for {stopwords} failed: nltk is not installed."
-                )
-            except Exception as e:
-                raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
+            return get_stopwords(stopwords)
         elif isinstance(stopwords, (set, list, tuple)) and all(
             isinstance(word, str) for word in stopwords
         ):

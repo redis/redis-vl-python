@@ -1,9 +1,8 @@
-import os
-
 import pytest
 from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
-from redis.exceptions import ConnectionError
+from redis.backoff import NoBackoff
+from redis.exceptions import ConnectionError, NoPermissionError
+from redis.retry import Retry
 
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -18,9 +17,6 @@ from tests.conftest import (
 )
 
 EXPECTED_LIB_NAME = f"redis-py(redisvl_v{__version__})"
-
-# Remove after we remove connect() method from RedisConnectionFactory
-pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def test_unpack_redis_modules():
@@ -102,38 +98,53 @@ def test_convert_index_info_to_schema():
     assert schema.index.name == index_info["index_name"]
 
 
-class TestConnect:
-    def test_sync_redis_connect(self, redis_url):
-        client = RedisConnectionFactory.connect(redis_url)
-        assert client is not None
-        assert isinstance(client, Redis)
-        # Perform a simple operation
-        assert client.ping()
+class TestGetRedisConnection:
+    """URL-resolution error paths for the sync factory.
 
-    @pytest.mark.asyncio
-    async def test_async_redis_connect(self, redis_url):
-        client = RedisConnectionFactory.connect(redis_url, use_async=True)
-        assert client is not None
-        assert isinstance(client, AsyncRedis)
-        # Perform a simple operation
-        assert await client.ping()
+    Nothing else in the suite covers them; every other test and fixture
+    passes a working redis_url.
+    """
 
-    def test_missing_env_var(self):
-        redis_url = os.getenv("REDIS_URL")
-        if redis_url:
-            del os.environ["REDIS_URL"]
-            with pytest.raises(ValueError):
-                RedisConnectionFactory.connect()
-            os.environ["REDIS_URL"] = redis_url
+    def test_missing_env_var(self, monkeypatch):
+        monkeypatch.delenv("REDIS_URL", raising=False)
+        with pytest.raises(ValueError):
+            RedisConnectionFactory.get_redis_connection()
 
     def test_invalid_url_format(self):
         with pytest.raises(ValueError):
-            RedisConnectionFactory.connect(redis_url="invalid_url_format")
+            RedisConnectionFactory.get_redis_connection(redis_url="invalid_url_format")
 
     def test_unknown_redis(self):
         with pytest.raises(ConnectionError):
-            bad_client = RedisConnectionFactory.connect(redis_url="redis://fake:1234")
+            bad_client = RedisConnectionFactory.get_redis_connection(
+                redis_url="redis://fake:1234"
+            )
             bad_client.ping()
+
+
+def test_connection_opens_without_identification_permission(acl_user):
+    """A credential that cannot identify the client must still connect.
+
+    RedisVL announces itself with CLIENT SETINFO when a connection is made, and
+    used to fall back to ECHO if that was refused. Both commands are
+    `@connection` and are in neither `@read` nor `@write`, so a role built up
+    from those categories never grants either -- and the unguarded fallback made
+    RedisVL fail while the connection was being created, before any index
+    operation could be attempted.
+
+    Only a live server can show that this role really denies the command, which
+    is why this is an integration test.
+    """
+    with acl_user("~*", "&*", "+@read", "+@write", name="acl_no_connection") as user:
+        restricted = user.connect()
+
+        # Pin the premise. If a future Redis lets this role run CLIENT SETINFO,
+        # the test is no longer exercising the tolerance and should say so.
+        with pytest.raises(NoPermissionError):
+            restricted.client_setinfo("LIB-NAME", "probe")
+
+        # And the connection is genuinely usable for what the role does permit.
+        assert restricted.exists("no-such-key") == 0
 
 
 def test_validate_redis(client):
@@ -164,3 +175,24 @@ async def test_validate_async_redis_custom_lib_name(async_client):
     await RedisConnectionFactory.validate_async_redis(async_client, "langchain_v0.1.0")
     lib_name = await async_client.client_info()
     assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"
+
+
+@pytest.mark.asyncio
+async def test_converted_client_recovers_after_client_kill(client, redis_url):
+    """The converted client's retry policy must run on the async connection.
+
+    After CLIENT KILL the pooled connection's socket is closed. When the ping
+    follows straight away, the event loop has not yet seen the server close
+    it, so the pool hands the connection out and the first attempt fails. Only
+    the async Retry's reconnect-and-retry makes the ping succeed; with a sync
+    Retry it raises ConnectionError.
+    """
+    sync_client = Redis.from_url(redis_url, retry=Retry(NoBackoff(), 1))
+    converted = RedisConnectionFactory.sync_to_async_redis(sync_client)
+    try:
+        killed_id = await converted.client_id()
+        assert client.client_kill_filter(_id=killed_id) == 1
+        assert await converted.ping() is True
+    finally:
+        await converted.aclose()
+        sync_client.close()

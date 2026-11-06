@@ -1,9 +1,8 @@
-import warnings
 from random import choice
 from unittest import mock
 
 import pytest
-from redis import Redis as SyncRedis
+import redis
 from redis.asyncio import Redis as AsyncRedis
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
@@ -113,11 +112,11 @@ async def test_search_index_from_existing_url(async_index, redis_url):
 
 
 @pytest.mark.asyncio
-async def test_search_index_from_existing_complex(async_client):
+async def test_search_index_from_existing_complex(async_client, redis_test_name):
     schema = {
         "index": {
-            "name": "test",
-            "prefix": "test",
+            "name": redis_test_name("complex_index"),
+            "prefix": redis_test_name("complex"),
             "storage_type": "json",
         },
         "fields": [
@@ -143,33 +142,37 @@ async def test_search_index_from_existing_complex(async_client):
         ],
     }
     async_index = AsyncSearchIndex.from_dict(schema, redis_client=async_client)
-    await async_index.create(overwrite=True)
+    await async_index.create(overwrite=True, drop=True)
 
     try:
-        async_index2 = await AsyncSearchIndex.from_existing(
-            async_index.name, redis_client=async_client
-        )
-    except Exception as e:
-        pytest.skip(str(e))
+        try:
+            async_index2 = await AsyncSearchIndex.from_existing(
+                async_index.name, redis_client=async_client
+            )
+        except Exception as e:
+            pytest.skip(str(e))
 
-    # Verify index metadata matches
-    assert async_index2.schema.index.name == async_index.schema.index.name
-    assert async_index2.schema.index.prefix == async_index.schema.index.prefix
-    assert (
-        async_index2.schema.index.storage_type == async_index.schema.index.storage_type
-    )
-
-    # Verify non-vector fields are present
-    for field_name in ["user", "credit_score", "job", "age"]:
-        assert field_name in async_index2.schema.fields
+        # Verify index metadata matches
+        assert async_index2.schema.index.name == async_index.schema.index.name
+        assert async_index2.schema.index.prefix == async_index.schema.index.prefix
         assert (
-            async_index2.schema.fields[field_name].type
-            == async_index.schema.fields[field_name].type
+            async_index2.schema.index.storage_type
+            == async_index.schema.index.storage_type
         )
 
-    # Vector field may not be present on older Redis versions
-    if "user_embedding" in async_index2.schema.fields:
-        assert async_index2.schema.fields["user_embedding"].type == "vector"
+        # Verify non-vector fields are present
+        for field_name in ["user", "credit_score", "job", "age"]:
+            assert field_name in async_index2.schema.fields
+            assert (
+                async_index2.schema.fields[field_name].type
+                == async_index.schema.fields[field_name].type
+            )
+
+        # Vector field may not be present on older Redis versions
+        if "user_embedding" in async_index2.schema.fields:
+            assert async_index2.schema.fields["user_embedding"].type == "vector"
+    finally:
+        await async_index.delete(drop=True)
 
 
 def test_search_index_no_prefix(index_schema):
@@ -204,35 +207,12 @@ async def test_search_index_client(async_client, index_schema):
 
 
 @pytest.mark.asyncio
-async def test_search_index_set_client(client, redis_url, index_schema):
-    # Use async with for the index that owns its initial client via redis_url
-    async with AsyncSearchIndex(
-        schema=index_schema, redis_url=redis_url
-    ) as async_index:
-        # Ignore deprecation warnings for set_client
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
-            await async_index.create(overwrite=True, drop=True)
-            assert isinstance(async_index.client, AsyncRedis)
-
-            # Tests deprecated sync -> async conversion behavior
-            assert isinstance(client, SyncRedis)
-
-            await async_index.set_client(client)
-            assert isinstance(async_index.client, AsyncRedis)
-
-            if async_index.client:
-                await async_index.disconnect()
-            assert async_index.client is None
-
-
-@pytest.mark.asyncio
 async def test_search_index_create(async_index):
     await async_index.create(overwrite=True, drop=True)
     assert await async_index.exists()
-    assert async_index.name in convert_bytes(
-        await async_index.client.execute_command("FT._LIST")
-    )
+    # exists() and listall() reach Redis by different commands, so keeping both
+    # assertions gives each an independent witness.
+    assert async_index.name in await async_index.listall()
 
 
 @pytest.mark.asyncio
@@ -240,9 +220,7 @@ async def test_search_index_delete(async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
     assert not await async_index.exists()
-    assert async_index.name not in convert_bytes(
-        await async_index.client.execute_command("FT._LIST")
-    )
+    assert async_index.name not in await async_index.listall()
 
 
 @pytest.mark.asyncio
@@ -485,15 +463,32 @@ async def test_search_index_that_owns_client_disconnect(index_schema, redis_url)
 
 
 @pytest.mark.asyncio
-async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis_url):
+async def test_disconnect_sync_is_a_no_op_inside_a_running_loop(
+    index_schema, redis_url
+):
+    """disconnect_sync() does nothing when a loop is already running.
+
+    It exists for callers outside an event loop, such as __del__ and
+    shutdown hooks: sync_wrapper calls loop.run_until_complete, which raises
+    on an already-running loop and is swallowed. Asserting the no-op here
+    documents behaviour that would otherwise look like a silent bug. The
+    path that does close the client is covered outside a loop by
+    tests/unit/test_index_gc_finalizer.py.
+    """
     async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     await async_index.create(overwrite=True, drop=True)
+
+    async_index.disconnect_sync()
+
+    assert async_index._redis_client is not None
     await async_index.disconnect()
     assert async_index._redis_client is None
 
 
 @pytest.mark.asyncio
-async def test_async_search_index_no_proactive_module_validation(redis_url):
+async def test_async_search_index_no_proactive_module_validation(
+    redis_url, redis_test_name
+):
     """
     Updated test for issue #370: AsyncSearchIndex should not validate modules proactively.
     Operations should fail naturally if modules are missing.
@@ -505,7 +500,7 @@ async def test_async_search_index_no_proactive_module_validation(redis_url):
         # Create index - validation should only set lib name, not check modules
         index = AsyncSearchIndex(
             schema=IndexSchema.from_dict(
-                {"index": {"name": "my_index"}, "fields": fields}
+                {"index": {"name": redis_test_name("my_index")}, "fields": fields}
             ),
             redis_client=client,
         )
@@ -517,8 +512,11 @@ async def test_async_search_index_no_proactive_module_validation(redis_url):
         # The actual operation (create) will succeed if modules are present
         await index.create(overwrite=True, drop=True)
 
-        # Verify index was created successfully (modules are present in test env)
-        assert await index.exists()
+        try:
+            # Verify index was created successfully (modules are present in test env)
+            assert await index.exists()
+        finally:
+            await index.delete(drop=True)
 
 
 @pytest.mark.asyncio
@@ -533,6 +531,80 @@ async def test_batch_search(async_index):
     assert results[0].docs[0]["id"] == "rvl:1"
     assert results[1].total == 1
     assert results[1].docs[0]["id"] == "rvl:2"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        pytest.param({}, id="default"),
+        pytest.param({"protocol": 3}, id="protocol-3"),
+        pytest.param(
+            {"legacy_responses": False},
+            id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+        pytest.param(
+            {"protocol": 2, "legacy_responses": False},
+            id="resp2-new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+    ],
+)
+async def test_client_from_existing_and_batch_search(
+    redis_url, redis_test_name, client_kwargs
+):
+    """User-provided async redis-py clients support introspection and batch search."""
+    name = redis_test_name("async_client_index")
+    prefix = f"{name}:"
+    client = AsyncRedis.from_url(redis_url, **client_kwargs)
+    index = AsyncSearchIndex.from_dict(
+        {
+            "index": {"name": name, "prefix": prefix},
+            "fields": [
+                {"name": "test", "type": "tag"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"withsuffixtrie": True},
+                },
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_client=client,
+    )
+
+    try:
+        await index.create()
+        await index.load(
+            [{"id": "1", "test": "foo", "title": "suffix trie"}],
+            id_field="id",
+        )
+
+        reopened = await AsyncSearchIndex.from_existing(name, redis_client=client)
+        results = await reopened.batch_search(["@test:{foo}"])
+
+        assert reopened.schema == index.schema
+        assert results[0].total == 1
+        assert results[0].docs[0]["id"] == f"{prefix}1"
+    finally:
+        await index.delete(drop=True)
+        await client.aclose()
 
 
 @pytest.mark.parametrize(
@@ -703,17 +775,6 @@ async def test_search_index_validates_query_with_hnsw_algorithm(
     )
     # Should not raise
     await async_hnsw_index.query(query)
-
-
-@pytest.mark.asyncio
-async def test_async_search_index_connect(index_schema, redis_url):
-    """Test that AsyncSearchIndex.connect() works with redis_url parameter."""
-    async_index = AsyncSearchIndex(schema=index_schema)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        await async_index.connect(redis_url=redis_url)
-    assert async_index.client is not None
-    await async_index.disconnect()
 
 
 @pytest.mark.asyncio

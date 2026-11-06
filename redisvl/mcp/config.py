@@ -26,9 +26,61 @@ _RESERVED_SCORE_METADATA_FIELDS = frozenset(
 )
 
 
+_BUILTIN_TOOL_NAMES = frozenset({"list-indexes", "search-records", "upsert-records"})
+# Both separators are reserved because the name pattern permits either, so
+# `redisvl_search` must be refused exactly like `redisvl-search`.
+_RESERVED_TOOL_NAME_PREFIXES = ("redisvl-", "redisvl_")
+# MCP clients commonly constrain tool names to this character set, so names that
+# would be unusable on some hosts (dots, spaces, uppercase) are rejected here
+# rather than at invocation time. Hyphens match the built-ins by convention.
+_TOOL_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+# Caller-facing arguments a profile may govern. The built-in search tool also
+# exposes `index`, which is deliberately absent here: a profile pins its binding
+# through the top-level `index:` key rather than offering it to the model. Search
+# mode and tuning are binding config and never reach the model at all.
+_PROFILE_PARAM_NAMES = frozenset(
+    {"query", "limit", "offset", "filter", "return_fields"}
+)
+
+
 def reserved_score_metadata_field_names() -> frozenset[str]:
     """Return MCP-reserved score metadata field names."""
     return _RESERVED_SCORE_METADATA_FIELDS
+
+
+def builtin_tool_names() -> frozenset[str]:
+    """Return the names of the built-in MCP tools.
+
+    These register by default and can be turned off individually through
+    ``server.builtin_tools``, so they are not unconditionally available.
+    """
+    return _BUILTIN_TOOL_NAMES
+
+
+def validate_tool_name(name: str, *, kind: str) -> None:
+    """Raise ``ValueError`` unless ``name`` is usable for a custom tool.
+
+    Shared by every kind of custom tool so that one set of rules decides what a
+    tool may be called. ``kind`` names the source in the message, so an error
+    points at the config section or decorator that produced the name.
+    """
+    # fullmatch, because `$` also matches before a trailing newline.
+    if not _TOOL_NAME_PATTERN.fullmatch(name):
+        raise ValueError(
+            f"{kind} name '{name}' is invalid; names must start with a "
+            "lowercase letter and contain only lowercase letters, digits, "
+            "hyphens, or underscores (max 64 characters)"
+        )
+    if name in builtin_tool_names():
+        raise ValueError(
+            f"{kind} name '{name}' collides with a built-in tool; "
+            "built-in names are reserved"
+        )
+    if name.startswith(_RESERVED_TOOL_NAME_PREFIXES):
+        raise ValueError(
+            f"{kind} name '{name}' uses a reserved prefix "
+            f"({', '.join(_RESERVED_TOOL_NAME_PREFIXES)})"
+        )
 
 
 class MCPRuntimeConfig(BaseModel):
@@ -90,10 +142,161 @@ class MCPVectorizerConfig(BaseModel):
         return {"model": self.model, **self.extra_kwargs}
 
 
+class MCPAuthConfig(BaseModel):
+    """Authentication configuration for the MCP server's HTTP transports.
+
+    Auth is optional and defaults to ``none``. When ``type`` is ``jwt`` the
+    server validates incoming bearer tokens against either a JWKS endpoint or a
+    static public key, checking issuer, audience, and required scopes. ``stdio``
+    is a local subprocess and is never authenticated regardless of this config.
+    """
+
+    type: Literal["none", "jwt"] = "none"
+
+    # JWT validation
+    jwks_uri: str | None = Field(default=None, min_length=1)
+    public_key: str | None = Field(default=None, min_length=1)
+    issuer: str | None = Field(default=None, min_length=1)
+    audience: str | None = Field(default=None, min_length=1)
+    algorithm: str | None = Field(default=None, min_length=1)
+    required_scopes: list[str] = Field(default_factory=list)
+    # Claims that must be present on every token. Defaults to exp and iat so a
+    # token without an expiration (which would never expire) is rejected.
+    required_claims: list[str] = Field(default_factory=lambda: ["exp", "iat"])
+    base_url: str | None = Field(default=None, min_length=1)
+
+    # Coarse read/write scope gating (enforced per tool call).
+    read_scope: str | None = Field(default=None, min_length=1)
+    write_scope: str | None = Field(default=None, min_length=1)
+    # Token claim that carries authorization values. Standard OAuth uses
+    # ``scp``/``scope``; some IdPs (for example Azure AD / Entra) carry app
+    # roles in a ``roles`` claim instead.
+    authorization_claim: str = Field(default="scp", min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_jwt(self) -> "MCPAuthConfig":
+        """Enforce the JWT key-source, issuer, and audience requirements."""
+        jwt_fields_set = any(
+            (
+                self.jwks_uri,
+                self.public_key,
+                self.issuer,
+                self.audience,
+                self.required_scopes,
+                self.read_scope,
+                self.write_scope,
+            )
+        )
+        if self.type != "jwt":
+            # Fail loudly rather than silently running unauthenticated when an
+            # auth block looks like JWT but forgot to set the type.
+            if jwt_fields_set:
+                raise ValueError(
+                    "auth has JWT settings but type is not 'jwt'; set type: jwt "
+                    "to enable authentication"
+                )
+            return self
+
+        has_jwks = self.jwks_uri is not None
+        has_key = self.public_key is not None
+        if has_jwks == has_key:
+            raise ValueError(
+                "auth.type 'jwt' requires exactly one of jwks_uri or public_key"
+            )
+        if self.issuer is None:
+            raise ValueError(
+                "auth.type 'jwt' requires issuer; without it the verifier would "
+                "accept tokens from any issuer"
+            )
+        if self.audience is None:
+            raise ValueError(
+                "auth.type 'jwt' requires audience to bind tokens to this server "
+                "(RFC 8707); an unbounded audience would accept tokens minted for "
+                "other services"
+            )
+        return self
+
+
+class MCPTransportSecurityConfig(BaseModel):
+    """Host/Origin validation for the MCP server's HTTP transports.
+
+    Only serves requests that target a trusted authority: the ``Host`` header
+    must be allowlisted and any cross-site ``Origin`` must be too. This blocks
+    requests that reach the server claiming an authority it does not own --
+    DNS-rebinding being the primary motivating case, alongside cross-origin
+    browser requests and misrouted/proxied traffic.
+
+    Defaults to enabled. The effective host allowlist is the set derived from
+    the bind address (see :func:`default_allowed_hosts`) unioned with
+    ``allowed_hosts``. ``stdio`` has no network surface and is never affected.
+    """
+
+    enabled: bool = True
+    # Extra hosts accepted in addition to the bind-derived default allowlist.
+    # Needed for reverse-proxy / non-loopback deployments whose public Host
+    # differs from the bind address.
+    allowed_hosts: list[str] = Field(default_factory=list)
+    # Exact ``Origin`` values accepted from browser clients. Empty means no
+    # cross-site browser origin is allowed; requests with no Origin (typical of
+    # non-browser MCP clients) always pass.
+    allowed_origins: list[str] = Field(default_factory=list)
+    # Escape hatch for trusted-proxy setups that terminate/validate Origin
+    # upstream. Distinct from an empty allowlist so "no origins configured"
+    # (fail closed on any Origin) differs from "operator disabled the check".
+    allow_any_origin: bool = False
+
+
 class MCPServerConfig(BaseModel):
     """Server-level bootstrap configuration."""
 
     redis_url: str = Field(..., min_length=1)
+    auth: MCPAuthConfig | None = None
+    transport_security: MCPTransportSecurityConfig | None = None
+    builtin_tools: dict[str, Literal["enabled", "disabled"]] = Field(
+        default_factory=dict
+    )
+    # Importing a module runs its code with the server's privileges, so naming
+    # modules does nothing until the operator opts in separately.
+    code_tool_modules: list[str] = Field(default_factory=list)
+    allow_code_tools: bool = False
+
+    @model_validator(mode="after")
+    def _validate_code_tool_modules(self) -> "MCPServerConfig":
+        """Require the opt-in, and a usable module name, for each code module."""
+        if self.code_tool_modules and not self.allow_code_tools:
+            raise ValueError(
+                "server.code_tool_modules imports Python code, which runs with "
+                "the server's privileges; set server.allow_code_tools: true to "
+                "allow it"
+            )
+        seen: set[str] = set()
+        for module in self.code_tool_modules:
+            if not module or module != module.strip():
+                raise ValueError(
+                    f"server.code_tool_modules entry {module!r} is not a " "module name"
+                )
+            if module in seen:
+                raise ValueError(
+                    f"server.code_tool_modules lists '{module}' more than once"
+                )
+            seen.add(module)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_builtin_tools(self) -> "MCPServerConfig":
+        """Reject disable/enable entries that do not name a built-in tool."""
+        unknown = sorted(set(self.builtin_tools) - builtin_tool_names())
+        if unknown:
+            raise ValueError(
+                "server.builtin_tools contains unknown tool names: "
+                f"{', '.join(unknown)}; known built-ins: "
+                f"{', '.join(sorted(builtin_tool_names()))}"
+            )
+        return self
+
+    def builtin_tool_enabled(self, tool_name: str) -> bool:
+        """Report whether a built-in tool should be registered."""
+        return self.builtin_tools.get(tool_name, "enabled") == "enabled"
 
 
 class MCPIndexSearchConfig(BaseModel):
@@ -206,9 +409,16 @@ class MCPSchemaOverrides(BaseModel):
 
 
 class MCPIndexBindingConfig(BaseModel):
-    """The sole configured v1 index binding."""
+    """A single configured logical index binding.
+
+    A server can configure one or many of these under ``indexes.<id>``. Each
+    binding inspects and serves one existing Redis index independently, and
+    owns its own schema inspection, runtime mapping, and search validation.
+    """
 
     redis_name: str = Field(..., min_length=1)
+    description: str | None = Field(default=None, min_length=1)
+    read_only: bool = False
     vectorizer: MCPVectorizerConfig | None = None
     search: MCPIndexSearchConfig
     runtime: MCPRuntimeConfig
@@ -279,83 +489,9 @@ class MCPIndexBindingConfig(BaseModel):
 
         return self
 
-
-class MCPConfig(BaseModel):
-    """Validated MCP server configuration loaded from YAML."""
-
-    server: MCPServerConfig
-    indexes: dict[str, MCPIndexBindingConfig]
-
-    @model_validator(mode="after")
-    def _validate_bindings(self) -> "MCPConfig":
-        """Validate that there is exactly one configured logical binding."""
-        if len(self.indexes) != 1:
-            raise ValueError(
-                "indexes must contain exactly one configured index binding"
-            )
-
-        binding_id = next(iter(self.indexes))
-        if not binding_id.strip():
-            raise ValueError("indexes binding id must be non-blank")
-        return self
-
-    @property
-    def binding_id(self) -> str:
-        """Return the single logical binding identifier configured for v1."""
-        return next(iter(self.indexes))
-
-    @property
-    def binding(self) -> MCPIndexBindingConfig:
-        """Return the sole configured binding."""
-        return self.indexes[self.binding_id]
-
-    @property
-    def runtime(self) -> MCPRuntimeConfig:
-        """Expose the sole binding's runtime config for phase 1."""
-        return self.binding.runtime
-
-    @property
-    def vectorizer(self) -> MCPVectorizerConfig | None:
-        """Expose the sole binding's vectorizer config for phase 1."""
-        return self.binding.vectorizer
-
-    @property
-    def search(self) -> MCPIndexSearchConfig:
-        """Expose the sole binding's configured search behavior."""
-        return self.binding.search
-
-    @property
-    def uses_text_search(self) -> bool:
-        """Return whether configured search uses a text field."""
-        return self.binding.uses_text_search
-
-    @property
-    def uses_query_embedding(self) -> bool:
-        """Return whether configured search embeds user queries."""
-        return self.binding.uses_query_embedding
-
-    @property
-    def supports_vector_backed_upsert(self) -> bool:
-        """Return whether configured upserts manage a vector field."""
-        return self.binding.supports_vector_backed_upsert
-
-    @property
-    def supports_server_side_embedding(self) -> bool:
-        """Return whether configured upserts can generate embeddings."""
-        return self.binding.supports_server_side_embedding
-
-    @property
-    def requires_startup_vectorizer(self) -> bool:
-        """Return whether startup must initialize a vectorizer."""
-        return self.binding.requires_startup_vectorizer
-
-    @property
-    def redis_name(self) -> str:
-        """Return the existing Redis index name that must be inspected at startup."""
-        return self.binding.redis_name
-
+    @staticmethod
     def inspected_schema_from_index_info(
-        self, index_info: dict[str, Any]
+        index_info: dict[str, Any],
     ) -> dict[str, Any]:
         """Build a schema dict from FT.INFO while preserving discovered field identity.
 
@@ -363,7 +499,11 @@ class MCPConfig(BaseModel):
         incomplete on older Redis versions. MCP needs those field identities to survive
         so schema overrides can patch the missing attrs during startup.
         """
-        from redisvl.redis.connection import convert_index_info_to_schema
+        from redisvl.redis.connection import (
+            convert_index_info_to_schema,
+            normalize_index_definition,
+            normalize_index_fields,
+        )
 
         schema_dict = convert_index_info_to_schema(index_info)
         discovered_fields = {
@@ -372,18 +512,23 @@ class MCPConfig(BaseModel):
             if isinstance(field, dict) and "name" in field
         }
 
-        storage_type = index_info["index_definition"][1].lower()
-        for raw_field in index_info.get("attributes", []):
-            name = raw_field[1] if storage_type == "hash" else raw_field[3]
+        definition = normalize_index_definition(index_info)
+        storage_type = definition["key_type"].lower()
+        for raw_field in normalize_index_fields(index_info):
+            name = (
+                raw_field["identifier"]
+                if storage_type == "hash"
+                else raw_field["attribute"]
+            )
             if name in discovered_fields:
                 continue
 
             field = {
                 "name": name,
-                "type": str(raw_field[5]).lower(),
+                "type": str(raw_field["type"]).lower(),
             }
             if storage_type == "json":
-                field["path"] = raw_field[1]
+                field["path"] = raw_field["identifier"]
 
             # Keep discovered field identity even when FT.INFO omitted attrs.
             schema_dict.setdefault("fields", []).append(field)
@@ -402,7 +547,7 @@ class MCPConfig(BaseModel):
             if isinstance(field, dict) and "name" in field
         }
 
-        for override in self.binding.schema_overrides.fields:
+        for override in self.schema_overrides.fields:
             discovered = discovered_fields.get(override.name)
             if discovered is None:
                 raise ValueError(
@@ -433,10 +578,22 @@ class MCPConfig(BaseModel):
         """Ensure runtime mappings point at explicit fields in the effective schema."""
         field_names = set(schema.field_names)
 
-        if self.uses_text_search and self.runtime.text_field_name not in field_names:
-            raise ValueError(
-                f"runtime.text_field_name '{self.runtime.text_field_name}' not found in schema"
-            )
+        if self.uses_text_search:
+            if self.runtime.text_field_name not in field_names:
+                raise ValueError(
+                    f"runtime.text_field_name '{self.runtime.text_field_name}' not found in schema"
+                )
+            # Membership alone is not enough: a vector field cannot be searched as
+            # text, and pointing at one leaves the default projection empty (it is
+            # every *non-vector* field). An empty projection reaches Redis as no
+            # RETURN clause at all, which returns every stored field -- including
+            # the embedding this tool refuses to return when asked for by name.
+            text_field = schema.fields.get(self.runtime.text_field_name)
+            if text_field is not None and text_field.type == "vector":
+                raise ValueError(
+                    f"runtime.text_field_name '{self.runtime.text_field_name}' is a "
+                    "vector field; text search requires a text or tag field"
+                )
 
         if (
             self.supports_server_side_embedding
@@ -497,6 +654,305 @@ class MCPConfig(BaseModel):
                 "Schema fields conflict with MCP-reserved score metadata names "
                 f"for search.type '{self.search.type}': {', '.join(conflicting_fields)}"
             )
+
+
+class MCPProfileParamConfig(BaseModel):
+    """Exposure policy for one model-facing argument of a profile tool.
+
+    ``max`` caps the argument when it is exposed. When it is hidden, the cap
+    becomes the fixed value instead -- see ``register_profile_tool``.
+    """
+
+    # Extras are forbidden across the profile models because a misspelled key
+    # would otherwise be dropped in silence, leaving a tool that reads as locked
+    # in config while enforcing nothing.
+    model_config = ConfigDict(extra="forbid")
+
+    expose: bool = True
+    max: int | None = None
+
+    @model_validator(mode="after")
+    def _validate_max(self) -> "MCPProfileParamConfig":
+        """Reject a non-positive cap."""
+        if self.max is not None and self.max <= 0:
+            raise ValueError("custom_tools params max must be greater than 0")
+        return self
+
+
+def iter_filter_clauses(node: Any) -> Any:
+    """Yield every leaf clause of a JSON filter DSL expression."""
+    if not isinstance(node, dict):
+        return
+    for operator in ("and", "or"):
+        if operator in node:
+            for child in node[operator] or []:
+                yield from iter_filter_clauses(child)
+            return
+    if "not" in node:
+        yield from iter_filter_clauses(node["not"])
+        return
+    yield node
+
+
+class MCPProfileInjectConfig(BaseModel):
+    """One tenant-scoping filter whose value comes from the caller's verified token.
+
+    ``field`` and ``claim`` are independent author-chosen strings: ``field`` is
+    what the index schema calls the tenant column, ``claim`` is what the identity
+    provider calls it. Only ``field`` can be checked at startup, against the
+    bound schema; ``claim`` cannot, because no token exists until a request.
+    """
+
+    # `from` is a Python keyword, so the attribute is `source`. populate_by_name
+    # keeps it constructible from Python as well as from YAML.
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    field: str = Field(..., min_length=1)
+    # Required rather than defaulted, and a single-value Literal today: the
+    # source is the whole point of the entry, so it is stated, not inferred.
+    source: Literal["claim"] = Field(..., alias="from")
+    claim: str = Field(..., min_length=1)
+    # Optional injection is unscoped injection, so `false` is not a value this
+    # accepts. The key exists so the proposal's published YAML loads verbatim.
+    required: Literal[True] = True
+
+    @model_validator(mode="after")
+    def _validate_inject(self) -> "MCPProfileInjectConfig":
+        """Reject a blank field or claim name, which min_length lets through."""
+        if not self.field.strip():
+            raise ValueError("custom_tools lock.inject field must not be blank")
+        if not self.claim.strip():
+            raise ValueError("custom_tools lock.inject claim must not be blank")
+        return self
+
+
+class MCPProfileLockConfig(BaseModel):
+    """Author-locked arguments that the model cannot override or remove."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    return_fields: list[str] | None = None
+    filter: dict[str, Any] | None = None
+    inject: list[MCPProfileInjectConfig] | None = None
+
+    @model_validator(mode="after")
+    def _validate_lock(self) -> "MCPProfileLockConfig":
+        """Reject an empty or blank projection.
+
+        The annotations already give the rest: pydantic enforces ``list[str]``
+        and ``dict``, so a locked filter is necessarily the structured DSL form
+        rather than a raw string, which could not be safely AND-combined with a
+        caller filter.
+        """
+        if self.return_fields is not None:
+            if not self.return_fields:
+                raise ValueError(
+                    "custom_tools lock.return_fields must contain at least one field"
+                )
+            if any(not field_name.strip() for field_name in self.return_fields):
+                raise ValueError(
+                    "custom_tools lock.return_fields must contain non-empty strings"
+                )
+
+        if self.inject is not None:
+            if not self.inject:
+                raise ValueError(
+                    "custom_tools lock.inject must contain at least one entry; "
+                    "drop the key for a profile that does not inject"
+                )
+
+            injected = [entry.field for entry in self.inject]
+            duplicated = sorted({name for name in injected if injected.count(name) > 1})
+            if duplicated:
+                raise ValueError(
+                    "custom_tools lock.inject names the same field more than "
+                    f"once: {', '.join(duplicated)}"
+                )
+
+            # A static lock and an injected value on one field are two answers
+            # to "which tenant", and they AND together -- so a mismatch matches
+            # nothing and a match makes one of them dead config. Either way the
+            # author meant only one of them.
+            locked = {
+                clause.get("field")
+                for clause in iter_filter_clauses(self.filter)
+                if isinstance(clause.get("field"), str)
+            }
+            colliding = sorted(locked.intersection(injected))
+            if colliding:
+                raise ValueError(
+                    "custom_tools lock.inject and lock.filter both constrain "
+                    f"{', '.join(colliding)}; an injected field must not also "
+                    "appear in lock.filter"
+                )
+        return self
+
+
+class MCPCustomToolConfig(BaseModel):
+    """A declarative custom tool that specializes a built-in.
+
+    A profile is the built-in named by ``based_on`` with some arguments frozen by
+    the author and the rest still exposed to the model. Because it resolves to a
+    built-in call and nothing more, it inherits that built-in's concurrency cap,
+    timeout, read-only policy, auth scoping, and error mapping.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1)
+    kind: Literal["profile"] = "profile"
+    based_on: Literal["search-records"] = "search-records"
+    index: str | None = None
+    description: str = Field(..., min_length=1)
+    suppress_schema_hints: bool = False
+    lock: MCPProfileLockConfig = Field(default_factory=MCPProfileLockConfig)
+    params: dict[str, MCPProfileParamConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_profile(self) -> "MCPCustomToolConfig":
+        """Validate naming, parameter policy, and lock/expose coherence."""
+        if not self.description.strip():
+            # min_length alone lets whitespace through, which would publish a
+            # tool whose description is blank to the model.
+            raise ValueError(
+                f"custom_tools '{self.name}' description must not be blank"
+            )
+        validate_tool_name(self.name, kind="custom_tools")
+
+        unknown_params = sorted(set(self.params) - _PROFILE_PARAM_NAMES)
+        if unknown_params:
+            raise ValueError(
+                f"custom_tools params contains unknown arguments: "
+                f"{', '.join(unknown_params)}; allowed: "
+                f"{', '.join(sorted(_PROFILE_PARAM_NAMES))}"
+            )
+
+        # Only `limit` is a bounded numeric argument, so a cap is meaningless
+        # anywhere else and is more likely a config mistake than an intent.
+        for param_name, policy in self.params.items():
+            if policy.max is not None and param_name != "limit":
+                raise ValueError(
+                    f"custom_tools params.{param_name} does not support 'max'; "
+                    "only params.limit can be capped"
+                )
+
+        query_policy = self.params.get("query")
+        if query_policy is not None and not query_policy.expose:
+            raise ValueError(
+                "custom_tools params.query cannot be hidden; a search profile "
+                "needs query text from the caller"
+            )
+
+        # Locking a projection and letting the model choose one are mutually
+        # exclusive. A filter is the deliberate exception: locked plus exposed is
+        # the narrowing case, where the caller's filter AND-combines with the
+        # locked one.
+        return_fields_policy = self.params.get("return_fields")
+        if self.lock.return_fields is not None and (
+            return_fields_policy is not None and return_fields_policy.expose
+        ):
+            raise ValueError(
+                "custom_tools cannot both lock return_fields and expose them; "
+                "set params.return_fields.expose to false or drop the lock"
+            )
+        return self
+
+    def param_exposed(self, param_name: str) -> bool:
+        """Report whether the model may supply an argument.
+
+        Unlisted arguments stay exposed, so a profile that only locks a filter
+        keeps the rest of the built-in's contract. A locked projection is the
+        exception: locking it implies the model cannot also pass one.
+        """
+        policy = self.params.get(param_name)
+        if policy is not None:
+            return policy.expose
+        if param_name == "return_fields" and self.lock.return_fields is not None:
+            return False
+        return True
+
+    def param_max(self, param_name: str) -> int | None:
+        """Return the author-declared cap for an argument, if any."""
+        policy = self.params.get(param_name)
+        return None if policy is None else policy.max
+
+
+class MCPConfig(BaseModel):
+    """Validated MCP server configuration loaded from YAML.
+
+    ``indexes`` is the canonical multi-binding map: a server may configure one
+    or many logical bindings. Single-index configs remain valid and unchanged;
+    each binding owns its own inspection, runtime mapping, and search behavior.
+    """
+
+    server: MCPServerConfig
+    indexes: dict[str, MCPIndexBindingConfig]
+    custom_tools: list[MCPCustomToolConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_bindings(self) -> "MCPConfig":
+        """Require at least one binding and reject blank logical ids."""
+        if not self.indexes:
+            raise ValueError("indexes must contain at least one configured binding")
+
+        for binding_id in self.indexes:
+            if not binding_id.strip():
+                raise ValueError("indexes binding id must be non-blank")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_custom_tools(self) -> "MCPConfig":
+        """Validate custom tool names and index pinning against the bindings.
+
+        Field-level checks that need the inspected schema (locked filter fields,
+        locked projections) run at startup once each binding's schema is known.
+        """
+        seen: set[str] = set()
+        for profile in self.custom_tools:
+            if profile.name in seen:
+                raise ValueError(
+                    f"custom_tools contains duplicate tool name '{profile.name}'"
+                )
+            seen.add(profile.name)
+
+            if profile.index is None:
+                # A profile freezes its index, so it can only default when there
+                # is exactly one binding to default to.
+                if len(self.indexes) > 1:
+                    available = ", ".join(sorted(self.indexes))
+                    raise ValueError(
+                        f"custom_tools '{profile.name}' must set 'index' when "
+                        f"multiple indexes are configured; available: {available}"
+                    )
+            elif profile.index not in self.indexes:
+                available = ", ".join(sorted(self.indexes))
+                raise ValueError(
+                    f"custom_tools '{profile.name}' references unknown index "
+                    f"'{profile.index}'; available: {available}"
+                )
+
+            # A cap above the binding's own ceiling can never be satisfied. With
+            # `limit` hidden the cap becomes the fixed request size, so every
+            # call would fail; with it exposed the cap is simply unreachable.
+            # Either way it is a config mistake, catchable before startup.
+            limit_cap = profile.param_max("limit")
+            if limit_cap is not None:
+                binding_max = self.indexes[
+                    self.resolved_profile_index(profile)
+                ].runtime.max_limit
+                if limit_cap > binding_max:
+                    raise ValueError(
+                        f"custom_tools '{profile.name}' params.limit.max "
+                        f"({limit_cap}) exceeds the bound index's "
+                        f"runtime.max_limit ({binding_max})"
+                    )
+        return self
+
+    def resolved_profile_index(self, profile: MCPCustomToolConfig) -> str:
+        """Return the binding id a profile is pinned to."""
+        if profile.index is not None:
+            return profile.index
+        return next(iter(self.indexes))
 
 
 def _substitute_env(value: Any) -> Any:

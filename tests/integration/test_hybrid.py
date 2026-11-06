@@ -19,12 +19,12 @@ SKIP_REASON = "Requires Redis >= 8.4.0 and redis-py>=7.1.0"
 
 
 @pytest.fixture
-def index_schema(worker_id):
+def index_schema(redis_test_name):
     return IndexSchema.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": redis_test_name("user_index"),
+                "prefix": redis_test_name("v1"),
                 "storage_type": "hash",
             },
             "fields": [
@@ -73,8 +73,9 @@ def index_schema(worker_id):
 def index(index_schema, multi_vector_data, redis_url):
     index = SearchIndex(schema=index_schema, redis_url=redis_url)
 
-    # create the index (no data yet)
-    index.create(overwrite=True)
+    # create the index (no data yet); drop any stale docs left by an
+    # interrupted earlier run sharing this worker's Redis database
+    index.create(overwrite=True, drop=True)
 
     # prepare and load the data
     def hash_preprocess(item: dict) -> dict:
@@ -97,7 +98,7 @@ def index(index_schema, multi_vector_data, redis_url):
 @pytest.fixture
 async def async_index(index_schema, multi_vector_data, async_client):
     index = AsyncSearchIndex(schema=index_schema, redis_client=async_client)
-    await index.create(overwrite=True)
+    await index.create(overwrite=True, drop=True)
 
     def hash_preprocess(item: dict) -> dict:
         return {
@@ -225,7 +226,7 @@ def test_hybrid_query_with_geo_filter(index):
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
-@pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
+@pytest.mark.parametrize("alpha", [0.0, 0.1, 0.5, 0.9])
 def test_hybrid_query_alpha(index, alpha):
     skip_if_redis_version_below(index.client, "8.4.0")
 
@@ -252,9 +253,27 @@ def test_hybrid_query_alpha(index, alpha):
         score = alpha * float(result["text_score"]) + (1 - alpha) * float(
             result["vector_similarity"]
         )
-        assert (
-            float(result["hybrid_score"]) - score <= 0.0001
-        )  # allow for small floating point error
+        assert float(result["hybrid_score"]) == pytest.approx(score, abs=1e-4)
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_zero_rrf_constant_is_applied(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
+    hybrid_query = HybridQuery(
+        text="a medical professional with expertise in lung cancer",
+        text_field_name="description",
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        combination_method="RRF",
+        rrf_constant=0,
+        yield_combined_score_as="hybrid_score",
+    )
+
+    results = index.query(hybrid_query)
+    # With a constant of 0, a top-ranked result scores at least 1/1. The server's
+    # default constant of 60 caps the score of any result at 2/61.
+    assert max(float(result["hybrid_score"]) for result in results) >= 1.0
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)

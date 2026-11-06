@@ -264,13 +264,11 @@ class TestSQLQueryBasic:
 
     def test_redis_query_string_with_client(self, sql_index):
         """Test redis_query_string() with redis_client returns the Redis command string."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE category = 'electronics'
-        """
-        )
+        """)
 
         # Get the Redis command string using redis_client
         redis_cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
@@ -282,13 +280,11 @@ class TestSQLQueryBasic:
 
     def test_redis_query_string_with_url(self, sql_index, redis_url):
         """Test redis_query_string() with redis_url returns the Redis command string."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE category = 'electronics'
-        """
-        )
+        """)
 
         # Get the Redis command string using redis_url
         redis_cmd = sql_query.redis_query_string(redis_url=redis_url)
@@ -300,13 +296,11 @@ class TestSQLQueryBasic:
 
     def test_redis_query_string_aggregate(self, sql_index):
         """Test redis_query_string() returns FT.AGGREGATE for aggregation queries."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, COUNT(*) as count
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
 
         redis_cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
 
@@ -321,13 +315,11 @@ class TestSQLQueryWhere:
 
     def test_where_tag_equals(self, sql_index):
         """Test WHERE with tag field equality."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price, category
             FROM {sql_index.name}
             WHERE category = 'electronics'
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -336,13 +328,11 @@ class TestSQLQueryWhere:
 
     def test_where_numeric_comparison(self, sql_index):
         """Test WHERE with numeric field comparison."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE price < 50
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -351,13 +341,11 @@ class TestSQLQueryWhere:
 
     def test_where_combined_and(self, sql_index):
         """Test WHERE with AND combining multiple conditions."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price, category
             FROM {sql_index.name}
             WHERE category = 'electronics' AND price < 100
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         for result in results:
@@ -366,13 +354,11 @@ class TestSQLQueryWhere:
 
     def test_where_numeric_range(self, sql_index):
         """Test WHERE with numeric range (BETWEEN equivalent)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE price >= 25 AND price <= 50
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         for result in results:
@@ -385,13 +371,11 @@ class TestSQLQueryTagOperators:
 
     def test_tag_not_equals(self, sql_index):
         """Test tag != operator."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, category
             FROM {sql_index.name}
             WHERE category != 'electronics'
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -400,13 +384,11 @@ class TestSQLQueryTagOperators:
 
     def test_tag_in(self, sql_index):
         """Test tag IN operator."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, category
             FROM {sql_index.name}
             WHERE category IN ('books', 'accessories')
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -419,13 +401,11 @@ class TestSQLQueryNumericOperators:
 
     def test_numeric_greater_than(self, sql_index):
         """Test numeric > operator."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE price > 100
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -434,13 +414,11 @@ class TestSQLQueryNumericOperators:
 
     def test_numeric_equals(self, sql_index):
         """Test numeric = operator."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE price = 45
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -449,29 +427,24 @@ class TestSQLQueryNumericOperators:
 
     def test_numeric_not_equals(self, sql_index):
         """Test numeric != operator."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE price != 45
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
         for result in results:
             assert float(result["price"]) != 45
 
-    @pytest.mark.xfail(reason="Numeric IN operator not yet supported in sql-redis")
     def test_numeric_in(self, sql_index):
         """Test numeric IN operator."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE price IN (45, 55, 65)
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -480,13 +453,11 @@ class TestSQLQueryNumericOperators:
 
     def test_numeric_between(self, sql_index):
         """Test numeric BETWEEN operator."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             WHERE price BETWEEN 40 AND 60
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -500,13 +471,11 @@ class TestSQLQueryTextOperators:
 
     def test_text_equals(self, sql_index):
         """Test text = operator for single-token TEXT matching."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE title = 'laptop'
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -515,13 +484,11 @@ class TestSQLQueryTextOperators:
 
     def test_text_not_equals(self, sql_index):
         """Test text != operator for negated single-token TEXT matching."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE title != 'laptop'
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -531,13 +498,11 @@ class TestSQLQueryTextOperators:
 
     def test_text_prefix(self, sql_index):
         """Test text prefix search with LIKE pattern matching."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE title LIKE 'lap%'
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -547,13 +512,11 @@ class TestSQLQueryTextOperators:
 
     def test_text_suffix(self, sql_index):
         """Test text suffix search with LIKE pattern matching."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE name LIKE '%book'
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -563,13 +526,11 @@ class TestSQLQueryTextOperators:
 
     def test_text_fuzzy(self, sql_index):
         """Test text fuzzy search with fuzzy(field, value)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE fuzzy(title, 'laptap')
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -579,13 +540,11 @@ class TestSQLQueryTextOperators:
 
     def test_text_fulltext(self, sql_index):
         """Test text tokenized search with fulltext(field, query)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE fulltext(title, 'laptop keyboard')
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -596,13 +555,11 @@ class TestSQLQueryTextOperators:
 
     def test_text_phrase(self, sql_index):
         """Test text phrase search (multi-word exact phrase)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE title = 'gaming laptop'
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -624,13 +581,11 @@ class TestSQLQueryTextOperators:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
 
-            sql_query = SQLQuery(
-                f"""
+            sql_query = SQLQuery(f"""
                 SELECT title, name
                 FROM {sql_index.name}
                 WHERE title = 'laptop and keyboard'
-            """
-            )
+            """)
             results = sql_index.query(sql_query)
 
             # Should find the "Laptop and Keyboard Bundle" product
@@ -658,13 +613,11 @@ class TestSQLQueryTextOperators:
     @pytest.mark.xfail(reason="Text IN operator not yet supported in sql-redis")
     def test_text_in(self, sql_index):
         """Test text IN operator (multiple term search)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, name
             FROM {sql_index.name}
             WHERE title IN ('Python', 'Redis')
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) >= 1
@@ -678,13 +631,11 @@ class TestSQLQueryOrderBy:
 
     def test_order_by_asc(self, sql_index):
         """Test ORDER BY ascending."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             ORDER BY price ASC
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         prices = [float(r["price"]) for r in results]
@@ -692,13 +643,11 @@ class TestSQLQueryOrderBy:
 
     def test_order_by_desc(self, sql_index):
         """Test ORDER BY descending."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price
             FROM {sql_index.name}
             ORDER BY price DESC
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         prices = [float(r["price"]) for r in results]
@@ -750,13 +699,11 @@ class TestSQLQueryAggregation:
 
     def test_group_by_with_count(self, sql_index):
         """Test GROUP BY with COUNT."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, COUNT(*) as count
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         # Should have groups for electronics, books, accessories, stationery
@@ -766,13 +713,11 @@ class TestSQLQueryAggregation:
 
     def test_group_by_with_avg(self, sql_index):
         """Test GROUP BY with AVG."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, AVG(price) as avg_price
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         # All results should have category and avg_price
@@ -783,14 +728,12 @@ class TestSQLQueryAggregation:
 
     def test_group_by_with_filter(self, sql_index):
         """Test GROUP BY with WHERE filter."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, AVG(price) as avg_price
             FROM {sql_index.name}
             WHERE stock > 50
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -800,13 +743,11 @@ class TestSQLQueryAggregation:
 
     def test_group_by_with_sum(self, sql_index):
         """Test GROUP BY with SUM reducer."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, SUM(price) as total_price
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -817,13 +758,11 @@ class TestSQLQueryAggregation:
 
     def test_group_by_with_min(self, sql_index):
         """Test GROUP BY with MIN reducer."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, MIN(price) as min_price
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -834,13 +773,11 @@ class TestSQLQueryAggregation:
 
     def test_group_by_with_max(self, sql_index):
         """Test GROUP BY with MAX reducer."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, MAX(price) as max_price
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -851,12 +788,10 @@ class TestSQLQueryAggregation:
 
     def test_global_sum(self, sql_index):
         """Test global SUM aggregation (no GROUP BY)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT SUM(price) as total
             FROM {sql_index.name}
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
@@ -865,12 +800,10 @@ class TestSQLQueryAggregation:
 
     def test_global_min(self, sql_index):
         """Test global MIN aggregation (no GROUP BY)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT MIN(price) as min_price
             FROM {sql_index.name}
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
@@ -879,12 +812,10 @@ class TestSQLQueryAggregation:
 
     def test_global_max(self, sql_index):
         """Test global MAX aggregation (no GROUP BY)."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT MAX(price) as max_price
             FROM {sql_index.name}
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
@@ -893,13 +824,11 @@ class TestSQLQueryAggregation:
 
     def test_multiple_reducers(self, sql_index):
         """Test multiple reducers in a single query."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, COUNT(*) as count, SUM(price) as total, AVG(price) as avg_price, MIN(price) as min_price, MAX(price) as max_price
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -913,12 +842,10 @@ class TestSQLQueryAggregation:
 
     def test_count_distinct(self, sql_index):
         """Test COUNT_DISTINCT reducer using Redis-specific syntax."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT COUNT_DISTINCT(category) as unique_categories
             FROM {sql_index.name}
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
@@ -928,12 +855,10 @@ class TestSQLQueryAggregation:
 
     def test_stddev(self, sql_index):
         """Test STDDEV reducer."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT STDDEV(price) as price_stddev
             FROM {sql_index.name}
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
@@ -944,12 +869,10 @@ class TestSQLQueryAggregation:
 
     def test_quantile(self, sql_index):
         """Test QUANTILE reducer."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT QUANTILE(price, 0.5) as median_price
             FROM {sql_index.name}
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
@@ -960,13 +883,11 @@ class TestSQLQueryAggregation:
 
     def test_tolist(self, sql_index):
         """Test TOLIST reducer via ARRAY_AGG SQL function."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, ARRAY_AGG(title) as titles
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -977,13 +898,11 @@ class TestSQLQueryAggregation:
 
     def test_first_value(self, sql_index):
         """Test FIRST_VALUE reducer."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT category, FIRST_VALUE(title) as first_title
             FROM {sql_index.name}
             GROUP BY category
-        """
-        )
+        """)
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
@@ -1000,13 +919,11 @@ class TestSQLQueryIntegration:
     def test_proposal_example_basic(self, sql_index):
         """Test the basic example from the MLP proposal."""
         # Example from proposal doc (adapted for our test data)
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT title, price, category
             FROM {sql_index.name}
             WHERE category = 'books'
-        """
-        )
+        """)
 
         results = sql_index.query(sql_query)
 
@@ -1300,13 +1217,11 @@ class TestSQLQueryGeoOperators:
     def test_geo_distance_basic_filter(self, geo_index):
         """Test basic geo_distance filter - find stores within radius."""
         # Find stores within 50km of SF Downtown
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name, category
             FROM {geo_index.name}
             WHERE geo_distance(location, POINT(-122.4194, 37.7749), 'km') < 50
-            """
-        )
+            """)
 
         results = geo_index.query(sql_query)
 
@@ -1323,13 +1238,11 @@ class TestSQLQueryGeoOperators:
     def test_geo_distance_with_miles(self, geo_index):
         """Test geo_distance with miles unit."""
         # Find stores within 10 miles of SF Downtown
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name
             FROM {geo_index.name}
             WHERE geo_distance(location, POINT(-122.4194, 37.7749), 'mi') < 10
-            """
-        )
+            """)
 
         results = geo_index.query(sql_query)
 
@@ -1343,13 +1256,11 @@ class TestSQLQueryGeoOperators:
     def test_geo_distance_combined_with_tag(self, geo_index):
         """Test geo_distance combined with TAG filter."""
         # Find RETAIL stores within 100km of SF
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name, rating
             FROM {geo_index.name}
             WHERE category = 'retail' AND geo_distance(location, POINT(-122.4194, 37.7749), 'km') < 100
-            """
-        )
+            """)
 
         results = geo_index.query(sql_query)
 
@@ -1364,13 +1275,11 @@ class TestSQLQueryGeoOperators:
     def test_geo_distance_combined_with_text(self, geo_index):
         """Test geo_distance combined with TEXT filter."""
         # Find stores with "Downtown" in name within 2000 miles of center US
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name, location
             FROM {geo_index.name}
             WHERE name LIKE '%Downtown%' AND geo_distance(location, POINT(-94.5786, 39.0997), 'mi') < 2000
-            """
-        )
+            """)
 
         results = geo_index.query(sql_query)
 
@@ -1381,12 +1290,10 @@ class TestSQLQueryGeoOperators:
     def test_geo_distance_in_select_aggregate(self, geo_index):
         """Test geo_distance() in SELECT clause generates FT.AGGREGATE."""
         # Calculate distance from SF Downtown to all stores
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name, geo_distance(location, POINT(-122.4194, 37.7749)) AS distance
             FROM {geo_index.name}
-            """
-        )
+            """)
 
         results = geo_index.query(sql_query)
 
@@ -1405,13 +1312,11 @@ class TestSQLQueryGeoOperators:
 
     def test_geo_distance_redis_query_string(self, geo_index, redis_url):
         """Test redis_query_string() returns correct GEOFILTER command."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name
             FROM {geo_index.name}
             WHERE geo_distance(location, POINT(-122.4194, 37.7749), 'km') < 50
-            """
-        )
+            """)
 
         redis_cmd = sql_query.redis_query_string(redis_url=redis_url)
 
@@ -1513,12 +1418,10 @@ class TestSQLQueryDateFunctions:
 
     def test_date_between_filter(self, date_index):
         """Test BETWEEN with date literals."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name FROM {date_index.name}
             WHERE created_at BETWEEN '2024-01-01' AND '2024-03-31'
-            """
-        )
+            """)
         results = date_index.query(sql_query)
 
         # Should find Q1 2024 events
@@ -1555,12 +1458,10 @@ class TestSQLQueryDateFunctions:
 
     def test_date_combined_with_tag(self, date_index):
         """Test date filter combined with TAG."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT name FROM {date_index.name}
             WHERE category = 'meeting' AND created_at > '2024-01-01'
-            """
-        )
+            """)
         results = date_index.query(sql_query)
 
         # Should find meetings in 2024
@@ -1571,13 +1472,11 @@ class TestSQLQueryDateFunctions:
 
     def test_group_by_year(self, date_index):
         """Test GROUP BY with YEAR() function."""
-        sql_query = SQLQuery(
-            f"""
+        sql_query = SQLQuery(f"""
             SELECT YEAR(created_at) AS year, COUNT(*) AS count
             FROM {date_index.name}
             GROUP BY year
-            """
-        )
+            """)
         results = date_index.query(sql_query)
 
         # Should have 2 groups: 2023 and 2024
@@ -1585,3 +1484,177 @@ class TestSQLQueryDateFunctions:
         counts = {str(r["year"]): int(r["count"]) for r in results}
         assert counts.get("2023") == 1
         assert counts.get("2024") == 4
+
+
+class TestSQLRedis060Regression:
+    """Regression tests for the 10 trial-user findings fixed in sql-redis 0.6.0.
+
+    Each test exercises one of the defects end-to-end through SQLQuery +
+    SearchIndex. Assertions are behavior-only (result-set membership or
+    ValueError on inputs that previously emitted garbage queries) so they
+    do not depend on the exact RediSearch query-string formatting.
+    """
+
+    def test_not_in_tag_excludes_listed_values(self, sql_index):
+        """Case 1: NOT IN on TAG must exclude the listed values, not match them."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, category FROM {sql_index.name} "
+                f"WHERE category NOT IN ('electronics', 'books')"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert r["category"] not in ("electronics", "books")
+
+    def test_not_between_numeric_excludes_range(self, sql_index):
+        """Case 2: NOT BETWEEN on NUMERIC must exclude the range."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, price FROM {sql_index.name} "
+                f"WHERE price NOT BETWEEN 40 AND 60"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            price = float(r["price"])
+            assert price < 40 or price > 60
+
+    def test_not_comparison_numeric_is_negated(self, sql_index):
+        """Case 3: NOT price > 100 must return only prices <= 100."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, price FROM {sql_index.name} " f"WHERE NOT price > 100"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert float(r["price"]) <= 100
+
+    def test_not_equals_on_tag_is_negated(self, sql_index):
+        """Case 3 (TAG side): NOT category = 'electronics' must exclude electronics."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, category FROM {sql_index.name} "
+                f"WHERE NOT category = 'electronics'"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert r["category"] != "electronics"
+
+    def test_literal_pipe_in_tag_value_is_not_a_separator(self, sql_index):
+        """Case 4: a literal '|' inside a TAG value must not split the value.
+
+        No product has the literal tag 'bestseller|featured'. Pre-0.6.0 the
+        pipe was read as the IN-list separator, so this matched every row
+        tagged 'bestseller' OR 'featured'. Post-fix it matches nothing.
+        """
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title FROM {sql_index.name} "
+                f"WHERE tags = 'bestseller|featured'"
+            )
+        )
+
+        assert results == []
+
+    def test_numeric_in_does_not_crash(self, sql_index):
+        """Case 5: IN on NUMERIC used to crash with TypeError: float([...])."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, price FROM {sql_index.name} "
+                f"WHERE price IN (45, 55, 65)"
+            )
+        )
+
+        assert sorted(float(r["price"]) for r in results) == [45.0, 55.0, 65.0]
+
+    def test_empty_like_raises_value_error(self, sql_index):
+        """Case 6: LIKE '' is rejected with a clear ValueError."""
+        sql_query = SQLQuery(f"SELECT title FROM {sql_index.name} WHERE title LIKE ''")
+
+        with pytest.raises(ValueError):
+            sql_index.query(sql_query)
+
+    def test_between_on_tag_raises_value_error(self, sql_index):
+        """Case 7: BETWEEN on TAG is rejected with a clear ValueError."""
+        sql_query = SQLQuery(
+            f"SELECT title FROM {sql_index.name} " f"WHERE category BETWEEN 'a' AND 'z'"
+        )
+
+        with pytest.raises(ValueError):
+            sql_index.query(sql_query)
+
+    def test_double_quoted_value_treated_as_literal(self, sql_index):
+        """Case 8: `category = "books"` must be a value match, not @category:{None}."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, category FROM {sql_index.name} "
+                f'WHERE category = "books"'
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert r["category"] == "books"
+
+    def test_double_quoted_numeric_value_does_not_crash(self, sql_index):
+        """Case 8 (NUMERIC side): `price = "45"` used to crash with float(None)."""
+        results = sql_index.query(
+            SQLQuery(f'SELECT title, price FROM {sql_index.name} WHERE price = "45"')
+        )
+
+        assert len(results) >= 1
+        for r in results:
+            assert float(r["price"]) == 45.0
+
+    def test_select_distinct_returns_unique_rows(self, sql_index):
+        """Case 9: SELECT DISTINCT must deduplicate; was previously ignored."""
+        results = sql_index.query(
+            SQLQuery(f"SELECT DISTINCT category FROM {sql_index.name}")
+        )
+
+        categories = [r["category"] for r in results]
+        assert sorted(categories) == sorted(set(categories))
+        assert set(categories) == {
+            "electronics",
+            "books",
+            "accessories",
+            "stationery",
+        }
+
+    def test_select_distinct_star_raises_value_error(self, sql_index):
+        """Case 9: DISTINCT * has no clean RediSearch mapping; must raise."""
+        sql_query = SQLQuery(f"SELECT DISTINCT * FROM {sql_index.name}")
+
+        with pytest.raises(ValueError):
+            sql_index.query(sql_query)
+
+    def test_multi_key_order_by_breaks_ties_with_secondary_key(self, sql_index):
+        """Case 10: pre-0.6.0 silently dropped every ORDER BY key after the first.
+
+        Two rows tie at rating 4.7 (Python Programming $45, Laptop and Keyboard
+        Bundle $999) and two at rating 4.6 (Redis in Action $55, Mechanical
+        Keyboard $149). With the fix the secondary `price ASC` key breaks the
+        tie deterministically.
+        """
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, rating, price FROM {sql_index.name} "
+                f"WHERE rating IN (4.7, 4.6) "
+                f"ORDER BY rating DESC, price ASC"
+            )
+        )
+
+        titles = [r["title"] for r in results]
+        assert titles == [
+            "Python Programming",
+            "Laptop and Keyboard Bundle",
+            "Redis in Action",
+            "Mechanical Keyboard",
+        ]

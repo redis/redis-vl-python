@@ -728,6 +728,36 @@ def test_batch_with_ttl(cache_with_ttl, sample_embedding_data):
     assert all(exist_results)
 
 
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+@pytest.mark.asyncio
+async def test_mget_by_keys_refreshes_every_hit_ttl(
+    cache_with_ttl, sample_embedding_data, monkeypatch, use_async
+):
+    """Every hit's TTL is reset within the lookup pipeline; a miss is not created."""
+    items = [
+        {key: sample[key] for key in ("content", "model_name", "embedding")}
+        for sample in sample_embedding_data
+    ]
+    keys = cache_with_ttl.mset(items, ttl=1000)
+    missing = cache_with_ttl._make_key("missing")
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("TTL refreshed outside the lookup pipeline")
+
+    monkeypatch.setattr(cache_with_ttl, "expire", refuse)
+    monkeypatch.setattr(cache_with_ttl, "aexpire", refuse)
+
+    if use_async:
+        results = await cache_with_ttl.amget_by_keys(keys + [missing])
+    else:
+        results = cache_with_ttl.mget_by_keys(keys + [missing])
+
+    assert [result is not None for result in results] == [True, True, True, False]
+    client = cache_with_ttl._get_redis_client()
+    assert all(0 < client.ttl(key) <= 2 for key in keys)
+    assert client.exists(missing) == 0
+
+
 def test_large_batch_operations(cache):
     """Test operations with larger batches to ensure scalability."""
     # Create a larger batch of items
@@ -773,3 +803,55 @@ def test_large_batch_operations(cache):
             assert not cache.exists_by_key(key)
         else:
             assert cache.exists_by_key(key)
+
+
+@pytest.fixture
+def colliding_caches(redis_url, redis_test_name):
+    """Three caches whose names collide under an unescaped SCAN glob.
+
+    ``base[ab]:*`` as a glob matches ``basea:``/``baseb:`` but not
+    ``base[ab]:``, so clearing the bracketed cache used to wipe the other two.
+    """
+    base = redis_test_name("glob_collision")
+    caches = {
+        name: EmbeddingsCache(name=name, redis_url=redis_url)
+        for name in (f"{base}[ab]", f"{base}a", f"{base}b")
+    }
+    yield f"{base}[ab]", caches
+    for cache_instance in caches.values():
+        cache_instance.clear()
+
+
+def test_clear_does_not_delete_caches_colliding_under_glob(colliding_caches):
+    target_name, caches = colliding_caches
+    for name, cache_instance in caches.items():
+        cache_instance.set(content=name, model_name="test-model", embedding=[0.1, 0.2])
+        assert cache_instance.exists(name, "test-model")
+
+    caches[target_name].clear()
+
+    assert not caches[target_name].exists(target_name, "test-model")
+    for name, cache_instance in caches.items():
+        if name != target_name:
+            assert cache_instance.exists(
+                name, "test-model"
+            ), f"clear() on {target_name!r} deleted entries belonging to {name!r}"
+
+
+@pytest.mark.asyncio
+async def test_aclear_does_not_delete_caches_colliding_under_glob(colliding_caches):
+    target_name, caches = colliding_caches
+    for name, cache_instance in caches.items():
+        await cache_instance.aset(
+            content=name, model_name="test-model", embedding=[0.1, 0.2]
+        )
+        assert await cache_instance.aexists(name, "test-model")
+
+    await caches[target_name].aclear()
+
+    assert not await caches[target_name].aexists(target_name, "test-model")
+    for name, cache_instance in caches.items():
+        if name != target_name:
+            assert await cache_instance.aexists(
+                name, "test-model"
+            ), f"aclear() on {target_name!r} deleted entries belonging to {name!r}"

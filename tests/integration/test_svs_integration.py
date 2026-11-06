@@ -38,13 +38,13 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def svs_schema_lvq(worker_id):
+def svs_schema_lvq(redis_test_name):
     """Create SVS-VAMANA schema with LVQ compression."""
     return IndexSchema.from_dict(
         {
             "index": {
-                "name": f"svs_lvq_{worker_id}",
-                "prefix": f"svs_lvq_{worker_id}",
+                "name": redis_test_name("svs_lvq"),
+                "prefix": redis_test_name("svs_lvq"),
             },
             "fields": [
                 {"name": "id", "type": "tag"},
@@ -69,13 +69,13 @@ def svs_schema_lvq(worker_id):
 
 
 @pytest.fixture
-def svs_schema_leanvec(worker_id):
+def svs_schema_leanvec(redis_test_name):
     """Create SVS-VAMANA schema with LeanVec compression and dimensionality reduction."""
     return IndexSchema.from_dict(
         {
             "index": {
-                "name": f"svs_leanvec_{worker_id}",
-                "prefix": f"svs_leanvec_{worker_id}",
+                "name": redis_test_name("svs_leanvec"),
+                "prefix": redis_test_name("svs_leanvec"),
             },
             "fields": [
                 {"name": "id", "type": "tag"},
@@ -104,7 +104,7 @@ def svs_schema_leanvec(worker_id):
 def svs_index_lvq(svs_schema_lvq, client):
     """Create SVS-VAMANA index with LVQ compression."""
     index = SearchIndex(schema=svs_schema_lvq, redis_client=client)
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
     yield index
     index.delete(drop=True)
 
@@ -113,7 +113,7 @@ def svs_index_lvq(svs_schema_lvq, client):
 def svs_index_leanvec(svs_schema_leanvec, client):
     """Create SVS-VAMANA index with LeanVec compression."""
     index = SearchIndex(schema=svs_schema_leanvec, redis_client=client)
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
     yield index
     index.delete(drop=True)
 
@@ -164,7 +164,7 @@ class TestSVSIndexCreation:
         info = svs_index_leanvec.info()
         assert info["num_docs"] == 0
 
-    def test_create_svs_with_compression_advisor(self, client, worker_id):
+    def test_create_svs_with_compression_advisor(self, client, redis_test_name):
         """Test creating SVS-VAMANA index using CompressionAdvisor."""
         dims = 768
         config = CompressionAdvisor.recommend(dims=dims, priority="balanced")
@@ -172,8 +172,8 @@ class TestSVSIndexCreation:
         schema = IndexSchema.from_dict(
             {
                 "index": {
-                    "name": f"svs_advisor_{worker_id}",
-                    "prefix": f"svs_advisor_{worker_id}",
+                    "name": redis_test_name("svs_advisor"),
+                    "prefix": redis_test_name("svs_advisor"),
                 },
                 "fields": [
                     {"name": "id", "type": "tag"},
@@ -191,7 +191,7 @@ class TestSVSIndexCreation:
         )
 
         index = SearchIndex(schema=schema, redis_client=client)
-        index.create(overwrite=True)
+        index.create(overwrite=True, drop=True)
 
         try:
             assert index.exists()
@@ -381,13 +381,15 @@ class TestSVSCompressionTypes:
             ("LVQ8", 384, "float32"),
         ],
     )
-    def test_lvq_compression_types(self, client, worker_id, compression, dims, dtype):
+    def test_lvq_compression_types(
+        self, client, redis_test_name, compression, dims, dtype
+    ):
         """Test various LVQ compression types."""
         schema = IndexSchema.from_dict(
             {
                 "index": {
-                    "name": f"svs_{compression.lower()}_{worker_id}",
-                    "prefix": f"svs_{compression.lower()}_{worker_id}",
+                    "name": redis_test_name(f"svs_{compression.lower()}"),
+                    "prefix": redis_test_name(f"svs_{compression.lower()}"),
                 },
                 "fields": [
                     {"name": "id", "type": "tag"},
@@ -407,7 +409,7 @@ class TestSVSCompressionTypes:
         )
 
         index = SearchIndex(schema=schema, redis_client=client)
-        index.create(overwrite=True)
+        index.create(overwrite=True, drop=True)
 
         try:
             # Load data
@@ -441,14 +443,14 @@ class TestSVSCompressionTypes:
         ],
     )
     def test_leanvec_compression_types(
-        self, client, worker_id, compression, dims, reduce, dtype
+        self, client, redis_test_name, compression, dims, reduce, dtype
     ):
         """Test various LeanVec compression types with dimensionality reduction."""
         schema = IndexSchema.from_dict(
             {
                 "index": {
-                    "name": f"svs_{compression.lower()}_{reduce}_{worker_id}",
-                    "prefix": f"svs_{compression.lower()}_{reduce}_{worker_id}",
+                    "name": redis_test_name(f"svs_{compression.lower()}_{reduce}"),
+                    "prefix": redis_test_name(f"svs_{compression.lower()}_{reduce}"),
                 },
                 "fields": [
                     {"name": "id", "type": "tag"},
@@ -469,7 +471,7 @@ class TestSVSCompressionTypes:
         )
 
         index = SearchIndex(schema=schema, redis_client=client)
-        index.create(overwrite=True)
+        index.create(overwrite=True, drop=True)
 
         try:
             # Load data

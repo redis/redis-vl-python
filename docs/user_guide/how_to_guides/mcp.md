@@ -27,6 +27,8 @@ Install the MCP extra:
 pip install redisvl[mcp]
 ```
 
+The extra installs FastMCP 2.13.0 or later, below 4. If you pin FastMCP yourself, stay within that range, because the server does not work with older releases.
+
 If your vectorizer needs a provider extra, install that too:
 
 ```bash
@@ -41,20 +43,43 @@ Run the server over stdio (default):
 uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml
 ```
 
-Run it over Streamable HTTP for remote MCP clients:
+Run it over Streamable HTTP for remote MCP clients. Binding to a non-loopback host (`--host 0.0.0.0`) requires either JWT authentication (see {doc}`mcp_authentication`) or the explicit `--allow-unauthenticated` flag; otherwise the server refuses to start:
 
 ```bash
-uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport streamable-http --host 0.0.0.0 --port 8000
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport streamable-http --host 0.0.0.0 --port 8000 --allow-unauthenticated
 ```
 
 Run it over SSE:
 
 ```bash
-uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport sse --host 0.0.0.0 --port 9000
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport sse --host 0.0.0.0 --port 9000 --allow-unauthenticated
 ```
 
 ```{warning}
-Streamable HTTP and SSE endpoints are **unauthenticated by default**. Only bind to public interfaces (`--host 0.0.0.0`) on trusted networks or behind an authenticating reverse proxy. When not using `--read-only`, the `upsert-records` tool is also exposed to any client that can reach the server.
+Streamable HTTP and SSE endpoints are **unauthenticated by default**. Binding to a non-loopback host without auth fails closed unless you pass `--allow-unauthenticated`; binding to loopback without auth only warns. For real deployments, enable JWT authentication (see {doc}`mcp_authentication`) rather than using `--allow-unauthenticated`. When not using `--read-only`, the `upsert-records` tool is also exposed to any client that can reach the server.
+```
+
+### Transport Security (Host / Origin Validation)
+
+On the HTTP transports the server validates the request `Host` and `Origin` headers against allowlists before any tool runs. This is **on by default** and defends against [DNS rebinding](https://en.wikipedia.org/wiki/DNS_rebinding): without it, a malicious web page could rebind its own hostname to `127.0.0.1` and use the victim's browser to reach a local MCP server, even one bound to loopback.
+
+- **Host:** the allowlist is derived automatically from the bind address. Loopback binds accept `localhost`, `127.0.0.1`, and `[::1]` (with or without the port), so local MCP clients work with no configuration.
+- **Origin:** requests with no `Origin` header (typical of non-browser MCP clients) always pass. A request that carries a cross-site `Origin` is rejected unless that origin is explicitly allowlisted.
+
+You only need to configure this for deployments where the client-visible `Host` differs from the bind address (a reverse proxy, or a `--host 0.0.0.0` bind reached via a public hostname). Use the `REDISVL_MCP_ALLOWED_HOSTS` / `REDISVL_MCP_ALLOWED_ORIGINS` env vars, or a `server.transport_security` block in the config:
+
+```yaml
+server:
+  redis_url: ${REDIS_URL}
+  transport_security:
+    allowed_hosts: [mcp.example.com]          # extra Host values to accept
+    allowed_origins: [https://app.example.com]  # browser origins to accept
+    # allow_any_origin: true                   # trust upstream Origin validation
+    # enabled: false                           # disable when a trusted proxy validates
+```
+
+```{note}
+Behind a reverse proxy or gateway that already validates `Host`/`Origin`, set `server.transport_security.enabled: false` (or `allow_any_origin: true`) so the proxy's rewritten headers are not rejected.
 ```
 
 Run it in read-only mode to expose search without upsert:
@@ -71,7 +96,7 @@ uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --read-only
 | `--transport` | `stdio` | Transport protocol: `stdio`, `sse`, or `streamable-http` |
 | `--host` | `127.0.0.1` | Bind address (only used with `sse` and `streamable-http`) |
 | `--port` | `8000` | Bind port (only used with `sse` and `streamable-http`) |
-| `--read-only` | off | Disable the `upsert-records` tool |
+| `--read-only` | off | Disable writes across every index (global read-only) |
 
 ### Environment Variables
 
@@ -81,8 +106,12 @@ You can also control boot settings through environment variables:
 |----------|---------|
 | `REDISVL_MCP_CONFIG` | Path to the MCP YAML config |
 | `REDISVL_MCP_READ_ONLY` | Disable `upsert-records` when set to `true` |
-| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Set the base search tool description text; RedisVL still appends schema-derived typed filter, `exists`, and `return_fields` hints |
+| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Set the base search tool description text. On a single-index server RedisVL appends schema-derived typed filter, `exists`, and `return_fields` hints; on a multi-index server it appends a note directing clients to call `list-indexes` and pass `index` |
 | `REDISVL_MCP_TOOL_UPSERT_DESCRIPTION` | Override the upsert tool description |
+| `REDISVL_MCP_ALLOWED_HOSTS` | Comma-separated extra `Host` header values to accept on HTTP transports (in addition to the bind-derived defaults) |
+| `REDISVL_MCP_ALLOWED_ORIGINS` | Comma-separated browser `Origin` values to accept on HTTP transports |
+| `REDISVL_MCP_ALLOW_ANY_ORIGIN` | Accept any `Origin` (for trusted-proxy setups) when set to `true` |
+| `REDISVL_MCP_TRANSPORT_SECURITY_ENABLED` | Set to `false` to disable Host/Origin validation (e.g. behind a validating proxy) |
 
 ## Connect a Remote MCP Client
 
@@ -91,7 +120,7 @@ When using Streamable HTTP or SSE transport, point your MCP client at the server
 - **Streamable HTTP**: `http://<host>:<port>/mcp`
 - **SSE**: `http://<host>:<port>/sse`
 
-> **Note:** `<host>` here is the bind address the server was started with. The default `127.0.0.1` only accepts connections from the same machine. To allow connections from other machines, start the server with `--host 0.0.0.0` and use the machine's actual IP or hostname in the client URL.
+> **Note:** `<host>` here is the bind address the server was started with. The default `127.0.0.1` only accepts connections from the same machine. To allow connections from other machines, start the server with `--host 0.0.0.0` and use the machine's actual IP or hostname in the client URL. Because a `0.0.0.0` bind has no single canonical `Host`, add the client-visible hostname(s) to `REDISVL_MCP_ALLOWED_HOSTS` (or `server.transport_security.allowed_hosts`), or Host validation will reject those requests. See [Transport Security](#transport-security-host-origin-validation).
 
 For example, to configure a remote MCP client to connect to a Streamable HTTP server running on `192.168.1.10:8000`:
 
@@ -108,7 +137,7 @@ For example, to configure a remote MCP client to connect to a Streamable HTTP se
 
 ## Example Config
 
-This example binds one logical MCP server to one existing Redis index called `knowledge`.
+This example binds one logical MCP server to one existing Redis index called `knowledge`. A single configured index is the simplest deployment, and callers never need to name it. See [Multiple Indexes](#multiple-indexes) below to expose several indexes from the same server.
 
 The config uses `${REDIS_URL}` and `${OPENAI_API_KEY}` as environment-variable placeholders. These values are resolved when the server starts. You can also use `${VAR:-default}` to provide a fallback value.
 
@@ -198,14 +227,346 @@ indexes:
       max_concurrency: 16
 ```
 
+### Multiple Indexes
+
+The `indexes` mapping can hold more than one binding. Each entry is keyed by a logical id, points at its own existing Redis index through `redis_name`, and carries its own `search`, `runtime`, and optional `vectorizer`. The example below exposes a writable vector index `knowledge` alongside a read-only fulltext index `tickets` from the same server:
+
+```yaml
+server:
+  redis_url: ${REDIS_URL}
+
+indexes:
+  knowledge:
+    redis_name: knowledge
+    description: Internal runbooks and operational guidance.
+
+    vectorizer:
+      class: OpenAITextVectorizer
+      model: text-embedding-3-small
+      api_config:
+        api_key: ${OPENAI_API_KEY}
+
+    search:
+      type: vector
+
+    runtime:
+      text_field_name: content
+      vector_field_name: embedding
+      default_embed_text_field: content
+      default_limit: 10
+      max_limit: 25
+
+  tickets:
+    redis_name: support-tickets
+    description: Read-only mirror of resolved support tickets.
+    read_only: true
+
+    search:
+      type: fulltext
+      params:
+        text_scorer: BM25STD
+        stopwords: english
+
+    runtime:
+      text_field_name: body
+      default_limit: 10
+      max_limit: 50
+```
+
+Notes:
+
+- Each binding is inspected and validated independently at startup. Startup is all-or-nothing: if any binding fails, the server does not start.
+- The optional per-index `description` and `read_only` flags are surfaced through `list-indexes`.
+- `read_only: true` makes that binding reject writes even though the server as a whole is not in global read-only mode. Because `knowledge` is still writable, the `upsert-records` tool is registered; an upsert targeting `tickets` is rejected with `forbidden`.
+- A single-index config keeps working unchanged — adding bindings does not change how the sole-binding case behaves.
+
+### Index Selection
+
+On a multi-index server, `search-records` and `upsert-records` take an optional `index` argument naming the logical id to target:
+
+- With exactly one index configured, `index` may be omitted and resolves to that binding.
+- With multiple indexes configured, omitting `index` returns `invalid_request`; an unknown id also returns `invalid_request`.
+- Clients should call [`list-indexes`](#list-indexes) first to discover the available ids and their filterable fields.
+
+### Custom Tool Profiles
+
+A **profile** publishes `search-records` under your own name and description with some arguments pre-filled and frozen. It is pure config — no Python — and it resolves to a built-in call, so it inherits the same limits, read-only policy, auth scoping, and error contract.
+
+```yaml
+server:
+  redis_url: redis://localhost:6379
+  builtin_tools:
+    search-records: disabled          # the curated tool replaces it
+
+indexes:
+  tickets:
+    redis_name: support-tickets
+    search:
+      type: fulltext
+    runtime:
+      text_field_name: body
+      default_limit: 5
+      max_limit: 20
+
+custom_tools:
+  - name: search-resolved-tickets
+    based_on: search-records
+    index: tickets
+    description: >
+      Search resolved customer support tickets by relevance.
+      Use this to find how a similar problem was fixed before.
+    lock:
+      return_fields: [subject, resolution, created_at]
+      filter: { field: status, op: eq, value: resolved }
+    params:
+      limit: { expose: true, max: 10 }
+      filter: { expose: true }
+```
+
+What the client sees for `search-resolved-tickets`:
+
+- `query` (required), `limit` (≤ 10), `offset`, and `filter` — and nothing else.
+- No `index` argument: the binding is pinned by `index:` in the config.
+- No `return_fields` argument: locking a projection removes it from the contract.
+- `filter` accepts the **object** form only. A raw string filter is refused — by the advertised schema for a compliant client, and by the tool itself otherwise.
+
+Rules worth knowing:
+
+- **Anything not listed under `params` stays exposed.** Locking only a filter keeps the rest of the built-in's contract intact.
+- **Locked and caller filters are AND-combined.** The caller can narrow within the locked scope but never widen past it — an `or` from the caller nests inside the locked AND rather than replacing it.
+- **`params.limit.max` bounds the result count either way.** An omitted `limit` is capped rather than falling through to `default_limit`; an explicit request above the cap returns `invalid_request`. With `expose: false`, the cap becomes the fixed result count. The cap may not exceed the binding's `max_limit`. It bounds page size, not total reachable data — `offset` still pages within `max_result_window`.
+- **`suppress_schema_hints: true`** drops the auto-generated filter/return-field hints from the description. By default they are appended only for arguments the model can still use.
+- **`index` may be omitted only with exactly one index configured.**
+
+`builtin_tools` is independent of profiles: use it to stop advertising any built-in, for example `upsert-records: disabled` on a server that should only read. Disabling `list-indexes` on a multi-index server logs a warning, because `search-records` tells clients to call it to discover index ids.
+
+Misconfiguration fails at startup, not at the first call — a name colliding with a built-in or using a reserved `redisvl-`/`redisvl_` prefix, a duplicate name, a missing or unknown `index`, a cap above `max_limit`, hiding `query`, locking `return_fields` while also exposing them, or a locked filter or projection naming a field the index does not have. Unrecognized keys are rejected too, so a typo in `lock` fails loudly instead of quietly producing a tool that reads as locked but enforces nothing.
+
+### Tenant Scoping With Claim Injection
+
+When tenants share one index, a profile can take the tenant from the caller's verified token instead of trusting the model to pass a filter. This needs authentication, so the example configures it; see {doc}`mcp_authentication` for the rest of that block.
+
+The index needs the tenant on every document, as a tag. Declare it `CASESENSITIVE` unless your identity provider guarantees one case, because tag fields otherwise treat `Acme` and `acme` as the same tenant:
+
+```yaml
+# The RedisVL schema the index was created from
+index:
+  name: customer-kb
+  prefix: kb
+fields:
+  - name: content
+    type: text
+  - name: org_id
+    type: tag
+    attrs:
+      case_sensitive: true
+```
+
+Then point a profile at it:
+
+```yaml
+server:
+  redis_url: redis://localhost:6379
+  builtin_tools:
+    search-records: disabled          # both built-ins reach the index unscoped,
+    upsert-records: disabled          # so the server refuses to start with either on
+  auth:
+    type: jwt
+    jwks_uri: ${MCP_JWKS_URI}
+    issuer: ${MCP_ISSUER}
+    audience: api://redisvl-mcp
+    required_claims: [exp, iat, "https://acme.example/org"]
+
+indexes:
+  customer_kb:
+    redis_name: customer-kb
+    search:
+      type: fulltext
+    runtime:
+      text_field_name: content
+
+custom_tools:
+  - name: search-customer-kb
+    index: customer_kb
+    description: Search this customer's knowledge base.
+    lock:
+      inject:
+        - field: org_id
+          from: claim
+          claim: "https://acme.example/org"
+          required: true
+```
+
+Serve it over HTTP:
+
+```bash
+rvl mcp --config /path/to/mcp_config.yaml --transport streamable-http
+```
+
+What the client sees for `search-customer-kb`:
+
+- `query` (required), `limit`, `offset`, `filter` and `return_fields`, with no argument for `org_id`. A call that passes `org_id` anyway is rejected.
+- A description whose field hints list `content` but not `org_id`.
+- Results from its own tenant only. A `filter` naming `org_id` ANDs with the injected value, so naming another tenant returns nothing. Results still carry `org_id`, always with the caller's own value, unless you lock `return_fields` to leave it out.
+
+The server refuses to start while anything else can reach the same Redis index without the tenant scope: `search-records`, `upsert-records` unless every binding over the index is `read_only`, another custom tool on that index whose `lock.inject` differs, including one with none, or any code tool bound to it. Bindings that share a `redis_name` are the same index, so a vector tool and a fulltext tool over one set of documents must inject the same scope. Each of those routes would hand every caller a way round the profile, and a write could retag another tenant's document as the writer's own. Ingest documents outside the server, stamping `org_id` exactly as the identity provider emits it.
+
+A tool meant to read across tenants, such as an internal support search, belongs on a separate server with its own authentication. Every tool on one server sits behind the same read scope, so any tenant could call it.
+
+Listing the tenant claim under `required_claims` makes the verifier reject a token without it before any tool runs. That checks presence only: the profile still validates the value on every call, and refuses a missing, empty, list-valued or otherwise unusable claim with a `forbidden` error before any query runs.
+
+The server refuses to start an injecting profile without authentication, over `stdio`, or on a field the index does not hold as an indexed tag. The `stdio` check applies when the server starts through `rvl mcp` or `run_async`. For what the guarantee covers and what it rests on, read the threat model in {doc}`/concepts/mcp`.
+
+### Code Tools Registered From Python
+
+When a tool needs logic a profile cannot express, write it as an async function and register it on the server before you run it. This suits a server you start from your own Python process:
+
+```python
+from typing import cast
+
+from redisvl.mcp import MCPSettings, RedisVLMCPServer, ToolContext, WritableIndexHandle
+from redisvl.query import FilterQuery
+from redisvl.query.filter import Tag
+
+server = RedisVLMCPServer(MCPSettings(config="/path/to/mcp_config.yaml"))
+
+
+@server.code_tool(index="tickets")
+async def open_tickets_for_product(ctx: ToolContext, product: str, limit: int = 5) -> dict:
+    """List open support tickets for a product."""
+    query = FilterQuery(
+        filter_expression=(Tag("status") == "open") & (Tag("product") == product),
+        return_fields=["subject", "created_at"],
+        num_results=limit,
+    )
+    return {"tickets": await ctx.index.query(query)}
+
+
+@server.code_tool(index="tickets", writes=True, scope="tickets.triage")
+async def delete_spam_ticket(ctx: ToolContext, ticket_id: str) -> dict:
+    """Delete a support ticket that triage has marked as spam."""
+    index = cast(WritableIndexHandle, ctx.index)
+    ticket = await index.fetch(ticket_id)
+    if ticket is None or ticket.get("status") != "spam":
+        raise ValueError(f"ticket {ticket_id} is not marked as spam")
+    return {"deleted": await index.drop_documents(ticket_id)}
+
+
+server.run(transport="streamable-http", host="127.0.0.1", port=8000)
+```
+
+What the client sees:
+
+- `open-tickets-for-product`, taking `product` (required) and `limit`, described by its docstring.
+- `delete-spam-ticket`, taking `ticket_id`. With authentication configured, a caller needs the server's read and write scopes and `tickets.triage`; without it, no scope is checked. Either way, the tool deletes nothing that is not already marked as spam.
+- No argument for the context or the index, in either tool.
+
+Rules worth knowing:
+
+- **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool stays under its index's key prefix. That does not separate indexes whose prefixes overlap, and a prefix that is empty or made only of separator characters covers every key. On an index with several prefixes, ids address the first prefix only. `load` returns document ids, and `ctx.index.document_id(hit["id"])` turns a search result's key into one. On JSON storage, give a `FilterQuery` `return_fields`, or a document's own `id` field replaces the key in its results. There is no Redis client and no way to create, drop or clear the index.
+- **Writing tools need a cast for type checkers.** `ctx.index` is typed as `IndexHandle`. In a tool registered with `writes=True`, `cast(WritableIndexHandle, ctx.index)` gives a type checker the write methods, as `delete-spam-ticket` shows. Both types are exported from `redisvl.mcp`.
+- **Every call is bounded.** Each `ctx.index` call takes a slot under the concurrency cap and the binding's `request_timeout_seconds`, and the whole tool call is bounded by the same timeout.
+- **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself.
+- **Register before starting.** Tools register once, at the first startup, so a tool registered afterwards is refused.
+
+A code tool bound to an index that a profile scopes with `lock.inject` refuses to start, because nothing shows that it applies the tenant scope. For the full contract, read the code tools section in {doc}`/concepts/mcp`.
+
+### Code Tools Loaded From Modules
+
+To serve code tools from `rvl mcp`, put them in a module, mark each with `@code_tool`, and name the module in the config. `@code_tool` takes the same arguments as `server.code_tool`, but it only marks the function: nothing registers it unless its module is listed in `code_tool_modules`. When you build the server in Python, use `server.code_tool` instead.
+
+```python
+# myapp/support_tools.py
+from redisvl.mcp import ToolContext, code_tool
+from redisvl.query import CountQuery
+from redisvl.query.filter import Tag
+
+
+@code_tool(index="tickets", namespace="support")
+async def count_open_tickets(ctx: ToolContext, product: str) -> dict:
+    """Count open support tickets for a product."""
+    open_for_product = (Tag("status") == "open") & (Tag("product") == product)
+    return {"open": await ctx.index.query(CountQuery(open_for_product))}
+```
+
+```yaml
+server:
+  redis_url: redis://localhost:6379
+  allow_code_tools: true
+  code_tool_modules: [myapp.support_tools]
+
+indexes:
+  tickets:
+    redis_name: support-tickets
+    search:
+      type: fulltext
+    runtime:
+      text_field_name: body
+```
+
+```bash
+PYTHONPATH=/path/to/project rvl mcp --config /path/to/mcp_config.yaml
+```
+
+The client sees `support-count-open-tickets`, taking `product`.
+
+Rules worth knowing:
+
+- **`allow_code_tools: true` is required.** Importing a module runs its code with the server's privileges, so a config that lists `code_tool_modules` without it fails to load. It defaults to `false`.
+- **The module must be importable.** Install it as a package or put its directory on `PYTHONPATH`; `rvl` does not add the working directory to the import path. Under `uvx`, the module and anything it imports must be installed in the environment `uvx` builds, for example with `--with` naming your package.
+- **Only marked functions register.** Helpers in the same module are not published, and a tool imported into a second listed module registers once.
+- **A module that adds nothing fails startup.** One that cannot be imported, or that has no `@code_tool` function, is reported by name.
+
 ## Tool Contracts
 
 RedisVL MCP exposes a small, implementation-owned contract.
+
+### `list-indexes`
+
+`list-indexes` is always available and takes no arguments. Call it first on a multi-index server to discover which logical ids exist and how to filter each one.
+
+Example response payload:
+
+```json
+{
+  "indexes": [
+    {
+      "id": "knowledge",
+      "description": "Internal runbooks and operational guidance.",
+      "upsert_available": true,
+      "fields": [
+        { "name": "title", "type": "text" },
+        { "name": "category", "type": "tag" },
+        { "name": "rating", "type": "numeric" }
+      ],
+      "limits": { "max_limit": 25 }
+    },
+    {
+      "id": "tickets",
+      "description": "Read-only mirror of resolved support tickets.",
+      "upsert_available": false,
+      "fields": [
+        { "name": "category", "type": "tag" }
+      ],
+      "limits": { "max_limit": 50 }
+    }
+  ]
+}
+```
+
+Notes:
+
+- `upsert_available` reflects the binding's effective write availability (global read-only **or** the per-index `read_only` flag)
+- `fields` lists the filterable fields discovered from the index; the vector field and the configured embed-source text field are intentionally omitted
+- `limits` includes only runtime limits that were explicitly configured (such as `max_limit` or `max_upsert_records`); defaults are not echoed
+- the underlying Redis index name (`redis_name`) is never exposed
+- `description` appears only when configured for that binding
 
 ### `search-records`
 
 Arguments:
 
+- `index` (optional; required when multiple indexes are configured)
 - `query`
 - `limit`
 - `offset`
@@ -216,6 +577,7 @@ Example request payload:
 
 ```json
 {
+  "index": "knowledge",
   "query": "incident response runbook",
   "limit": 2,
   "offset": 0,
@@ -233,6 +595,7 @@ Example response payload:
 
 ```json
 {
+  "index": "knowledge",
   "search_type": "hybrid",
   "offset": 0,
   "limit": 2,
@@ -254,6 +617,7 @@ Example response payload:
 
 Notes:
 
+- `index` selects the logical binding; omit it only on a single-index server. The resolved id is echoed back in the response
 - `search_type` is response metadata, not a request argument
 - when `return_fields` is omitted, RedisVL MCP returns all non-vector fields
 - returning the configured vector field is rejected
@@ -267,6 +631,7 @@ Notes:
 
 Arguments:
 
+- `index` (optional; required when multiple indexes are configured)
 - `records`
 - `id_field`
 - `skip_embedding_if_present`
@@ -275,6 +640,7 @@ Example request payload:
 
 ```json
 {
+  "index": "knowledge",
   "records": [
     {
       "doc_id": "doc-42",
@@ -291,6 +657,7 @@ Example response payload:
 
 ```json
 {
+  "index": "knowledge",
   "status": "success",
   "keys_upserted": 1,
   "keys": ["knowledge:doc-42"]
@@ -299,12 +666,41 @@ Example response payload:
 
 Notes:
 
-- this tool is not registered in read-only mode
+- `index` selects the logical binding; omit it only on a single-index server. The resolved id is echoed back in the response
+- this tool is not registered when every binding is read-only (global read-only mode or every binding setting `read_only: true`)
+- a write targeting a read-only binding is rejected with `forbidden` before any data is changed, even when the tool is registered because other bindings are writable
 - when server-side embedding is configured, records that need embedding must contain `runtime.default_embed_text_field`
 - when `skip_embedding_if_present` is `true`, records that already contain the configured vector field can skip re-embedding
 - when a vector field is configured but server-side embedding is disabled, callers must supply vectors explicitly
 
 ## Search Examples
+
+### Discovery-First Multi-Index Flow
+
+On a multi-index server, call `list-indexes` first, pick a logical id from the response, then pass it as `index`:
+
+```json
+{
+  "index": "knowledge",
+  "query": "cache invalidation incident",
+  "limit": 3,
+  "return_fields": ["title", "content", "category"]
+}
+```
+
+The same `index` argument routes an `upsert-records` write to a specific binding:
+
+```json
+{
+  "index": "knowledge",
+  "records": [
+    { "doc_id": "doc-7", "content": "New runbook entry", "category": "operations" }
+  ],
+  "id_field": "doc_id"
+}
+```
+
+On a single-index server you can omit `index` entirely; the examples below show that backward-compatible shape.
 
 ### Read-Only Vector Search
 
@@ -502,3 +898,23 @@ If the vectorizer dims do not match the configured vector field dims, startup fa
 ### Hybrid Config Requires Native Runtime Support
 
 Some hybrid params depend on native hybrid support in Redis and redis-py. If your environment does not support that path, remove native-only params such as `knn_ef_runtime` or upgrade Redis and redis-py.
+
+### Claim Injection Requires Authentication
+
+A profile with `lock.inject` refuses to start when authentication is not enabled, or when the server runs over `stdio`, because neither can supply a verified token. Configure `server.auth` and serve over `sse` or `streamable-http`. The check runs before the server connects to Redis, so it reports even when Redis is unreachable.
+
+### Claim Injection Refuses an Unscoped Route
+
+A profile with `lock.inject` refuses to start while its Redis index is also reachable through `search-records`, through `upsert-records` on any writable binding over it, through another custom tool on it whose `lock.inject` differs, including one with none, or through a code tool bound to it. Bindings that share a `redis_name` are the same index. The error names the Redis index and the bindings over it, each route it found, and each tool's injected scope. Disable the built-ins under `server.builtin_tools`, mark every binding over the index `read_only`, and give every custom tool on the index the same `lock.inject`. Bind a code tool to another index. Move a tool meant to read across tenants to a separate server with its own authentication.
+
+### Claim Injection Fails Every Request With `forbidden`
+
+The token is verified but its claim is unusable: missing, empty, padded with whitespace, not a single string, or containing a control character or backtick. The error names the claim and the tool. A misspelled `claim` name in the config is the usual cause, since a JWT claim name such as `https://acme.example/org` must match exactly.
+
+### Code Tool Fails at Startup
+
+The error names the tool. Either its `index` is missing while several indexes are configured or names no configured binding, or another custom tool already uses its name, or it is registered with `writes=True` on a binding or server that is read-only. A code tool registered after the server has started is refused with a `RuntimeError`; register every tool before calling `run`, `run_async` or `startup`. A restart in the same process also fails with a `RuntimeError` if the code tools, or the indexes they bind to, have changed; restart the process instead.
+
+### Code Tool Module Fails to Load
+
+A config that lists `server.code_tool_modules` fails to load unless `server.allow_code_tools` is `true`. With the opt-in set, startup fails when a listed module cannot be imported, either because it is not on the import path or because importing it raised, and when it defines no function marked with `@code_tool`. The error names the module. Check that the server process can import it by running `python -c "import myapp.support_tools"` in the same environment and with the same `PYTHONPATH`, from a directory outside the project. Run from inside the project, `python -c` imports from the working directory, which `rvl` does not, so the check could pass while the server fails.

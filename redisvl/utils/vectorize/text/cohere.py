@@ -1,5 +1,7 @@
+import asyncio
 import os
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
@@ -9,7 +11,6 @@ from tenacity.retry import retry_if_not_exception_type
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
-from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that cohere isn't imported
@@ -27,8 +28,9 @@ class CohereTextVectorizer(BaseVectorizer):
     (https://dashboard.cohere.com/). Additionally, the `cohere` python
     client must be installed with `pip install cohere`.
 
-    The vectorizer supports only synchronous operations, allows for batch
-    processing of texts and flexibility in handling preprocessing tasks.
+    The vectorizer supports both synchronous and asynchronous operations,
+    allows for batch processing of texts and flexibility in handling
+    preprocessing tasks.
 
     You can optionally enable caching to improve performance when generating
     embeddings for repeated text inputs.
@@ -99,6 +101,11 @@ class CohereTextVectorizer(BaseVectorizer):
                 to Cohere's corresponding embedding types. Defaults to 'float32'.
             cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
                 better performance with repeated texts. Defaults to None.
+            **kwargs: Passed to the Cohere ``Client`` and ``AsyncClient``, for
+                example ``timeout`` or ``base_url``. A custom ``httpx_client`` is
+                synchronous, so it goes to the sync client only and the async
+                methods fall back to it; pass ``async_httpx_client`` (an
+                ``httpx.AsyncClient``) to give the async client its own.
 
         Raises:
             ImportError: If the cohere library is not installed.
@@ -123,7 +130,8 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Args:
             api_config: Dictionary with API configuration options
-            **kwargs: Additional arguments to pass to Cohere client
+            **kwargs: Additional arguments to pass to the Cohere clients; see
+                ``__init__`` for ``httpx_client`` and ``async_httpx_client``.
 
         Raises:
             ImportError: If the cohere library is not installed
@@ -134,7 +142,7 @@ class CohereTextVectorizer(BaseVectorizer):
 
         # Dynamic import of the cohere module
         try:
-            from cohere import Client
+            from cohere import AsyncClient, Client
         except ImportError:
             raise ImportError(
                 "Cohere vectorizer requires the cohere library. "
@@ -150,7 +158,41 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
 
+        async_httpx_client = kwargs.pop("async_httpx_client", None)
         self._client = Client(api_key=api_key, client_name="redisvl", **kwargs)
+
+        # A user-supplied httpx_client is sync and can't be awaited, so without
+        # an async one the async methods keep falling back to the sync client.
+        self._aclient_factory: Callable[[], Any] | None = None
+        self._aclient: Any = None
+        self._aclient_loop: asyncio.AbstractEventLoop | None = None
+        # A user-supplied async httpx client is bound to the caller's loop, so
+        # it is created once and never rebuilt.
+        self._aclient_rebuild_on_new_loop = async_httpx_client is None
+        if kwargs.get("httpx_client") is None or async_httpx_client is not None:
+            async_kwargs = dict(kwargs)
+            if async_httpx_client is not None:
+                async_kwargs["httpx_client"] = async_httpx_client
+            self._aclient_factory = lambda: AsyncClient(
+                api_key=api_key, client_name="redisvl", **async_kwargs
+            )
+
+    def _get_aclient(self) -> Any:
+        """Return the async Cohere client, or ``None`` if async is disabled.
+
+        The client's HTTP connection pool is tied to the event loop it was
+        created on, so a vectorizer that outlives a loop gets a fresh client
+        on the next one rather than ``Event loop is closed`` errors.
+        """
+        if self._aclient_factory is None:
+            return None
+        loop = asyncio.get_running_loop()
+        if self._aclient is None or (
+            self._aclient_rebuild_on_new_loop and self._aclient_loop is not loop
+        ):
+            self._aclient = self._aclient_factory()
+            self._aclient_loop = loop
+        return self._aclient
 
     def _set_model_dims(self) -> int:
         """
@@ -205,14 +247,58 @@ class CohereTextVectorizer(BaseVectorizer):
                 "See https://docs.cohere.com/reference/embed."
             )
 
-    @deprecated_argument("text", "content")
-    def _embed(self, content: str = "", text: str = "", **kwargs) -> list[float | int]:
+    def _prepare_request(self, kwargs: dict[str, Any]) -> tuple[str, list[str]]:
+        """
+        Pop and validate input_type, drop any embedding_types override, and map
+        the vectorizer dtype to Cohere embedding_types.
+
+        Args:
+            kwargs: Keyword arguments for the Cohere API; modified in place.
+
+        Returns:
+            Tuple of (input_type, embedding_types)
+
+        Raises:
+            TypeError: If input_type is not provided as a string
+        """
+        input_type = kwargs.pop("input_type", None)
+        self._validate_input_type(input_type)
+
+        # Check if embedding_types was provided and warn user
+        if "embedding_types" in kwargs:
+            warnings.warn(
+                "The 'embedding_types' parameter is not supported in CohereTextVectorizer. "
+                "Please use the 'dtype' parameter instead. Your 'embedding_types' value will be ignored.",
+                UserWarning,
+                stacklevel=3,
+            )
+            kwargs.pop("embedding_types")
+
+        # Map dtype to appropriate embedding_type
+        return input_type, self._get_cohere_embedding_type(self.dtype)
+
+    @staticmethod
+    def _extract_embeddings(response: Any, embedding_types: list[str]) -> list[Any]:
+        """Extract the embeddings matching embedding_types from a Cohere response."""
+        embed_type = embedding_types[0]
+        if hasattr(response.embeddings, embed_type):
+            return getattr(response.embeddings, embed_type)
+        # Fallback for older API versions
+        return response.embeddings
+
+    @staticmethod
+    def _validate_contents(contents: Any) -> None:
+        if not isinstance(contents, list):
+            raise TypeError("Must pass in a list of str values to embed.")
+        if contents and not isinstance(contents[0], str):
+            raise TypeError("Must pass in a list of str values to embed.")
+
+    def _embed(self, content: str, **kwargs) -> list[float | int]:
         """
         Generate a vector embedding for a single text using the Cohere API.
 
         Args:
             content: Text to embed
-            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the Cohere API,
                       must include 'input_type'
 
@@ -224,28 +310,13 @@ class CohereTextVectorizer(BaseVectorizer):
               - For dtype="int8" or "uint8": Returns a list of integers
 
         Raises:
-            TypeError: If text is not a string or input_type is not provided
+            TypeError: If content is not a string or input_type is not provided
             ValueError: If embedding fails
         """
-        content = content or text
         if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
-        input_type = kwargs.pop("input_type", None)
-        self._validate_input_type(input_type)
-
-        # Check if embedding_types was provided and warn user
-        if "embedding_types" in kwargs:
-            warnings.warn(
-                "The 'embedding_types' parameter is not supported in CohereTextVectorizer. "
-                "Please use the 'dtype' parameter instead. Your 'embedding_types' value will be ignored.",
-                UserWarning,
-                stacklevel=2,
-            )
-            kwargs.pop("embedding_types")
-
-        # Map dtype to appropriate embedding_type
-        embedding_types = self._get_cohere_embedding_type(self.dtype)
+        input_type, embedding_types = self._prepare_request(kwargs)
 
         try:
             response = self._client.embed(
@@ -255,19 +326,10 @@ class CohereTextVectorizer(BaseVectorizer):
                 embedding_types=embedding_types,
                 **kwargs,
             )
-
-            # Extract the appropriate embedding based on embedding_types
-            embed_type = embedding_types[0]
-            if hasattr(response.embeddings, embed_type):
-                embedding = getattr(response.embeddings, embed_type)[0]
-            else:
-                embedding = response.embeddings[0]  # type: ignore
-
-            return embedding
+            return self._extract_embeddings(response, embedding_types)[0]
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
-    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
@@ -275,8 +337,7 @@ class CohereTextVectorizer(BaseVectorizer):
     )
     def _embed_many(
         self,
-        contents: list[str] | None = None,
-        texts: list[str] | None = None,
+        contents: list[str],
         batch_size: int = 10,
         **kwargs,
     ) -> list[list[float | int]]:
@@ -285,7 +346,6 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Args:
             contents: List of texts to embed
-            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the Cohere API,
                       must include 'input_type'
@@ -297,27 +357,8 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings or input_type is not provided
             ValueError: If embedding fails
         """
-        contents = contents or texts
-        if not isinstance(contents, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if contents and not isinstance(contents[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
-
-        input_type = kwargs.pop("input_type", None)
-        self._validate_input_type(input_type)
-
-        # Check if embedding_types was provided and warn user
-        if "embedding_types" in kwargs:
-            warnings.warn(
-                "The 'embedding_types' parameter is not supported in CohereTextVectorizer. "
-                "Please use the 'dtype' parameter instead. Your 'embedding_types' value will be ignored.",
-                UserWarning,
-                stacklevel=2,
-            )
-            kwargs.pop("embedding_types")
-
-        # Map dtype to appropriate embedding_type
-        embedding_types = self._get_cohere_embedding_type(self.dtype)
+        self._validate_contents(contents)
+        input_type, embedding_types = self._prepare_request(kwargs)
 
         embeddings: list[Any] = []
         for batch in self.batchify(contents, batch_size):
@@ -329,16 +370,101 @@ class CohereTextVectorizer(BaseVectorizer):
                     embedding_types=embedding_types,
                     **kwargs,
                 )
+                embeddings.extend(self._extract_embeddings(response, embedding_types))
+            except Exception as e:
+                raise ValueError(f"Embedding texts failed: {e}")
 
-                # Extract the appropriate embeddings based on embedding_types
-                embed_type = embedding_types[0]
-                if hasattr(response.embeddings, embed_type):
-                    batch_embeddings = getattr(response.embeddings, embed_type)
-                else:
-                    # Fallback for older API versions
-                    batch_embeddings = response.embeddings
+        return embeddings
 
-                embeddings.extend(batch_embeddings)
+    async def _aembed(self, content: str, **kwargs) -> list[float | int]:
+        """
+        Asynchronously generate a vector embedding for a single text using the
+        Cohere API.
+
+        Args:
+            content: Text to embed
+            **kwargs: Additional parameters to pass to the Cohere API,
+                      must include 'input_type'
+
+        Returns:
+            List[Union[float, int]]: Vector embedding
+
+        Raises:
+            TypeError: If content is not a string or input_type is not provided
+            ValueError: If embedding fails
+        """
+        aclient = self._get_aclient()
+        if aclient is None:
+            return await super()._aembed(content, **kwargs)
+
+        if not isinstance(content, str):
+            raise TypeError("Must pass in a str value to embed.")
+
+        input_type, embedding_types = self._prepare_request(kwargs)
+
+        try:
+            response = await aclient.embed(
+                texts=[content],
+                model=self.model,
+                input_type=input_type,
+                embedding_types=embedding_types,
+                **kwargs,
+            )
+            return self._extract_embeddings(response, embedding_types)[0]
+        except Exception as e:
+            raise ValueError(f"Embedding text failed: {e}")
+
+    async def _aembed_many(
+        self,
+        contents: list[str],
+        batch_size: int = 10,
+        **kwargs,
+    ) -> list[list[float | int]]:
+        """
+        Asynchronously generate vector embeddings for a batch of texts using
+        the Cohere API.
+
+        Args:
+            contents: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the Cohere API,
+                      must include 'input_type'
+
+        Returns:
+            List[List[Union[float, int]]]: List of vector embeddings
+
+        Raises:
+            TypeError: If contents is not a list of strings or input_type is not provided
+            ValueError: If embedding fails
+        """
+        aclient = self._get_aclient()
+        if aclient is None:
+            return await super()._aembed_many(contents, batch_size=batch_size, **kwargs)
+        return await self._aembed_many_with(aclient, contents, batch_size, **kwargs)
+
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
+    async def _aembed_many_with(
+        self, aclient: Any, contents: list[str], batch_size: int, **kwargs
+    ) -> list[list[float | int]]:
+        """Embed a batch of texts with the async Cohere client, with retries."""
+        self._validate_contents(contents)
+        input_type, embedding_types = self._prepare_request(kwargs)
+
+        embeddings: list[Any] = []
+        for batch in self.batchify(contents, batch_size):
+            try:
+                response = await aclient.embed(
+                    texts=batch,
+                    model=self.model,
+                    input_type=input_type,
+                    embedding_types=embedding_types,
+                    **kwargs,
+                )
+                embeddings.extend(self._extract_embeddings(response, embedding_types))
             except Exception as e:
                 raise ValueError(f"Embedding texts failed: {e}")
 

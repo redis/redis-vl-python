@@ -18,7 +18,7 @@ class Route(BaseModel):
     metadata: dict[str, Any] = Field(default={})
     """Metadata associated with the route."""
     distance_threshold: Annotated[float, Field(strict=True, gt=0, le=2)] = 0.5
-    """Distance threshold for matching the route."""
+    """Maximum distance for matching the route, inclusive."""
 
     @field_validator("name")
     @classmethod

@@ -1,6 +1,6 @@
-import asyncio
 from typing import Any
 
+from pydantic import ValidationError
 from redis import Redis
 
 from redisvl.extensions.cache.llm.base import BaseLLMCache
@@ -11,7 +11,9 @@ from redisvl.extensions.cache.llm.schema import (
 )
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
+    CREATE_INDEX_OVERWRITE_CONFLICT,
     ENTRY_ID_FIELD_NAME,
+    EXTERNAL_INDEX_DROP_CONFLICT,
     INSERTED_AT_FIELD_NAME,
     METADATA_FIELD_NAME,
     PROMPT_FIELD_NAME,
@@ -20,7 +22,7 @@ from redisvl.extensions.constants import (
     UPDATED_AT_FIELD_NAME,
 )
 from redisvl.index import AsyncSearchIndex, SearchIndex
-from redisvl.query import VectorRangeQuery
+from redisvl.query import VectorQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import hashify
 from redisvl.utils.log import get_logger
@@ -34,6 +36,18 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger("[RedisVL]")
+
+# Emitted when the caller did not choose a vectorizer and the index predates this
+# call, so its vectors may have been written with the old default model. Remove
+# this warning in future releases.
+DEFAULT_VECTORIZER_CHANGED_WARNING = (
+    "The default vectorizer has changed from `sentence-transformers/all-mpnet-base-v2` "
+    "to `redis/langcache-embed-v1` in version 0.6.0 of RedisVL. "
+    "For more information about this model, please refer to https://arxiv.org/abs/2504.02268 "
+    "or visit https://huggingface.co/redis/langcache-embed-v1. "
+    "To continue using the old vectorizer, please specify it explicitly in the constructor as: "
+    "vectorizer=HFTextVectorizer(model='sentence-transformers/all-mpnet-base-v2')"
+)
 
 
 class SemanticCache(BaseLLMCache):
@@ -52,8 +66,9 @@ class SemanticCache(BaseLLMCache):
         filterable_fields: list[dict[str, Any]] | None = None,
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
         overwrite: bool = False,
+        create_index: bool = True,
         refresh_ttl_on_hit: bool = True,
         **kwargs,
     ):
@@ -78,6 +93,17 @@ class SemanticCache(BaseLLMCache):
                 for the redis client. Defaults to empty {}.
             overwrite (bool): Whether or not to force overwrite the schema for
                 the semantic cache index. Defaults to false.
+            create_index (bool): Whether RedisVL creates and validates the index.
+                When True, the constructor runs ``FT.INFO`` to check whether the
+                index exists, compares the live schema against this one, and runs
+                ``FT.CREATE`` if it is absent. When False it does none of these
+                and issues no index command at all: the index must already exist
+                with a compatible schema. A live index whose prefix or storage
+                type differs from this schema is not detected and produces empty
+                results rather than an error. Use this when the index is managed
+                externally, or when the credential cannot run ``FT.INFO``. See
+                :doc:`/user_guide/installation` for the ACL details. Defaults to
+                true.
             refresh_ttl_on_hit (bool): Whether cache hits refresh matched
                 entries' TTL by default. Defaults to True.
 
@@ -86,7 +112,27 @@ class SemanticCache(BaseLLMCache):
             TypeError: If the TTL value is not an int.
             ValueError: If the threshold is not between 0 and 2 (Redis COSINE distance).
             ValueError: If existing schema does not match new schema and overwrite is False.
+            ValueError: If both create_index is False and overwrite is True.
+
+        .. code-block:: python
+
+            from redisvl.extensions.cache.llm import SemanticCache
+
+            # RedisVL creates the index if it is missing
+            cache = SemanticCache(name="llmcache", redis_url="redis://localhost:6379")
+
+            # the index is managed externally, or this credential cannot run
+            # FT.INFO -- assume the index exists and issue no index command
+            cache = SemanticCache(
+                name="llmcache",
+                redis_url="redis://localhost:6379",
+                create_index=False,
+            )
         """
+        connection_kwargs = connection_kwargs or {}
+        if not create_index and overwrite:
+            raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+
         # Call parent class with all shared parameters
         super().__init__(
             name=name,
@@ -152,32 +198,35 @@ class SemanticCache(BaseLLMCache):
 
         # Check for existing cache index and handle schema mismatch
         self.overwrite = overwrite
-        if not self.overwrite and self._index.exists():
+        self._create_index = create_index
 
+        if create_index:
+            if not self.overwrite and self._index.exists():
+                if not vectorizer:
+                    logger.warning(DEFAULT_VECTORIZER_CHANGED_WARNING)
+
+                existing_index = SearchIndex.from_existing(
+                    name, redis_client=self._index._redis_client
+                )
+                if existing_index.schema.to_dict() != self._index.schema.to_dict():
+                    raise ValueError(
+                        f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
+                        "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                    )
+
+            # Create the search index in Redis
+            self._index.create(overwrite=self.overwrite, drop=False)
+        else:
+            # The flag asserts the index already exists, which is exactly this
+            # warning's precondition -- so it still applies here.
             if not vectorizer:
-                # user hasn't specified a vectorizer and an index already exists they're not overwriting
-                # raise a warning to inform users we changed the default embedding model
-                # remove this warning in future releases
-                logger.warning(
-                    "The default vectorizer has changed from `sentence-transformers/all-mpnet-base-v2` "
-                    "to `redis/langcache-embed-v1` in version 0.6.0 of RedisVL. "
-                    "For more information about this model, please refer to https://arxiv.org/abs/2504.02268 "
-                    "or visit https://huggingface.co/redis/langcache-embed-v1. "
-                    "To continue using the old vectorizer, please specify it explicitly in the constructor as: "
-                    "vectorizer=HFTextVectorizer(model='sentence-transformers/all-mpnet-base-v2')"
-                )
+                logger.warning(DEFAULT_VECTORIZER_CHANGED_WARNING)
 
-            existing_index = SearchIndex.from_existing(
-                name, redis_client=self._index._redis_client
+            logger.debug(
+                f"create_index=False: assuming index {name!r} exists over prefix "
+                f"{schema.index.prefix!r} with {self._vectorizer.dims} vector "
+                "dimensions. Its schema is not verified."
             )
-            if existing_index.schema.to_dict() != self._index.schema.to_dict():
-                raise ValueError(
-                    f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
-                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
-                )
-
-        # Create the search index in Redis
-        self._index.create(overwrite=self.overwrite, drop=False)
 
     def __repr__(self) -> str:
         return (
@@ -264,13 +313,47 @@ class SemanticCache(BaseLLMCache):
         self._distance_threshold = float(distance_threshold)
 
     def delete(self) -> None:
-        """Delete the cache and its index entirely."""
+        """Delete the cache and its index entirely.
+
+        Raises:
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
+                empty the cache and leave the index standing.
+        """
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         self._index.delete(drop=True)
 
     async def adelete(self) -> None:
-        """Async delete the cache and its index entirely."""
+        """Async delete the cache and its index entirely.
+
+        Raises:
+            ValueError: If ``create_index=False``. See :meth:`delete`.
+        """
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         aindex = await self._get_async_index()
         await aindex.delete(drop=True)
+
+    def clear(self) -> None:
+        """Delete every cache entry, leaving the index in place.
+
+        Clears by key prefix, not by index membership, so it removes every key
+        under ``{name}:`` and nothing outside it. Available under
+        ``create_index=False``; dropping the index is :meth:`delete`.
+
+        Warning:
+            Under ``create_index=False`` the prefix is unverified, so this can
+            delete keys the index never covered and miss entries it does. See
+            :doc:`/user_guide/installation`.
+        """
+        super().clear()
+
+    async def aclear(self) -> None:
+        """Async delete every cache entry, leaving the index in place.
+
+        See :meth:`clear` for the caveats, which apply identically here.
+        """
+        await super().aclear()
 
     def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
         """Drop specific entries from the cache by ID or Redis key.
@@ -407,8 +490,12 @@ class SemanticCache(BaseLLMCache):
         if return_fields and not isinstance(return_fields, list):
             raise TypeError("Return fields must be a list of values.")
 
-        # Use overrides or defaults
-        distance_threshold = distance_threshold or self._distance_threshold
+        # Use overrides or defaults. Note: 0 is a valid distance threshold
+        # (exact match only), so only fall back on None.
+        if distance_threshold is None:
+            distance_threshold = self._distance_threshold
+        else:
+            self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -420,29 +507,16 @@ class SemanticCache(BaseLLMCache):
         else:
             raise ValueError("Failed to generate a valid vector for the query.")
 
-        # Create the vector search query
-        query = VectorRangeQuery(
-            vector=vector,
-            vector_field_name=CACHE_VECTOR_FIELD_NAME,
-            return_fields=self.return_fields,
-            distance_threshold=distance_threshold,
-            num_results=num_results,
-            return_score=True,
-            filter_expression=filter_expression,
-            dtype=self._vectorizer.dtype,
-        )
-
         # Search the cache!
-        cache_search_results = self._index.query(query)
+        query = self._build_check_query(vector, num_results, filter_expression)
+        candidates = self._index.query(query)
         redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results,
-            return_fields,  # type: ignore
+            self._within_threshold(candidates, distance_threshold),
+            return_fields,
         )
 
-        refresh_ttl = self.refresh_ttl_on_hit if refresh_ttl is None else refresh_ttl
-        if refresh_ttl:
-            for key in redis_keys:
-                self.expire(key)
+        if self._should_refresh_ttl(refresh_ttl):
+            self._expire_many(redis_keys)
 
         return cache_hits
 
@@ -505,8 +579,12 @@ class SemanticCache(BaseLLMCache):
         if return_fields and not isinstance(return_fields, list):
             raise TypeError("Return fields must be a list of values.")
 
-        # Use overrides or defaults
-        distance_threshold = distance_threshold or self._distance_threshold
+        # Use overrides or defaults. Note: 0 is a valid distance threshold
+        # (exact match only), so only fall back on None.
+        if distance_threshold is None:
+            distance_threshold = self._distance_threshold
+        else:
+            self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -518,30 +596,74 @@ class SemanticCache(BaseLLMCache):
         else:
             raise ValueError("Failed to generate a valid vector for the query.")
 
-        # Create the vector search query
-        query = VectorRangeQuery(
+        # Search the cache!
+        query = self._build_check_query(vector, num_results, filter_expression)
+        candidates = await aindex.query(query)
+        redis_keys, cache_hits = self._process_cache_results(
+            self._within_threshold(candidates, distance_threshold),
+            return_fields,
+        )
+
+        if self._should_refresh_ttl(refresh_ttl):
+            await self._aexpire_many(redis_keys)
+
+        return cache_hits
+
+    def _build_check_query(
+        self,
+        vector: list[float],
+        num_results: int,
+        filter_expression: FilterExpression | None,
+    ) -> VectorQuery:
+        """Build the KNN lookup shared by :meth:`check` and :meth:`acheck`.
+
+        :meth:`_within_threshold` then applies the distance threshold, so the
+        nearest distance is known even on a miss.
+        """
+        return VectorQuery(
             vector=vector,
             vector_field_name=CACHE_VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
-            distance_threshold=distance_threshold,
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
             dtype=self._vectorizer.dtype,
         )
 
-        # Search the cache!
-        cache_search_results = await aindex.query(query)
-        redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results,
-            return_fields,  # type: ignore
-        )
+    def _should_refresh_ttl(self, refresh_ttl: bool | None) -> bool:
+        """Resolve a per-call ``refresh_ttl`` against ``refresh_ttl_on_hit``."""
+        return self.refresh_ttl_on_hit if refresh_ttl is None else refresh_ttl
 
-        refresh_ttl = self.refresh_ttl_on_hit if refresh_ttl is None else refresh_ttl
-        if refresh_ttl:
-            await asyncio.gather(*[self.aexpire(key) for key in redis_keys])
+    @staticmethod
+    def _within_threshold(
+        candidates: list[dict[str, Any]], distance_threshold: float
+    ) -> list[dict[str, Any]]:
+        """Keep the candidates whose distance is at most the threshold.
 
-        return cache_hits
+        Inclusive, as a range query's radius is, at the precision of the
+        distance Redis returns (12 significant digits). A candidate with no distance
+        (an id-only row from the Redis 8.8+ expiry race) is kept so that
+        :meth:`_process_cache_results` skips it with its usual warning.
+        """
+        return [
+            candidate
+            for candidate in candidates
+            if (distance := candidate.get(VectorQuery.DISTANCE_ID)) is None
+            or float(distance) <= distance_threshold
+        ]
+
+    @staticmethod
+    def _validate_distance_threshold(distance_threshold: float) -> None:
+        """Validate a per-call ``distance_threshold`` override.
+
+        Raises:
+            TypeError: If the threshold is not a float or int.
+            ValueError: If the threshold is negative.
+        """
+        if not isinstance(distance_threshold, (float, int)):
+            raise TypeError("distance_threshold must be of type float or int")
+        if distance_threshold < 0:
+            raise ValueError("distance_threshold must be non-negative")
 
     def _process_cache_results(
         self,
@@ -555,10 +677,28 @@ class SemanticCache(BaseLLMCache):
         for cache_search_result in cache_search_results:
             # Pop the redis key from the result
             redis_key = cache_search_result.pop("id")
-            redis_keys.append(redis_key)
 
-            # Create and process cache hit
-            cache_hit = CacheHit(**cache_search_result)
+            # Create and process cache hit. A matched entry whose field payload
+            # came back missing (the Redis 8.8+ background-search expiry race)
+            # would arrive as an id-only dict and fail validation; skip it and
+            # do not refresh its TTL rather than raise. The core parser already
+            # drops these upstream, so this is defense-in-depth.
+            # Only ValidationError is expected here: CacheHit has no
+            # before-validator that does keyed access on the input (unlike
+            # message history's ChatMessage.generate_id, whose guard must also
+            # catch KeyError). If CacheHit ever gains such a validator, widen
+            # this accordingly.
+            try:
+                cache_hit = CacheHit(**cache_search_result)
+            except ValidationError:
+                logger.warning(
+                    "Skipping cache hit with missing field data (likely expired "
+                    "during a background search on Redis 8.8+): key=%s",
+                    redis_key,
+                )
+                continue
+
+            redis_keys.append(redis_key)
             cache_hit_dict = cache_hit.to_dict()
 
             # Filter down to only selected return fields if needed

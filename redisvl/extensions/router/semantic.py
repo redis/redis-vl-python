@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import redis.commands.search.reducers as reducers
 import yaml
@@ -7,7 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
-from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
+from redisvl.exceptions import PartialDeletionError
+from redisvl.extensions.constants import (
+    CREATE_INDEX_OVERWRITE_CONFLICT,
+    EXTERNAL_INDEX_DROP_CONFLICT,
+    ROUTE_VECTOR_FIELD_NAME,
+)
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
     Route,
@@ -15,14 +20,19 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
     SemanticRouterIndexSchema,
 )
-from redisvl.index import SearchIndex
+from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import FilterQuery, VectorRangeQuery
 from redisvl.query.filter import Tag
 from redisvl.redis.connection import RedisConnectionFactory, _split_from_existing_kwargs
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_argument, model_to_dict, scan_by_pattern
+from redisvl.utils.utils import (
+    deprecated_argument,
+    match_pattern,
+    model_to_dict,
+    scan_by_pattern,
+)
 from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
@@ -42,6 +52,10 @@ class SemanticRouter(BaseModel):
     """Configuration for routing behavior."""
 
     _index: SearchIndex = PrivateAttr()
+    _aindex: AsyncSearchIndex | None = PrivateAttr(default=None)
+    # A private attribute, never a field: it describes this instance's
+    # relationship to the index, and must not reach the stored route config.
+    _create_index: bool = PrivateAttr(default=True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -55,7 +69,8 @@ class SemanticRouter(BaseModel):
         redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
+        create_index: bool = True,
         **kwargs,
     ):
         """Initialize the SemanticRouter.
@@ -70,7 +85,26 @@ class SemanticRouter(BaseModel):
             overwrite (bool, optional): Whether to overwrite existing index. Defaults to False.
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
+            create_index (bool, optional): Whether RedisVL creates and validates
+                the index. When False the constructor issues no index command at
+                all and writes nothing: the index must already exist, already
+                hold the reference vectors for ``routes``, and already have its
+                stored config, since none of that is written or verified.
+                ``routes`` must match what is indexed, because each route's
+                distance threshold is applied from this local list -- and
+                :meth:`add_route` rewrites the stored config from that same list,
+                so attaching with a partial set and then adding a route
+                truncates the config every other client reads. See
+                :class:`~redisvl.extensions.cache.llm.SemanticCache` for a worked
+                example of the flag, and :doc:`/user_guide/installation` for the
+                ACL details. Defaults to True.
+
+        Raises:
+            ValueError: If both create_index is False and overwrite is True.
         """
+        if not create_index and overwrite:
+            raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+
         dtype = kwargs.pop("dtype", None)
         index_kwargs = kwargs.pop("_index_kwargs", None)
 
@@ -105,6 +139,7 @@ class SemanticRouter(BaseModel):
             redis_client=redis_client,
         )
 
+        self._create_index = create_index
         self._initialize_index(
             redis_client,
             redis_url,
@@ -113,7 +148,13 @@ class SemanticRouter(BaseModel):
             index_kwargs=index_kwargs,
         )
 
-        self._index.client.json().set(f"{self.name}:route_config", f".", self.to_dict())  # type: ignore
+        if create_index:
+            # The stored config is the source of truth for from_existing(). With
+            # create_index=False the router does not own this index, so it is not
+            # ours to rewrite from a local route list we have not verified.
+            self._index._redis_client.json().set(
+                f"{self.name}:route_config", f".", self.to_dict()
+            )
 
     @classmethod
     def from_existing(
@@ -123,11 +164,21 @@ class SemanticRouter(BaseModel):
         redis_url: str = "redis://localhost:6379",
         **kwargs,
     ) -> "SemanticRouter":
-        """Return SemanticRouter instance from existing index."""
-        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
-            dict(kwargs),
-            nested_connection_keys=("connection_kwargs",),
-        )
+        """Return SemanticRouter instance from existing index.
+
+        Reads the stored route config with ``JSON.GET``, so unlike
+        :meth:`SearchIndex.from_existing` this needs no ``FT.INFO``. Pass
+        ``create_index=False`` to keep it that way through construction, which
+        makes this the way to attach to a router with a credential that cannot
+        run index-metadata commands.
+        """
+        # Pulled out before the split below, which retains only SearchIndex init
+        # kwargs and would otherwise hand this to the Redis client constructor.
+        create_index = kwargs.pop("create_index", True)
+        overwrite = kwargs.pop("overwrite", False)
+        if not create_index and overwrite:
+            raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(dict(kwargs))
         lib_name = init_kwargs.get("lib_name")
         index_kwargs: dict[str, Any] = {}
         created_redis_client = False
@@ -145,7 +196,11 @@ class SemanticRouter(BaseModel):
                 **factory_kwargs,
             )
             index_kwargs["_client_validated"] = True
-            index_kwargs["_owns_redis_client"] = True
+            # index_kwargs wins the merge below, so only claim ownership when
+            # the caller has not already answered -- and an explicit None is
+            # not an answer. Matches SearchIndex.from_existing.
+            if init_kwargs.get("owns_client") is None:
+                index_kwargs["owns_client"] = True
             if lib_name is not None:
                 index_kwargs["lib_name"] = lib_name
             created_redis_client = True
@@ -169,6 +224,8 @@ class SemanticRouter(BaseModel):
                 redis_url=resolved_redis_url,
                 redis_client=redis_client,
                 connection_kwargs=connection_kwargs or None,
+                create_index=create_index,
+                overwrite=overwrite,
                 _index_kwargs={**init_kwargs, **index_kwargs} or None,
             )
         except Exception:
@@ -200,11 +257,24 @@ class SemanticRouter(BaseModel):
             **(index_kwargs or {}),
         )
 
+        if not self._create_index:
+            # The caller asserts the index exists, is seeded, and is not ours to
+            # rewrite -- so no existence check, no schema comparison, no
+            # FT.CREATE, and no route references written. The local `routes` have
+            # to match what is actually indexed, because the per-route FILTER in
+            # _distance_threshold_filter is built from them.
+            logger.debug(
+                f"create_index=False: assuming router index {self.name!r} exists "
+                f"and is already seeded with {len(self.routes)} routes. Its schema "
+                "is not verified."
+            )
+            return
+
         # Check for existing router index
         existed = self._index.exists()
         if not overwrite and existed:
             existing_index = SearchIndex.from_existing(
-                self.name, redis_client=self._index.client
+                self.name, redis_client=self._index._redis_client
             )
             if existing_index.schema.to_dict() != self._index.schema.to_dict():
                 raise ValueError(
@@ -274,9 +344,9 @@ class SemanticRouter(BaseModel):
         # Normalize prefix to avoid double separators
         prefix = index.prefix.rstrip(sep) if sep and index.prefix else index.prefix
         if prefix:
-            return f"{prefix}{sep}{route_name}{sep}*"
+            return match_pattern(prefix, sep, route_name, sep)
         else:
-            return f"{route_name}{sep}*"
+            return match_pattern(route_name, sep)
 
     def _add_routes(self, routes: list[Route]):
         """Add routes to the router and index.
@@ -324,9 +394,19 @@ class SemanticRouter(BaseModel):
         """
         return next((route for route in self.routes if route.name == route_name), None)
 
-    def _process_route(self, result: dict[str, Any]) -> RouteMatch:
-        """Process resulting route objects and metadata."""
+    def _process_route(self, result: dict[str, Any]) -> RouteMatch | None:
+        """Process resulting route objects and metadata.
+
+        Returns None for a row missing ``route_name``/``distance`` — e.g. a doc
+        that expired mid-search on Redis 8.8+ (the background-search expiry
+        race) — so the caller can drop it rather than raise a KeyError. Note
+        this is a stricter rule than the core ``process_aggregate_results``,
+        which only drops entirely-empty rows; the router applies it because it
+        knows its exact aggregate schema. The caller aggregates the warning.
+        """
         route_dict = make_dict(convert_bytes(result))
+        if "route_name" not in route_dict or "distance" not in route_dict:
+            return None
         return RouteMatch(
             name=route_dict["route_name"], distance=float(route_dict["distance"])
         )
@@ -335,7 +415,7 @@ class SemanticRouter(BaseModel):
         """Apply distance threshold on a route by route basis."""
         filter = ""
         for i, route in enumerate(self.routes):
-            filter_str = f"(@route_name == '{route.name}' && @distance < {route.distance_threshold})"
+            filter_str = f"(@route_name == '{route.name}' && @distance <= {route.distance_threshold})"
             if i > 0:
                 filter += " || "
             filter += filter_str
@@ -359,21 +439,19 @@ class SemanticRouter(BaseModel):
             aggregation_func = reducers.avg
 
         aggregate_query = str(vector_range_query).split(" RETURN")[0]
-        aggregate_request = (
+        # FT.AGGREGATE runs its steps in the order given, and redis-py emits them
+        # in call order. FILTER must precede SORTBY ... MAX, or the max_k closest
+        # routes are kept before their thresholds are checked.
+        return (
             AggregateRequest(aggregate_query)
             .group_by(
                 "@route_name",  # type: ignore
                 aggregation_func("vector_distance").alias("distance"),
             )
+            .filter(self._distance_threshold_filter())
             .sort_by("@distance", max=max_k)  # type: ignore
             .dialect(2)
         )
-
-        filter = self._distance_threshold_filter()
-
-        aggregate_request.filter(filter)
-
-        return aggregate_request
 
     def _get_route_matches(
         self,
@@ -382,6 +460,33 @@ class SemanticRouter(BaseModel):
         max_k: int = 1,
     ) -> list[RouteMatch]:
         """Get route response from vector db"""
+        aggregate_request, params = self._route_matches_request(
+            vector, aggregation_method, max_k
+        )
+        try:
+            aggregation_result: AggregateResult = self._index.aggregate(
+                aggregate_request, params
+            )
+        except ResponseError as e:
+            self._raise_aggregate_error(e)
+        return self._route_matches_from_result(aggregation_result)
+
+    def _route_matches_request(
+        self,
+        vector: list[float],
+        aggregation_method: DistanceAggregationMethod,
+        max_k: int,
+    ) -> tuple[AggregateRequest, dict[str, Any]]:
+        """Build the aggregate request and query params for a routing lookup."""
+
+        if not self.routes:
+            # Otherwise max() below raises "max() arg is an empty sequence",
+            # which says nothing about the actual problem.
+            raise ValueError(
+                f"Router {self.name!r} has no routes, so there is nothing to match "
+                "against. Add routes with add_route(), or construct the router "
+                "with a non-empty routes list."
+            )
 
         # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
         # therefore you might take the max_threshold and further refine from there.
@@ -397,33 +502,93 @@ class SemanticRouter(BaseModel):
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k=max_k
         )
+        return aggregate_request, vector_range_query.params
 
-        try:
-            aggregation_result: AggregateResult = self._index.aggregate(
-                aggregate_request, vector_range_query.params
+    @staticmethod
+    def _raise_aggregate_error(e: ResponseError) -> NoReturn:
+        if "VSS is not yet supported on FT.AGGREGATE" in str(e):
+            raise RuntimeError(
+                "Semantic routing is only available on Redis version 7.x.x or greater"
             )
-        except ResponseError as e:
-            if "VSS is not yet supported on FT.AGGREGATE" in str(e):
-                raise RuntimeError(
-                    "Semantic routing is only available on Redis version 7.x.x or greater"
-                )
-            raise e
+        raise e
 
-        # process aggregation results into route matches
-        return [
+    def _route_matches_from_result(
+        self, aggregation_result: AggregateResult
+    ) -> list[RouteMatch]:
+        # process aggregation results into route matches, dropping any row whose
+        # field payload came back missing (the Redis 8.8+ expiry race)
+        processed = [
             self._process_route(route_match) for route_match in aggregation_result.rows
         ]
+        matches = [match for match in processed if match is not None]
+        if len(matches) != len(processed):
+            logger.warning(
+                "Dropped %d route match(es) with missing field data (likely "
+                "expired during a background search on Redis 8.8+).",
+                len(processed) - len(matches),
+            )
+        return matches
 
-    def _classify_route(
+    async def _aget_route_matches(
         self,
         vector: list[float],
         aggregation_method: DistanceAggregationMethod,
+        max_k: int = 1,
+    ) -> list[RouteMatch]:
+        """Get route response from vector db without blocking the event loop."""
+        aggregate_request, params = self._route_matches_request(
+            vector, aggregation_method, max_k
+        )
+        aindex = self._get_async_index()
+        try:
+            aggregation_result: AggregateResult = await aindex.aggregate(
+                aggregate_request, params
+            )
+        except ResponseError as e:
+            self._raise_aggregate_error(e)
+        return self._route_matches_from_result(aggregation_result)
+
+    def _get_async_index(self) -> AsyncSearchIndex:
+        """Lazily construct the async search index over the same Redis index."""
+        if self._aindex is None:
+            index = self._index
+            if index._owns_redis_client and index._redis_url:
+                self._aindex = AsyncSearchIndex(
+                    schema=index.schema,
+                    redis_url=index._redis_url,
+                    connection_kwargs=index._connection_kwargs or None,
+                    lib_name=index._lib_name,
+                )
+            else:
+                self._aindex = AsyncSearchIndex(
+                    schema=index.schema,
+                    redis_client=RedisConnectionFactory.sync_to_async_redis(
+                        index._redis_client  # type: ignore[arg-type]
+                    ),
+                    owns_client=True,
+                )
+        return self._aindex
+
+    @property
+    def aindex(self) -> AsyncSearchIndex | None:
+        """The AsyncSearchIndex used by the async routing methods, once created.
+
+        Returns:
+            AsyncSearchIndex: The async search index, or None before the first
+            async call.
+        """
+        return self._aindex
+
+    async def adisconnect(self) -> None:
+        """Close the async Redis connection opened by the async routing methods."""
+        if self._aindex is not None:
+            await self._aindex.disconnect()
+            self._aindex = None
+
+    @staticmethod
+    def _top_route_match(
+        route_matches: list[RouteMatch], router_name: str
     ) -> RouteMatch:
-        """Classify to a single route using a vector."""
-
-        # take max route as distance threshold
-        route_matches = self._get_route_matches(vector, aggregation_method)
-
         if not route_matches:
             return RouteMatch()
 
@@ -434,8 +599,33 @@ class SemanticRouter(BaseModel):
             return top_route_match
         else:
             raise ValueError(
-                f"{top_route_match.name} not a supported route for the {self.name} semantic router."
+                f"{top_route_match.name} not a supported route for the {router_name} semantic router."
             )
+
+    @staticmethod
+    def _top_route_matches(
+        route_matches: list[RouteMatch], router_name: str
+    ) -> list[RouteMatch]:
+        top_route_matches: list[RouteMatch] = []
+        for route_match in route_matches:
+            if route_match.name is not None:
+                top_route_matches.append(route_match)
+            else:
+                raise ValueError(
+                    f"{route_match.name} not a supported route for the {router_name} semantic router."
+                )
+        return top_route_matches
+
+    def _classify_route(
+        self,
+        vector: list[float],
+        aggregation_method: DistanceAggregationMethod,
+    ) -> RouteMatch:
+        """Classify to a single route using a vector."""
+
+        # take max route as distance threshold
+        route_matches = self._get_route_matches(vector, aggregation_method)
+        return self._top_route_match(route_matches, self.name)
 
     def _classify_multi_route(
         self,
@@ -446,19 +636,7 @@ class SemanticRouter(BaseModel):
         """Classify to multiple routes, up to max_k (int), using a vector."""
 
         route_matches = self._get_route_matches(vector, aggregation_method, max_k=max_k)
-
-        # process route matches
-        top_route_matches: list[RouteMatch] = []
-        if route_matches:
-            for route_match in route_matches:
-                if route_match.name is not None:
-                    top_route_matches.append(route_match)
-                else:
-                    raise ValueError(
-                        f"{route_match.name} not a supported route for the {self.name} semantic router."
-                    )
-
-        return top_route_matches
+        return self._top_route_matches(route_matches, self.name)
 
     @deprecated_argument("distance_threshold")
     def __call__(
@@ -530,30 +708,203 @@ class SemanticRouter(BaseModel):
 
         return top_route_matches
 
+    async def aroute(
+        self,
+        statement: str | None = None,
+        vector: list[float] | None = None,
+        *,
+        aggregation_method: DistanceAggregationMethod | None = None,
+    ) -> RouteMatch:
+        """Async version of calling the router: match a statement or vector to
+        its best route without blocking the event loop.
+
+        Embedding uses the vectorizer's ``aembed`` and the lookup runs on an
+        :class:`~redisvl.index.AsyncSearchIndex` over the same Redis index, so
+        it returns the same match as ``router(statement)``.
+
+        Pass ``redis_url`` rather than a client to the router if you need
+        async routing over Sentinel or Redis Cluster: those clients cannot be
+        converted to their async form. With a vectorizer that
+        has no native ``aembed``, such as the default ``HFTextVectorizer``,
+        embedding still blocks the loop; only the Redis call is non-blocking.
+        The async client is bound to the event loop that made the first call,
+        so call :meth:`adisconnect` before switching loops.
+
+        Args:
+            statement (Optional[str]): The input statement to be queried.
+            vector (Optional[List[float]]): The input vector to be queried.
+            aggregation_method (Optional[DistanceAggregationMethod]): The aggregation method used for vector distances.
+
+        Returns:
+            RouteMatch: The matching route.
+
+        .. code-block:: python
+
+            match = await router.aroute("hi there")
+        """
+        if not vector:
+            if not statement:
+                raise ValueError("Must provide a vector or statement to the router")
+            vector = await self.vectorizer.aembed(statement)  # type: ignore
+
+        aggregation_method = (
+            aggregation_method or self.routing_config.aggregation_method
+        )
+
+        route_matches = await self._aget_route_matches(
+            vector, aggregation_method  # type: ignore
+        )
+        return self._top_route_match(route_matches, self.name)
+
+    async def aroute_many(
+        self,
+        statement: str | None = None,
+        vector: list[float] | None = None,
+        *,
+        max_k: int | None = None,
+        aggregation_method: DistanceAggregationMethod | None = None,
+    ) -> list[RouteMatch]:
+        """Async version of :meth:`route_many`: return up to ``max_k`` matching
+        routes without blocking the event loop. See :meth:`aroute` for the
+        connection and vectorizer caveats.
+
+        Args:
+            statement (Optional[str]): The input statement to be queried.
+            vector (Optional[List[float]]): The input vector to be queried.
+            max_k (Optional[int]): The maximum number of top matches to return.
+            aggregation_method (Optional[DistanceAggregationMethod]): The aggregation method used for vector distances.
+
+        Returns:
+            List[RouteMatch]: The matching routes and their details.
+
+        .. code-block:: python
+
+            matches = await router.aroute_many("hi there", max_k=2)
+        """
+        if not vector:
+            if not statement:
+                raise ValueError("Must provide a vector or statement to the router")
+            vector = await self.vectorizer.aembed(statement)  # type: ignore
+
+        max_k = max_k or self.routing_config.max_k
+        aggregation_method = (
+            aggregation_method or self.routing_config.aggregation_method
+        )
+
+        route_matches = await self._aget_route_matches(
+            vector, aggregation_method, max_k=max_k  # type: ignore
+        )
+        return self._top_route_matches(route_matches, self.name)
+
+    def add_route(self, route: Route) -> str:
+        """Add a new route to the SemanticRouter.
+
+        Note that this replaces the router's stored config with this instance's
+        route list, so a router constructed with a subset of the indexed routes
+        will drop the rest from the config that :meth:`from_existing` reads.
+
+        Embeds the route's references, writes them to the Redis index,
+        appends the route to ``self.routes``, and persists the updated router
+        config so the route survives :meth:`SemanticRouter.from_existing`.
+
+        Args:
+            route (Route): A fully-formed Route (name, references,
+                distance_threshold, optional metadata).
+
+        Returns:
+            str: The added route's name.
+
+        Raises:
+            ValueError: If a route with this name already exists on the router.
+                Use :meth:`add_route_references` to extend an existing route.
+        """
+        if self.get(route.name) is not None:
+            raise ValueError(
+                f"Route {route.name!r} already exists on router {self.name!r}; "
+                f"use add_route_references() to add references to it"
+            )
+        self._add_routes([route])
+        self._update_router_state()
+        return route.name
+
     def remove_route(self, route_name: str) -> None:
         """Remove a route and all references from the semantic router.
 
+        Like :meth:`add_route`, this replaces the router's stored config with
+        this instance's route list, so removing one route from a router holding
+        only a subset drops the rest from the config :meth:`from_existing`
+        reads.
+
         Args:
             route_name (str): Name of the route to remove.
+
+        Raises:
+            PartialDeletionError: If some of the route's reference keys could not
+                be unlinked. The route is then kept with exactly those references
+                and the config persisted before raising, so the router keeps
+                describing what the index can still match and a retry removes the
+                remainder.
         """
         route = self.get(route_name)
         if route is None:
             logger.warning(f"Route {route_name} is not found in the SemanticRouter")
-        else:
-            self._index.drop_keys(
-                [
-                    self._route_ref_key(self._index, route.name, hashify(reference))
-                    for reference in route.references
-                ]
+            return
+
+        # Pairs, not a dict: references are not deduplicated on the way in, and
+        # collapsing two identical references here would silently drop one.
+        keyed_references = [
+            (
+                self._route_ref_key(self._index, route.name, hashify(reference)),
+                reference,
             )
-            self.routes = [route for route in self.routes if route.name != route_name]
+            for reference in route.references
+        ]
+        keys = list({key for key, _ in keyed_references})
+        deleted, failed_keys = self._index._drop_keys(keys)
+        failed = set(failed_keys)
+        remaining = [ref for key, ref in keyed_references if key in failed]
+
+        if remaining:
+            route.references = remaining
+        else:
+            self.routes = [r for r in self.routes if r.name != route_name]
+        self._update_router_state()
+
+        if failed:
+            raise PartialDeletionError(
+                f"Failed to unlink {len(failed)} reference key(s) for route "
+                f"{route_name!r}, so the route was kept with those references. "
+                f"Retry to remove it.",
+                failed_keys=sorted(failed),
+                deleted=deleted,
+            )
 
     def delete(self) -> None:
-        """Delete the semantic router index."""
+        """Delete the semantic router index and its persisted route config.
+
+        Raises:
+            ValueError: If ``create_index=False``. Use :meth:`clear` to
+                remove the route references and leave the index standing.
+        """
+        if not self._create_index:
+            raise ValueError(EXTERNAL_INDEX_DROP_CONFLICT)
         self._index.delete(drop=True)
+        # The route config is stored as a standalone JSON key that is not
+        # tracked by the search index, so it must be removed explicitly.
+        self._index._redis_client.delete(f"{self.name}:route_config")
 
     def clear(self) -> None:
-        """Flush all routes from the semantic router index."""
+        """Delete every route reference, leaving the index in place.
+
+        Clears by index membership. Available under ``create_index=False``;
+        dropping the index is :meth:`delete`.
+
+        Warning:
+            The stored ``route_config`` is left as it was, here and on the
+            default path. A separate process calling :meth:`from_existing`
+            afterwards will report routes whose reference vectors are gone.
+            :meth:`remove_route` keeps the two in step.
+        """
         self._index.clear()
         self.routes = []
 
@@ -756,6 +1107,15 @@ class SemanticRouter(BaseModel):
         queries = []
 
         for id in ids:
+            if not id:
+                # `Tag(...) == ""` renders as the match-all `*`, so an empty id
+                # would match every reference in the index. Callers take the
+                # first row of each query's results, which turns this into
+                # returning -- and, from delete_route_references, deleting -- an
+                # arbitrary reference the caller never named.
+                raise ValueError(
+                    "reference ids must be non-empty strings; received an empty id"
+                )
             fe = Tag("reference_id") == id
             fq = FilterQuery(
                 return_fields=["reference_id", "route_name", "reference"],
@@ -768,8 +1128,8 @@ class SemanticRouter(BaseModel):
     def get_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Get references for an existing route route.
 
@@ -786,7 +1146,7 @@ class SemanticRouter(BaseModel):
         elif route_name:
             if not keys:
                 pattern = self._route_pattern(self._index, route_name)
-                keys = scan_by_pattern(self._index.client, pattern)  # type: ignore
+                keys = scan_by_pattern(self._index._redis_client, pattern)  # type: ignore[arg-type,assignment]
 
             sep = self._index.key_separator
             queries = self._make_filter_queries(
@@ -804,8 +1164,8 @@ class SemanticRouter(BaseModel):
     def delete_route_references(
         self,
         route_name: str = "",
-        reference_ids: list[str] = [],
-        keys: list[str] = [],
+        reference_ids: list[str] | None = None,
+        keys: list[str] | None = None,
     ) -> int:
         """Get references for an existing semantic router route.
 
@@ -816,6 +1176,27 @@ class SemanticRouter(BaseModel):
 
         Returns:
             int: Number of objects deleted
+
+        Raises:
+            ValueError: If no references match the given route/ids/keys.
+            PartialDeletionError: If some keys could not be unlinked. Raised only
+                after the surviving references have been reconciled and persisted,
+                so a retry picks up exactly what is left.
+
+        Note:
+            Deleting every reference of a route removes the route itself, matching
+            :meth:`remove_route`. A route with no references cannot match anything,
+            and :class:`~redisvl.extensions.router.schema.Route` rejects an empty
+            reference list, so persisting one would produce a config that
+            :meth:`from_existing` can no longer load.
+
+        Note:
+            On Redis Cluster keys are unlinked one at a time and a per-key failure
+            is logged rather than raised. References whose key failed to unlink are
+            deliberately *kept* in the persisted route config: the hash is still in
+            the index and the router would keep matching it, so dropping it from
+            the config would leave the router claiming a reference is gone while
+            still routing to it.
         """
 
         if reference_ids and not keys:
@@ -824,30 +1205,79 @@ class SemanticRouter(BaseModel):
             keys = [r[0]["id"] for r in res if len(r) > 0]
         elif not keys:
             pattern = self._route_pattern(self._index, route_name)
-            keys = scan_by_pattern(self._index.client, pattern)  # type: ignore
+            keys = scan_by_pattern(self._index._redis_client, pattern)  # type: ignore[arg-type,assignment]
 
         if not keys:
             raise ValueError(f"No references found for route {route_name}")
 
-        to_be_deleted = []
-        for key in keys:
-            route_name = key.split(":")[-2]
-            to_be_deleted.append(
-                (route_name, convert_bytes(self._index.client.hgetall(key)))  # type: ignore
+        # Read each hash before deleting, so the in-memory routes can be reconciled
+        # against whichever keys actually go away. The hash stores its own
+        # route_name, which beats recovering it from the key: route names may
+        # themselves contain the key separator. Keying by key also collapses a
+        # caller-supplied duplicate, which would otherwise be removed twice.
+        stored_by_key = {
+            key: convert_bytes(self._index._redis_client.hgetall(key))  # type: ignore
+            for key in convert_bytes(list(keys))
+        }
+
+        # A hash already gone (removed by another client, say) has nothing to read,
+        # so its reference is recovered from the config instead. Left in place, it
+        # could never be deleted: no index entry and no key would point to it.
+        configured_by_key = {
+            self._route_ref_key(self._index, route.name, hashify(reference)): (
+                route.name,
+                reference,
             )
+            for route in self.routes
+            for reference in route.references
+        }
 
-        deleted = self._index.drop_keys(keys)
+        deleted, failed_keys = self._index._drop_keys(list(stored_by_key))
+        failed = set(failed_keys)
 
-        for route_name, delete in to_be_deleted:
-            route = self.get(route_name)
-            if not route:
-                raise ValueError(f"Route {route_name} not found in the SemanticRouter")
-            route.references.remove(delete["reference"])
+        # Past this point the keys are gone, so nothing here may raise before the
+        # config is persisted -- that would leave the config advertising references
+        # whose hashes no longer exist, the very divergence this reconciles.
+        for key, stored in stored_by_key.items():
+            if key in failed:
+                continue
+            if not stored and key in configured_by_key:
+                ref_route_name, reference = configured_by_key[key]
+            else:
+                ref_route_name = stored.get("route_name", "")
+                reference = stored.get("reference")
+            route = self.get(ref_route_name)
+            if route is None or reference not in route.references:
+                logger.warning(
+                    f"Deleted route reference {key!r} but found no matching "
+                    f"reference in the router config; the config may be stale."
+                )
+                continue
+            # Duplicate references share one hash, so every copy went with it.
+            route.references = [ref for ref in route.references if ref != reference]
+
+        # A route whose last reference was just deleted has nothing left to match,
+        # and `Route` rejects an empty reference list -- persisting one would write a
+        # config that `from_existing`/`from_dict` can no longer load, bricking the
+        # router. Deleting every reference of a route removes the route, which is
+        # what `remove_route` does when all of its keys unlink.
+        self.routes = [route for route in self.routes if route.references]
 
         self._update_router_state()
+
+        if failed:
+            raise PartialDeletionError(
+                f"Unlinked {deleted} route reference(s) but {len(failed)} failed; "
+                f"those references remain both in the index and in the router "
+                f"config. Retry to remove them.",
+                failed_keys=sorted(failed),
+                deleted=deleted,
+            )
 
         return deleted
 
     def _update_router_state(self) -> None:
         """Update the router configuration in Redis."""
-        self._index.client.json().set(f"{self.name}:route_config", f".", self.to_dict())  # type: ignore
+        self._index._redis_client.json().set(
+            f"{self.name}:route_config", f".", self.to_dict()
+        )

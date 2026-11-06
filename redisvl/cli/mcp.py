@@ -5,6 +5,15 @@ import asyncio
 import inspect
 import sys
 
+# The HTTP transports the CLI offers. One tuple drives both the `--transport`
+# choices and every HTTP-only branch below, so offering another HTTP transport
+# here cannot silently skip the unauthenticated-bind check or the bind
+# arguments. Deliberately local: the CLI imports nothing from `redisvl.mcp` at
+# module level, so `rvl` stays usable without the optional `mcp` extra. The
+# server's own set, which also covers FastMCP's `"http"`, is
+# `redisvl.mcp.transport_security.HTTP_TRANSPORTS`.
+_HTTP_TRANSPORT_CHOICES = ("sse", "streamable-http")
+
 
 class _MCPArgumentParser(argparse.ArgumentParser):
     """ArgumentParser variant that reports usage errors with exit code 2."""
@@ -51,7 +60,7 @@ class MCP:
         parser.add_argument(
             "--transport",
             help="Transport protocol (default: stdio)",
-            choices=["stdio", "sse", "streamable-http"],
+            choices=["stdio", *_HTTP_TRANSPORT_CHOICES],
             default="stdio",
         )
         parser.add_argument(
@@ -64,6 +73,13 @@ class MCP:
             help="Port to bind to for HTTP transports (default: 8000)",
             type=int,
             default=8000,
+        )
+        parser.add_argument(
+            "--allow-unauthenticated",
+            help="Allow binding an HTTP transport to a non-loopback host without auth",
+            action="store_true",
+            dest="allow_unauthenticated",
+            default=False,
         )
 
         args = parser.parse_args(sys.argv[2:])
@@ -85,6 +101,7 @@ class MCP:
                     transport=args.transport,
                     host=args.host,
                     port=args.port,
+                    allow_unauthenticated=args.allow_unauthenticated,
                 )
             )
         except KeyboardInterrupt:
@@ -112,10 +129,51 @@ class MCP:
         """Bridge the synchronous CLI entrypoint to async server lifecycle code."""
         return asyncio.run(awaitable)
 
-    async def _serve(self, server, transport="stdio", host="127.0.0.1", port=8000):
+    _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+    @classmethod
+    def _check_http_auth(cls, transport, host, auth_enabled, allow_unauthenticated):
+        """Return a warning for an unauthenticated HTTP bind, or raise if unsafe.
+
+        No-op for stdio or when auth is enabled. Warns for loopback binds and
+        fails closed for non-loopback binds unless explicitly allowed.
+        """
+        if transport not in _HTTP_TRANSPORT_CHOICES or auth_enabled:
+            return None
+
+        if host not in cls._LOOPBACK_HOSTS and not allow_unauthenticated:
+            raise RuntimeError(
+                f"Refusing to bind an unauthenticated MCP server to non-loopback "
+                f"host '{host}'. Configure auth (REDISVL_MCP_AUTH_* or the "
+                f"server.auth config block) or pass --allow-unauthenticated."
+            )
+
+        return (
+            f"WARNING: serving MCP over {transport} on {host} without "
+            f"authentication. Any client that can reach this address has full "
+            f"access. Configure auth or restrict network access."
+        )
+
+    async def _serve(
+        self,
+        server,
+        transport="stdio",
+        host="127.0.0.1",
+        port=8000,
+        allow_unauthenticated=False,
+    ):
         """Run startup, serving, and shutdown on one event loop."""
+        warning = self._check_http_auth(
+            transport,
+            host,
+            getattr(server, "_auth_enabled", False),
+            allow_unauthenticated,
+        )
+        if warning:
+            print(warning, file=sys.stderr)
+
         transport_kwargs = {}
-        if transport in ("sse", "streamable-http"):
+        if transport in _HTTP_TRANSPORT_CHOICES:
             transport_kwargs["host"] = host
             transport_kwargs["port"] = port
 

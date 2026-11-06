@@ -24,5 +24,6 @@ cache
 message_history
 router
 cli
+exceptions
 ```
 

@@ -1,6 +1,8 @@
 import warnings
 from typing import Any
 
+from pydantic import ValidationError
+
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
     METADATA_FIELD_NAME,
@@ -8,7 +10,10 @@ from redisvl.extensions.constants import (
     TOOL_FIELD_NAME,
 )
 from redisvl.extensions.message_history.schema import ChatMessage, ChatRole
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import create_ulid, deserialize
+
+logger = get_logger(__name__)
 
 
 class BaseMessageHistory:
@@ -167,7 +172,21 @@ class BaseMessageHistory:
 
         for message in messages:
 
-            chat_message = ChatMessage(**message)
+            try:
+                chat_message = ChatMessage(**message)
+            except (ValidationError, KeyError):
+                # A matched message whose field payload came back missing (the
+                # Redis 8.8+ background-search expiry race) would arrive as an
+                # id-only dict and fail construction -- either a ValidationError
+                # for missing required fields, or a KeyError raised by the
+                # ChatMessage.generate_id validator when session_tag is absent.
+                # Skip it rather than raise.
+                logger.warning(
+                    "Skipping message with missing field data (likely expired "
+                    "during a background search on Redis 8.8+): id=%s",
+                    message.get("id"),
+                )
+                continue
 
             if as_text:
                 context.append(chat_message.content)

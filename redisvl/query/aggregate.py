@@ -4,14 +4,20 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 from typing_extensions import Self
 
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, intersect_with_filter
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
-from redisvl.utils.utils import lazy_import
 
-nltk = lazy_import("nltk")
-nltk_stopwords = lazy_import("nltk.corpus.stopwords")
+
+def _cosine_similarity(distance_field: str) -> str:
+    """Build an APPLY expression for ``(2 - max(distance, 0)) / 2``.
+
+    APPLY has no ``max`` function, so ``max(distance, 0)`` is expressed as
+    ``(distance + abs(distance)) / 2``.
+    """
+    distance = f"@{distance_field}"
+    return f"(2 - ({distance} + abs({distance}))/2)/2"
 
 
 class Vector(BaseModel):
@@ -187,7 +193,8 @@ class AggregateHybridQuery(AggregationQuery):
         self.scorer(text_scorer)
         self.add_scores()
         self.apply(
-            vector_similarity=f"(2 - @{self.DISTANCE_ID})/2", text_score="@__score"
+            vector_similarity=_cosine_similarity(self.DISTANCE_ID),
+            text_score="@__score",
         )
         self.apply(hybrid_score=f"{1-alpha}*@text_score + {alpha}*@vector_similarity")
         self.sort_by(Desc("@hybrid_score"), max=num_results)  # type: ignore
@@ -345,7 +352,7 @@ class MultiVectorQuery(AggregationQuery):
 
         # calculate the respective vector similarities
         for i in range(len(self._vectors)):
-            self.apply(**{f"score_{i}": f"(2 - @distance_{i})/2"})
+            self.apply(**{f"score_{i}": _cosine_similarity(f"distance_{i}")})
 
         # construct the scoring string based on the vector similarity scores and weights
         combined_scores = []
@@ -384,16 +391,10 @@ class MultiVectorQuery(AggregationQuery):
                 f"@{field}:[VECTOR_RANGE {max_dist} $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
             )
 
-        range_query = " AND ".join(range_queries)
+        # Whitespace is intersection in Redis Search; there is no AND keyword.
+        range_query = " ".join(range_queries)
 
-        filter_expression = self._filter_expression
-        if isinstance(self._filter_expression, FilterExpression):
-            filter_expression = str(self._filter_expression)
-
-        if filter_expression:
-            return f"({range_query}) AND ({filter_expression})"
-        else:
-            return f"{range_query}"
+        return intersect_with_filter(range_query, self._filter_expression)
 
     def __str__(self) -> str:
         """Return the string representation of the query."""

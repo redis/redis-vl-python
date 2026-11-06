@@ -4,7 +4,6 @@ import time
 from typing import Any
 
 from redis import RedisCluster
-from redis import __version__ as redis_version
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.client import NEVER_DECODE, Pipeline
 from redis.commands.search import AsyncSearch, Search
@@ -21,22 +20,11 @@ from redis.commands.search.commands import (
     TEMPORARY,
 )
 from redis.commands.search.field import Field
-
-from redisvl.utils.redis_protocol import get_protocol_version
-
-# Redis 5.x compatibility (6 fixed the import path)
-if redis_version.startswith("5"):
-    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped]
-        IndexDefinition,
-    )
-else:
-    from redis.commands.search.index_definition import (  # type: ignore[no-redef]
-        IndexDefinition,
-    )
-
+from redis.commands.search.index_definition import IndexDefinition
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
+from redisvl.utils.redis_protocol import get_protocol_version
 from redisvl.utils.utils import lazy_import
 
 # Lazy import numpy
@@ -266,7 +254,6 @@ async def async_cluster_create_index(
     return await default_node.execute_command(*args)
 
 
-# TODO: The return type is incorrect because 5.x doesn't have "ProfileInformation"
 def cluster_search(
     client: Search,
     query: str | Query,
@@ -290,7 +277,6 @@ def cluster_search(
     )
 
 
-# TODO: The return type is incorrect because 5.x doesn't have "ProfileInformation"
 async def async_cluster_search(
     client: AsyncSearch,
     query: str | Query,

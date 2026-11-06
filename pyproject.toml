@@ -1,10 +1,10 @@
 [project]
 name = "redisvl"
 # NOTE: This version value is automatically incremented by the release workflow - do not manually adjust it.
-version = "0.18.2"
+version = "0.31.0"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.10,<3.16"
 readme = "README.md"
 license = "MIT"
 keywords = [
@@ -20,12 +20,15 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
     "numpy>=1.26.0,<3",
     "pyyaml>=5.4,<7.0",
-    "redis>=5.0,<8.0",
+    # 6.3.0 first accepts SVS-VAMANA. redis-py 8.0.0 returns empty RESP3
+    # search results (redis-py #4107), so 8.1.0 is the supported 8.x floor.
+    "redis>=6.3.0,!=8.0.0,<9.0",
     "pydantic>=2,<3",
     "tenacity>=8.2.2",
     "ml-dtypes>=0.4.0,<1.0.0",
@@ -35,44 +38,76 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = [
-    "fastmcp>=2.0.0",
-    "pydantic-settings>=2.0",
+    # Upper-bounded because the MCP protocol revision is chosen by this
+    # dependency, not by RedisVL: the SDK's LATEST_PROTOCOL_VERSION is the
+    # ceiling a server can negotiate. The 2026-07-28 revision is a breaking,
+    # stateless redesign of the protocol core, so a major bump could change both
+    # the negotiated version and how tools advertise their input schemas.
+    # Supporting that revision is its own piece of work.
+    # The floor is the oldest release RedisVL works with, not a security floor:
+    # earlier 2.x releases lack fastmcp.server.auth, fail to import with
+    # pydantic 2.13, reject the base_url the JWT verifier is built with, or
+    # (2.12.1 to 2.12.5) leave SSE clients hanging while they list tools.
+    "fastmcp>=2.13.0,<4",
+    "pydantic-settings>=2.0,<3",
+    # fastmcp pulls in beartype transitively. Releases before 0.23 import
+    # typing.no_type_check_decorator, which Python 3.15 removed, so fastmcp
+    # fails to import and the MCP server falls back to its stub.
+    "beartype>=0.23.1",
 ]
-mistralai = ["mistralai>=1.0.0"]
+mistralai = ["mistralai>=1.0.0,<2"]
 openai = ["openai>=1.1.0"]
-nltk = ["nltk>=3.8.1,<4"]
 cohere = ["cohere>=4.44"]
-voyageai = ["voyageai>=0.2.2"]
-sentence-transformers = ["sentence-transformers>=3.4.0,<4"]
+# The [video] extra pulls ffmpeg-python, which voyageai>=0.5.0 moved out of its
+# core deps; embed_video's Video.from_path needs it, so keep it here to preserve
+# out-of-the-box video support (ffmpeg-python is a lightweight pure-Python wrapper).
+voyageai = ["voyageai[video]>=0.5.0"]
+# Floor is a security constraint, not an API one: below 5.2.0 pins transformers<5.0.0.
+sentence-transformers = ["sentence-transformers>=5.2.0,<6"]
 langcache = ["langcache>=0.11.0"]
+# Legacy Google backend for the deprecated VertexAIVectorizer. The <2.0.0 cap is
+# intentional: Google's model-garden modules (vertexai.language_models /
+# vertexai.vision_models) that this vectorizer imports are deprecated with a
+# scheduled removal. They still ship in the 1.x line (latest 1.162.0); the 2.0.0
+# release that drops them is yanked on PyPI. Keep the cap so the deprecated class
+# (and its multimodal path, which has no google-genai replacement yet) keeps
+# importing. New text embeddings should use the `google-genai` extra below.
 vertexai = [
     "google-cloud-aiplatform>=1.26,<2.0.0",
-    "protobuf>=5.28.0,<6.0.0",
+    # Uncapped on purpose: nothing here imports protobuf, so the bound belongs
+    # to google-cloud-aiplatform, which declares its own.
+    "protobuf>=5.28.0",
 ]
+# Modern Google backend (Vertex AI + Gemini Developer API) for GoogleGenAIVectorizer.
+google-genai = ["google-genai>=1.0.0"]
 bedrock = [
     "boto3>=1.36.0,<2",
-    "urllib3<2.2.0",
+    "urllib3<2.9.0",
 ]
 pillow = [
     "pillow>=11.3.0",
 ]
 sql-redis = [
-    "sql-redis>=0.5.0",
+    "sql-redis>=0.7.1",
 ]
 all = [
-    "mistralai>=1.0.0",
+    "mistralai>=1.0.0,<2",
     "openai>=1.1.0",
-    "nltk>=3.8.1,<4",
     "cohere>=4.44",
-    "voyageai>=0.2.2",
-    "sentence-transformers>=3.4.0,<4",
+    "voyageai[video]>=0.5.0",
+    "sentence-transformers>=5.2.0,<6",
     "langcache>=0.11.0",
     "google-cloud-aiplatform>=1.26,<2.0.0",
-    "protobuf>=5.28.0,<6.0.0",
+    "protobuf>=5.28.0",
+    "google-genai>=1.0.0",
     "boto3>=1.36.0,<2",
-    "urllib3<2.2.0",
+    "urllib3<2.9.0",
     "pillow>=11.3.0",
-    "sql-redis>=0.5.0",
+    "sql-redis>=0.7.1",
+    "ollama>=0.5.4",
+]
+ollama = [
+    "ollama>=0.5.4",
 ]
 
 [project.urls]
@@ -89,11 +124,11 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "black>=25.1.0,<26",
+    "black>=26.5.0,<27",
     "isort>=5.6.4,<6",
-    "pylint>=3.1.0,<4",
-    "pytest>=8.1.1,<9",
-    "pytest-asyncio>=0.23.6,<0.24",
+    "pylint>=3.1.0,<5",
+    "pytest>=9.0.3,<10",
+    "pytest-asyncio>=1,<2",
     "pytest-xdist[psutil]>=3.6.1,<4",
     "pre-commit>=4.1.0,<5",
     "mypy>=1.11.0,<2",
@@ -101,6 +136,7 @@ dev = [
     "types-pyyaml",
     "types-pyopenssl",
     "testcontainers>=4.3.1,<5",
+    "filelock>=3.12,<5",
     "cryptography>=44.0.1",
     "codespell>=2.4.1,<3",
     "langcache>=0.9.0",
@@ -114,6 +150,7 @@ docs = [
     "sphinx-favicon>=1.0.1,<2",
     "sphinx-design>=0.5.0,<0.6",
     "myst-nb>=1.1.0,<2",
+    "sphinxcontrib-mermaid>=0.9.2,<1",
 ]
 
 [tool.uv]
@@ -123,7 +160,7 @@ default-groups = [
 ]
 
 [tool.black]
-target-version = ['py310', 'py311', 'py312', 'py313', 'py314']
+target-version = ['py310', 'py311', 'py312', 'py313', 'py314', 'py315']
 exclude = '''
 (
   | \.egg
@@ -143,9 +180,7 @@ exclude = '''
 [tool.pytest.ini_options]
 log_cli = true
 asyncio_mode = "auto"
-filterwarnings = [
-    "ignore:get_async_redis_connection will become async in the next major release:DeprecationWarning",
-]
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.mypy]
 warn_unused_configs = true

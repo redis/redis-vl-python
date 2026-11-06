@@ -1,8 +1,29 @@
+import re
 from typing import Any, Iterable
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.query.filter import FilterExpression, Num, Tag, Text
 from redisvl.schema import IndexSchema
+from redisvl.utils.token_escaper import TokenEscaper
+
+# `Text` neutralizes its own eq/ne values (see `_PHRASE_UNSAFE` in
+# `redisvl.query.filter`), so this boundary must not treat them again -- doubled
+# handling mangles ordinary values. `like` below is the exception, because the
+# library leaves `%` raw by design.
+#
+# `like` is the pattern operator, so the metacharacters that give a pattern its
+# meaning have to stay live: `*` and `?` for wildcards, `%` for fuzzy matching,
+# and a space for the implicit AND between terms. Escaping those does not fail
+# loudly -- it silently turns a documented pattern into a literal that matches
+# nothing -- so this set is the shared no-wildcard set minus `%` and space.
+#
+# Dropping them costs nothing in containment, because containment comes from the
+# delimiters rather than from these. With `(` and `)` escaped, the value cannot
+# close its own `@field:(...)`, so anything it carries -- including a `|`, which
+# the like path deliberately leaves live so a pattern can express a union --
+# stays scoped to this one field instead of reaching the surrounding expression.
+_LIKE_ESCAPED_CHARS = re.compile(r"[,.<>{}\[\]\\\"\':;!@#$^&()\-+=~\/]")
+_LIKE_ESCAPER = TokenEscaper(escape_chars_re=_LIKE_ESCAPED_CHARS)
 
 
 def parse_filter(
@@ -132,6 +153,11 @@ def _parse_tag_expression(field_name: str, op: str, operand: Any) -> FilterExpre
     )
 
 
+def _escape_like_pattern(value: str) -> str:
+    """Escape a `like` pattern, leaving its pattern metacharacters intact."""
+    return _LIKE_ESCAPER.escape(value)
+
+
 def _parse_text_expression(field_name: str, op: str, operand: Any) -> FilterExpression:
     field = Text(field_name)
     if op == "eq":
@@ -139,10 +165,18 @@ def _parse_text_expression(field_name: str, op: str, operand: Any) -> FilterExpr
     if op == "ne":
         return field != _require_string(operand, field_name, op)
     if op == "like":
-        return field % _require_string(operand, field_name, op)
+        # An exact-match value is a literal that `Text` neutralizes itself, but a
+        # `like` value is a pattern the library leaves raw -- see
+        # `_LIKE_ESCAPED_CHARS`.
+        return field % _escape_like_pattern(_require_string(operand, field_name, op))
     if op == "in":
+        # A fresh builder per item: each `==` mutates the instance, so reusing one
+        # only works while `FilterExpression` captures the rendering eagerly.
         return _combine_or(
-            [field == item for item in _require_string_list(operand, field_name, op)]
+            [
+                Text(field_name) == item
+                for item in _require_string_list(operand, field_name, op)
+            ]
         )
     raise RedisVLMCPError(
         f"Unsupported operator '{op}' for text field '{field_name}'",

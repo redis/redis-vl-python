@@ -19,14 +19,24 @@ from redisvl.utils.utils import (
     deprecated_class,
     deprecated_function,
     lazy_import,
+    match_pattern,
     norm_cosine_distance,
 )
 
 
-def test_norm_cosine_distance():
-    input = 2
-    expected = 0
-    assert norm_cosine_distance(input) == expected
+@pytest.mark.parametrize(
+    ("distance", "expected"),
+    [
+        # Approximate FLOAT32 epsilon seen as a negative self-match distance.
+        (-1.19e-7, 1),
+        (0, 1),
+        (1, 0.5),
+        (2, 0),
+        (2.1, 0),
+    ],
+)
+def test_norm_cosine_distance(distance, expected):
+    assert norm_cosine_distance(distance) == expected
 
 
 def test_denorm_cosine_distance():
@@ -215,7 +225,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed in the next major release. Use new_arg instead."
+            "Argument old_arg is deprecated and will be removed in a future release. Use new_arg instead."
         )
 
         # Test that passing the deprecated argument as a positional argument also triggers the warning.
@@ -224,7 +234,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed in the next major release. Use new_arg instead."
+            "Argument old_arg is deprecated and will be removed in a future release. Use new_arg instead."
         )
 
         with assert_no_warnings():
@@ -242,8 +252,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed"
-            " in the next major release."
+            "Argument old_arg is deprecated and will be removed in a future release."
         )
 
         # As a positional arg
@@ -252,8 +261,7 @@ class TestDeprecatedArgument:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument old_arg is deprecated and will be removed"
-            " in the next major release."
+            "Argument old_arg is deprecated and will be removed in a future release."
         )
 
         with assert_no_warnings():
@@ -547,7 +555,7 @@ class TestDeprecatedClass:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Class OldClass is deprecated and will be removed in the next major release. "
+            "Class OldClass is deprecated and will be removed in a future release. "
             "Use NewClass instead."
         )
         assert obj.value == 42
@@ -563,7 +571,7 @@ class TestDeprecatedClass:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Class OldClass is deprecated and will be removed in the next major release. "
+            "Class OldClass is deprecated and will be removed in a future release. "
         )
         assert obj.value == 42
 
@@ -577,7 +585,7 @@ class TestDeprecatedClass:
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Class CustomOldClass is deprecated and will be removed in the next major release. "
+            "Class CustomOldClass is deprecated and will be removed in a future release. "
             "Use NewClass instead."
         )
 
@@ -927,3 +935,23 @@ def test_keys_share_hash_tag_multiple_braces():
     keys = ["prefix:{tag1}:middle:{tag2}:key1", "prefix:{tag1}:middle:{tag2}:key2"]
     # Should use the first hash tag found
     assert _keys_share_hash_tag(keys) is True
+
+
+@pytest.mark.parametrize(
+    "segments, expected",
+    [
+        (("plain",), "plain*"),
+        (("with:separators:only",), "with:separators:only*"),
+        (("cache[ab]",), "cache\\[ab]*"),
+        (("star*",), "star\\**"),
+        (("question?",), "question\\?*"),
+        (("back\\slash",), "back\\\\slash*"),
+        (("all*?[]\\",), "all\\*\\?\\[]\\\\*"),
+        # Separators are literals too.
+        (("router", ":", "route[ab]", ":"), "router:route\\[ab]:*"),
+        ((), "*"),
+        (("",), "*"),
+    ],
+)
+def test_match_pattern(segments, expected):
+    assert match_pattern(*segments) == expected

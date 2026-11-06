@@ -17,6 +17,29 @@ class RedisSearchError(RedisVLError):
     pass
 
 
+class PartialDeletionError(RedisVLError):
+    """Raised when some keys could not be removed from Redis.
+
+    On Redis Cluster, keys are removed one at a time and a per-key failure is
+    logged rather than raised, so one unreachable slot does not abort the whole
+    batch. That is fine for callers who only want a best-effort count, but not for
+    ones that mirror the keyspace in their own state — a ``SemanticRouter``, for
+    instance, persists the list of references it holds. Those callers reconcile
+    their state against the keys that actually went away, persist it, and *then*
+    raise this, so the partial deletion cannot pass unnoticed and a retry targets
+    exactly what is left.
+
+    Attributes:
+        failed_keys (List[str]): The keys still present in Redis.
+        deleted (int): How many keys were removed.
+    """
+
+    def __init__(self, message: str, failed_keys: list[str], deleted: int = 0):
+        super().__init__(message)
+        self.failed_keys = list(failed_keys)
+        self.deleted = deleted
+
+
 class SchemaValidationError(RedisVLError):
     """Error when validating data against a schema."""
 
@@ -53,3 +76,37 @@ class RedisModuleVersionError(RedisVLError):
             f"3) Remove compression parameters"
         )
         return cls(message)
+
+
+# Redis Search reports an absent index as an ordinary error reply whose wording
+# depends on the server version, so matching the message is the only option.
+# Every known wording lives here rather than at each call site. See the "Telling
+# 'the index is missing' apart from other failures" section of docs/api/exceptions.rst.
+_MISSING_INDEX_ERROR_FRAGMENTS = (
+    "unknown index name",
+    "no such index",
+    "search_index_not_found",
+    "index not found",
+)
+
+
+def _is_missing_index_error(exc: RedisSearchError) -> bool:
+    """Check whether a Redis Search error means the index does not exist.
+
+    Different Redis Search versions phrase the error differently, so every
+    known wording is matched. The check reads the underlying Redis error rather
+    than the :class:`RedisSearchError` wrapping it, because the wrapper's
+    message interpolates the index name and would otherwise match for an index
+    named after one of the wordings.
+
+    Args:
+        exc: A :class:`RedisSearchError` wrapping the ``redis-py`` exception
+            that Redis raised. Wrappers raised without a cause are matched on
+            their own message.
+
+    Returns:
+        bool: True if the error indicates a missing index, False otherwise.
+    """
+    cause = exc.__cause__ if exc.__cause__ is not None else exc
+    message = str(cause).lower()
+    return any(fragment in message for fragment in _MISSING_INDEX_ERROR_FRAGMENTS)

@@ -1,13 +1,21 @@
+import logging
+
 import pytest
 from redis import __version__ as redis_version
+from redis.commands.search.document import Document
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
-from redisvl.index.index import process_results
+from redisvl.index.index import (
+    _convert_and_drop_empty_rows,
+    process_aggregate_results,
+    process_results,
+)
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, TextQuery, VectorQuery
 from redisvl.query.filter import Tag
 from redisvl.query.query import VectorRangeQuery
 from redisvl.redis.connection import is_version_gte
+from redisvl.schema import IndexSchema
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
@@ -292,7 +300,11 @@ def test_text_query_with_string_filter():
     # Check that the generated query string includes both text search and filter
     query_string = str(text_query)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string
-    assert f"AND {string_filter}" in query_string
+    assert (
+        f"@{text_field_name}:(search | document | 12345) ({string_filter})"
+        in query_string
+    )
+    assert " AND " not in query_string
 
     # Test with FilterExpression - should also work (existing functionality)
     filter_expression = Tag("category") == "tech"
@@ -311,7 +323,11 @@ def test_text_query_with_string_filter():
         f"@{text_field_name}:(search | document | 12345)"
         in query_string_with_filter_expr
     )
-    assert "AND @category:{tech}" in query_string_with_filter_expr
+    assert (
+        f"@{text_field_name}:(search | document | 12345) (@category:{{tech}})"
+        in query_string_with_filter_expr
+    )
+    assert " AND " not in query_string_with_filter_expr
 
     # Test with no filter - should only have text search
     text_query_no_filter = TextQuery(
@@ -323,7 +339,7 @@ def test_text_query_with_string_filter():
     assert f"@{text_field_name}:(search | document | 12345)" in query_string_no_filter
     assert "AND" not in query_string_no_filter
 
-    # Test with wildcard filter - should only have text search (no AND clause)
+    # Test with wildcard filter - should only have text search (no filter clause)
     text_query_wildcard = TextQuery(
         text=text,
         text_field_name=text_field_name,
@@ -333,6 +349,63 @@ def test_text_query_with_string_filter():
     query_string_wildcard = str(text_query_wildcard)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string_wildcard
     assert "AND" not in query_string_wildcard
+
+
+def test_vector_query_prefilter_shapes():
+    """A KNN pre-filter is parenthesized unless it is the bare wildcard.
+
+    Redis rejects a bare multi-clause pre-filter outright, so a union filter
+    could not run at all, and an empty filter produced "=>[KNN ...]", which is
+    also a syntax error. Match-everything stays the bare "*", which is the
+    documented form and the one shape where "(*)" would be needless churn.
+    Regression coverage for issue #708.
+    """
+    knn = "[KNN 10 @embedding $vector AS vector_distance]"
+
+    def prefilter_for(filter_expression):
+        return VectorQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            filter_expression=filter_expression,
+        )._build_query_string()
+
+    # A real filter is parenthesized, single clause included.
+    assert prefilter_for("@category:{tech}") == f"(@category:{{tech}})=>{knn}"
+    assert prefilter_for(Tag("category") == "tech") == f"(@category:{{tech}})=>{knn}"
+
+    # A top-level union must not bind across the "=>" pre-filter boundary.
+    assert prefilter_for("@a:{x} | @b:{y}") == f"(@a:{{x}} | @b:{{y}})=>{knn}"
+
+    assert prefilter_for(None) == f"*=>{knn}"
+    assert prefilter_for("*") == f"*=>{knn}"
+    assert prefilter_for("") == f"*=>{knn}"
+
+
+def test_vector_range_query_filter_is_parenthesised():
+    """The filter clause carries its own parentheses rather than the whole query.
+
+    Without them a raw-string union binds across the intersection, so the query
+    matches documents outside the vector range. The outer parentheses the old
+    form wrapped around everything were redundant: the string is always a
+    complete FT.SEARCH argument, never an embedded operand. See issue #708.
+    """
+    base = (
+        "@embedding:[VECTOR_RANGE $distance_threshold $vector]"
+        "=>{$YIELD_DISTANCE_AS: vector_distance}"
+    )
+
+    def query_string_for(filter_expression):
+        return VectorRangeQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            distance_threshold=0.2,
+            filter_expression=filter_expression,
+        )._build_query_string()
+
+    assert query_string_for("@category:{tech}") == f"{base} (@category:{{tech}})"
+    assert query_string_for("@a:{x} | @b:{y}") == f"{base} (@a:{{x}} | @b:{{y}})"
+    assert query_string_for(None) == base
+    assert query_string_for("*") == base
 
 
 @pytest.mark.skip("Test is flaking")
@@ -1140,3 +1213,330 @@ def test_vector_query_all_runtime_params():
     assert params["SEARCH_WINDOW_SIZE"] == 40
     assert params["USE_SEARCH_HISTORY"] == "ON"
     assert params["SEARCH_BUFFER_CAPACITY"] == 50
+
+
+# ---------------------------------------------------------------------------
+# process_results: tolerate matched docs with a missing field payload
+#
+# Redis 8.8+ defaults the RediSearch worker pool to a nonzero background
+# executor. A doc that expires (TTL/HPEXPIRE) mid-FT.SEARCH is returned as a
+# matched id with a nil field array; redis-py collapses that to a Document whose
+# __dict__ is only {"id": ..., "payload": None}. RedisVL must skip such docs
+# rather than raise (KeyError in the vector-normalize branch) or leak a partial
+# record -- WITHOUT over-skipping legitimate id-only / INDEXMISSING results.
+# ---------------------------------------------------------------------------
+
+
+def _hash_schema():
+    return IndexSchema.from_dict(
+        {
+            "index": {"name": "test_hash", "prefix": "test", "storage_type": "hash"},
+            "fields": [
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 4,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+                {"name": "brand", "type": "tag"},
+            ],
+        }
+    )
+
+
+def _json_schema():
+    return IndexSchema.from_dict(
+        {
+            "index": {"name": "test_json", "prefix": "test", "storage_type": "json"},
+            "fields": [
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 4,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+                {"name": "brand", "type": "tag"},
+            ],
+        }
+    )
+
+
+def test_vector_query_skips_nil_field_doc():
+    """A vector match missing its always-present vector_distance is dropped."""
+    nil_result = Result([1, "doc:1", None], True)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    )
+    assert process_results(nil_result, query, _hash_schema()) == []
+
+
+def test_vector_query_normalize_skips_nil_field_doc():
+    """No KeyError in the normalize branch when the distance field is absent."""
+    nil_result = Result([1, "doc:1", None], True)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        normalize_vector_distance=True,
+    )
+    # Previously raised KeyError on doc_dict[query.DISTANCE_ID]; now skipped.
+    assert process_results(nil_result, query, _hash_schema()) == []
+
+
+def test_vector_query_normalize_keeps_healthy_doc():
+    """A healthy doc carrying vector_distance is kept and normalized."""
+    healthy = Result([1, "doc:1", ["vector_distance", "0.5", "brand", "Nike"]], True)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        normalize_vector_distance=True,
+    )
+    results = process_results(healthy, query, _hash_schema())
+    assert len(results) == 1
+    assert results[0]["id"] == "doc:1"
+    # cosine normalization: (2 - 0.5) / 2 = 0.75
+    assert results[0]["vector_distance"] == "0.75"
+
+
+def test_vector_range_query_skips_nil_field_doc():
+    nil_result = Result([1, "doc:1", None], True)
+    query = VectorRangeQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        distance_threshold=0.8,
+    )
+    assert process_results(nil_result, query, _hash_schema()) == []
+
+
+def test_filter_query_json_unpack_skips_nil_field_doc():
+    """JSON full-object unpack: a match with no 'json' key is dropped."""
+    nil_result = Result([1, "doc:1", None], True)
+    query = FilterQuery(Tag("brand") == "Nike")  # no return_fields -> unpack_json
+    assert process_results(nil_result, query, _json_schema()) == []
+
+
+def test_filter_query_json_unpack_keeps_healthy_doc():
+    healthy = Result([1, "doc:1", ["json", '{"brand": "Nike"}']], True)
+    query = FilterQuery(Tag("brand") == "Nike")
+    results = process_results(healthy, query, _json_schema())
+    assert len(results) == 1
+    assert results[0] == {"id": "doc:1", "brand": "Nike"}
+
+
+def test_filter_query_return_fields_id_only_not_skipped():
+    """Over-skip guard: a legitimate return_fields=['id'] doc must be KEPT.
+
+    A race-victim doc and a legitimate id-only projection are byte-for-byte
+    identical ({'id':..., 'payload':None}); a naive key-set skip predicate would
+    drop this legitimate result. It must survive.
+    """
+    idonly = Result([1, "doc:1", ["id", "doc:1"]], True)
+    query = FilterQuery(Tag("brand") == "Nike", return_fields=["id"])
+    results = process_results(idonly, query, _hash_schema())
+    assert len(results) == 1
+    assert results[0]["id"] == "doc:1"
+
+
+def test_filter_query_hash_id_only_not_skipped():
+    """A plain hash FilterQuery id-only doc (e.g. INDEXMISSING) is passed through."""
+    idonly = Result([1, "doc:1", None], True)
+    query = FilterQuery(Tag("brand") == "Nike", return_fields=["brand"])
+    results = process_results(idonly, query, _hash_schema())
+    # Not a vector query and not JSON unpack -> we cannot distinguish this from a
+    # legitimate sparse doc, so it is kept as an id-only dict rather than dropped.
+    assert results == [{"id": "doc:1"}]
+
+
+def test_no_content_query_not_skipped():
+    """Over-skip guard: a NOCONTENT query legitimately returns ids only.
+
+    The server "returns the document ids and not the content" for every healthy
+    match, so a missing field payload carries no information and must not be read
+    as the expiry race. redis-py's ``no_content()`` leaves ``_return_fields``
+    untouched, so both detection branches would otherwise fire on every document.
+    """
+    nocontent = Result([2, "doc:1", "doc:2"], False)
+
+    vector_query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    ).no_content()
+    results = process_results(nocontent, vector_query, _hash_schema())
+    assert [doc["id"] for doc in results] == ["doc:1", "doc:2"]
+    assert results.dropped_count == 0
+
+    # JSON full-object unpack: no "json" key is expected under NOCONTENT either.
+    json_query = FilterQuery(Tag("brand") == "Nike").no_content()
+    results = process_results(nocontent, json_query, _json_schema())
+    assert [doc["id"] for doc in results] == ["doc:1", "doc:2"]
+    assert results.dropped_count == 0
+
+
+def test_no_content_query_with_normalize_does_not_raise():
+    """NOCONTENT leaves no distance to normalize; the branch must skip it."""
+    nocontent = Result([1, "doc:1"], False)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        normalize_vector_distance=True,
+    ).no_content()
+    # Previously raised KeyError on doc_dict[query.DISTANCE_ID].
+    assert process_results(nocontent, query, _hash_schema()) == [{"id": "doc:1"}]
+
+
+def test_mixed_healthy_and_nil_doc():
+    """In a mixed result, the healthy doc survives and the nil doc is dropped."""
+    mixed = Result(
+        [2, "doc:1", ["vector_distance", "0.25", "brand", "Nike"], "doc:2", None],
+        True,
+    )
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    )
+    results = process_results(mixed, query, _hash_schema())
+    assert len(results) == 1
+    assert results[0]["id"] == "doc:1"
+    assert results[0]["brand"] == "Nike"
+
+
+def test_count_query_unaffected_by_nil_doc():
+    """CountQuery still returns the server's total, skipping never touches it."""
+    count_query = CountQuery(Tag("brand") == "Nike")
+    assert process_results(Result([5, "doc:1", None], True), count_query, "json") == 5
+
+
+def test_skip_emits_warning(caplog):
+    nil_result = Result([1, "doc:1", None], True)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    )
+    with caplog.at_level(logging.WARNING):
+        process_results(nil_result, query, _hash_schema())
+    assert any("missing field data" in r.message for r in caplog.records)
+
+
+def test_hand_built_document_shapes():
+    """Independence from the raw-list encoding: build Documents directly."""
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    )
+    result = Result([0], "")
+    result.docs = [
+        Document(id="doc:1", payload=None, vector_distance="0.25", brand="Nike"),
+        Document(id="doc:2", payload=None),  # collapsed nil-field shape
+    ]
+    processed = process_results(result, query, _hash_schema())
+    assert len(processed) == 1
+    assert processed[0]["id"] == "doc:1"
+
+
+class _FakeAggResult:
+    """Minimal AggregateResult stand-in: process_aggregate_results reads .rows."""
+
+    def __init__(self, rows):
+        self.rows = rows
+
+
+def test_process_aggregate_skips_empty_row():
+    agg = _FakeAggResult(
+        [["route_name", "tech", "distance", "0.1"], []]  # one healthy, one empty
+    )
+    processed = process_aggregate_results(agg, None, None)
+    assert len(processed) == 1
+    assert processed[0]["route_name"] == "tech"
+
+
+def test_process_aggregate_strips_score():
+    agg = _FakeAggResult([["route_name", "tech", "distance", "0.1", "__score", "9"]])
+    processed = process_aggregate_results(agg, None, None)
+    assert "__score" not in processed[0]
+    assert processed[0]["route_name"] == "tech"
+
+
+def test_process_aggregate_keeps_score_only_row():
+    """A row that carried only __score is a real result and must be kept as {}.
+
+    Emptiness is judged before __score is stripped, so a scoring-only
+    aggregation row is not mistaken for a race-dropped empty row.
+    """
+    agg = _FakeAggResult([["__score", "9"], []])  # score-only + truly-empty
+    processed = process_aggregate_results(agg, None, None)
+    assert processed == [{}]  # score-only kept (as {}); truly-empty dropped
+    assert processed.dropped_count == 1
+    assert processed.complete is False
+
+
+def test_convert_and_drop_empty_rows_hybrid():
+    rows = [{"content": "a"}, {}, [b"k", b"v"]]
+    kept = _convert_and_drop_empty_rows(rows, "hybrid")
+    # empty dict dropped; non-empty dict and decoded list-row kept
+    assert {"content": "a"} in kept
+    assert ["k", "v"] in kept
+    assert {} not in kept
+    assert len(kept) == 2
+
+
+def test_convert_and_drop_empty_rows_sql_warns(caplog):
+    with caplog.at_level(logging.WARNING):
+        kept = _convert_and_drop_empty_rows([{"col": "1"}, {}], "SQL")
+    assert kept == [{"col": "1"}]
+    assert any("Dropped" in r.message and "SQL" in r.message for r in caplog.records)
+
+
+def test_search_results_signal_on_skip():
+    """The returned result reports dropped_count / complete when docs are skipped."""
+    mixed = Result(
+        [2, "doc:1", ["vector_distance", "0.25", "brand", "Nike"], "doc:2", None],
+        True,
+    )
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    )
+    results = process_results(mixed, query, _hash_schema())
+    # behaves like a list...
+    assert isinstance(results, list)
+    assert len(results) == 1
+    assert results[0]["id"] == "doc:1"
+    # ...and carries completeness metadata
+    assert results.dropped_count == 1
+    assert results.complete is False
+
+
+def test_search_results_signal_healthy_is_complete():
+    healthy = Result([1, "doc:1", ["vector_distance", "0.25", "brand", "Nike"]], True)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    )
+    results = process_results(healthy, query, _hash_schema())
+    assert results.dropped_count == 0
+    assert results.complete is True
+
+
+def test_search_results_signal_on_aggregate_and_rows():
+    agg = process_aggregate_results(
+        _FakeAggResult([["route_name", "tech", "distance", "0.1"], []]), None, None
+    )
+    assert agg.dropped_count == 1 and agg.complete is False
+
+    rows = _convert_and_drop_empty_rows([{"a": 1}, {}], "hybrid")
+    assert rows.dropped_count == 1 and rows.complete is False

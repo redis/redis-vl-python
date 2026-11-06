@@ -1,6 +1,44 @@
 """Unit tests for convert_index_info_to_schema function."""
 
 from redisvl.redis.connection import convert_index_info_to_schema
+from redisvl.schema import IndexSchema
+
+
+def test_convert_index_info_svs_no_compression():
+    """Redis 8.2+ reports an uncompressed SVS-VAMANA field as NO_COMPRESSION."""
+    index_info = {
+        "index_name": "svs",
+        "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
+        "attributes": [
+            [
+                "identifier",
+                "emb",
+                "attribute",
+                "emb",
+                "type",
+                "VECTOR",
+                "algorithm",
+                "SVS-VAMANA",
+                "data_type",
+                "FLOAT32",
+                "dim",
+                4,
+                "distance_metric",
+                "COSINE",
+                "graph_max_degree",
+                40,
+                "construction_window_size",
+                250,
+                "compression",
+                "NO_COMPRESSION",
+            ]
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert "compression" not in result["fields"][0]["attrs"]
+    assert IndexSchema.from_dict(result).fields["emb"].attrs.compression is None
 
 
 def test_convert_index_info_single_prefix():
@@ -67,6 +105,75 @@ def test_convert_index_info_json_storage():
     assert result["index"]["name"] == "test_json_index"
     assert result["index"]["prefix"] == "json_prefix"  # normalized to string
     assert result["index"]["storage_type"] == "json"
+
+
+def test_convert_index_info_resp3_definition():
+    """Test converting the RESP3 dictionary form returned by redis-py 8."""
+    index_info = {
+        "index_name": "test_resp3_index",
+        "index_definition": {
+            "key_type": "HASH",
+            "prefixes": ["resp3_prefix"],
+            "default_score": 1.0,
+            "indexes_all": "false",
+        },
+        "attributes": [
+            {
+                "identifier": "category",
+                "attribute": "category",
+                "type": "TAG",
+                "SEPARATOR": "|",
+                "flags": ["CASESENSITIVE", "SORTABLE", "WITHSUFFIXTRIE"],
+            }
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["index"]["name"] == "test_resp3_index"
+    assert result["index"]["prefix"] == "resp3_prefix"
+    assert result["index"]["storage_type"] == "hash"
+    assert result["fields"] == [
+        {
+            "name": "category",
+            "type": "tag",
+            "attrs": {
+                "case_sensitive": True,
+                "sortable": True,
+                "withsuffixtrie": True,
+                "separator": "|",
+            },
+        }
+    ]
+
+
+def test_convert_index_info_resp2_withsuffixtrie():
+    """Test the flag in the alternating-list FT.INFO form."""
+    index_info = {
+        "index_name": "test_resp2_index",
+        "index_definition": ["key_type", "HASH", "prefixes", ["resp2_prefix"]],
+        "attributes": [
+            [
+                "identifier",
+                "title",
+                "attribute",
+                "title",
+                "type",
+                "TEXT",
+                "WITHSUFFIXTRIE",
+            ]
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"] == [
+        {
+            "name": "title",
+            "type": "text",
+            "attrs": {"withsuffixtrie": True},
+        }
+    ]
 
 
 def test_convert_index_info_with_fields():
@@ -172,3 +279,123 @@ def test_convert_index_info_default_stopwords():
 
     assert result["index"]["name"] == "test_default_stopwords"
     assert "stopwords" not in result["index"]  # Should not be present
+
+
+def test_convert_index_info_resp2_unified_vector_flags():
+    """Vector params packed into ``flags`` (redis-py 8, RESP2, legacy_responses=False)."""
+    index_info = {
+        "index_name": "test_index",
+        "index_definition": {"key_type": "HASH", "prefixes": ["doc"]},
+        "attributes": [
+            {
+                "identifier": "emb",
+                "attribute": "emb",
+                "type": "VECTOR",
+                "flags": [
+                    "algorithm",
+                    "HNSW",
+                    "data_type",
+                    "FLOAT32",
+                    "dim",
+                    8,
+                    "distance_metric",
+                    "L2",
+                    "M",
+                    24,
+                    "ef_construction",
+                    300,
+                    "INDEXMISSING",
+                ],
+            }
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    # INDEXMISSING is deliberately not recovered as ``index_missing``: a vector
+    # field can't be recreated with it yet, so restoring it here would turn a
+    # quiet loss into a failure on ``create()``.
+    assert result["fields"] == [
+        {
+            "name": "emb",
+            "type": "vector",
+            "attrs": {
+                "dims": 8,
+                "distance_metric": "l2",
+                "algorithm": "hnsw",
+                "datatype": "float32",
+                "m": 24,
+                "ef_construction": 300,
+            },
+        }
+    ]
+
+
+def test_convert_index_info_warns_on_unparseable_vector_field(caplog):
+    """A vector field without params is skipped with a warning, not silently."""
+    index_info = {
+        "index_name": "test_index",
+        "index_definition": {"key_type": "HASH", "prefixes": ["doc"]},
+        "attributes": [
+            {"identifier": "emb", "attribute": "emb", "type": "VECTOR", "flags": []}
+        ],
+    }
+
+    with caplog.at_level("WARNING"):
+        result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"] == []
+    assert "'emb'" in caplog.text and "'test_index'" in caplog.text
+
+
+def test_convert_index_info_resp2_unified_flags_skip_unknown_tokens():
+    """An unknown bare token in ``flags`` does not shift the key/value pairs."""
+    index_info = {
+        "index_name": "test_index",
+        "index_definition": {"key_type": "HASH", "prefixes": ["doc"]},
+        "attributes": [
+            {
+                "identifier": "emb",
+                "attribute": "emb",
+                "type": "VECTOR",
+                "flags": [
+                    "algorithm",
+                    "FLAT",
+                    "data_type",
+                    "FLOAT32",
+                    "dim",
+                    4,
+                    "NEWMOD",
+                    "distance_metric",
+                    "IP",
+                ],
+            }
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"][0]["attrs"]["distance_metric"] == "ip"
+    assert result["fields"][0]["attrs"]["dims"] == 4
+
+
+def test_convert_index_info_skips_vector_field_with_unparseable_dims(caplog):
+    """A non-numeric ``dim`` skips the field with a warning instead of raising."""
+    index_info = {
+        "index_name": "test_index",
+        "index_definition": {"key_type": "HASH", "prefixes": ["doc"]},
+        "attributes": [
+            {
+                "identifier": "emb",
+                "attribute": "emb",
+                "type": "VECTOR",
+                "flags": ["algorithm", "FLAT", "dim", "FUTUREMOD"],
+            }
+        ],
+    }
+
+    with caplog.at_level("WARNING"):
+        result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"] == []
+    assert "'emb'" in caplog.text

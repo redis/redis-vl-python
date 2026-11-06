@@ -15,6 +15,17 @@ class TokenEscaper:
     # Same as above but excludes * and ? to allow wildcard patterns
     ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ ]"
 
+    # The default set plus `|`, for tag equality values only. A tag clause holds
+    # its alternatives directly in braces -- `@f:{a|b}` -- so an unescaped `|`
+    # inside a single value silently turns an equality match into a union.
+    #
+    # Deliberately not added to the default set: a text query string joins its
+    # own terms with `|`, so escaping it there turns a documented union into a
+    # literal that matches nothing. The wildcard path is likewise unaffected,
+    # because the `%` operator documents `|` as a union between patterns -- see
+    # `Tag.__mod__`.
+    TAG_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~|\/ \?]"
+
     def __init__(self, escape_chars_re: Pattern | None = None):
         if escape_chars_re:
             self.escaped_chars_re = escape_chars_re

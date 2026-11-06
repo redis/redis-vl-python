@@ -4,14 +4,31 @@ This module defines the abstract base cache interface that is implemented by
 specific cache types such as LLM caches and embedding caches.
 """
 
-from collections.abc import Mapping
-from typing import Any, cast
+import asyncio
+from typing import Any, TypedDict
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
 
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.types import AsyncRedisClient, SyncRedisClient
+from redisvl.utils.utils import match_pattern
+
+# Keys deleted per DEL when clearing. Also the SCAN count hint, so one page of
+# keys maps to one delete round-trip.
+CLEAR_BATCH_SIZE = 500
+
+
+class _CacheConnectionKwargs(TypedDict):
+    """The connection parameters a cache keeps for building its clients.
+
+    Annotated so each value keeps its own type. Without it the dict literal
+    widens to the union of all three, and every read needs a cast.
+    """
+
+    redis_client: SyncRedisClient | None
+    redis_url: str
+    connection_kwargs: dict[str, Any]
 
 
 class BaseCache:
@@ -31,7 +48,7 @@ class BaseCache:
         redis_client: SyncRedisClient | None = None,
         async_redis_client: AsyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] | None = None,
     ):
         """Initialize a base cache.
 
@@ -45,11 +62,12 @@ class BaseCache:
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
         """
+        connection_kwargs = connection_kwargs or {}
         self.name = name
         self._ttl: int | None = None
         self.set_ttl(ttl)
 
-        self.redis_kwargs = {
+        self.redis_kwargs: _CacheConnectionKwargs = {
             "redis_client": redis_client,
             "redis_url": redis_url,
             "connection_kwargs": connection_kwargs,
@@ -58,7 +76,15 @@ class BaseCache:
         # Initialize Redis clients
         self._async_redis_client = async_redis_client
         self._redis_client = redis_client
+        # Guards lazy async client creation, which suspends on an await and so
+        # cannot rely on a bare check-then-set. Rebuilt whenever the running
+        # loop changes -- see _get_async_client_lock.
+        self._async_client_lock: asyncio.Lock | None = None
+        self._async_client_lock_loop: asyncio.AbstractEventLoop | None = None
 
+        # Caches never close a caller-supplied client and register no GC
+        # finalizer, so the index's owns_client handover has no cache
+        # equivalent by design.
         if redis_client or async_redis_client:
             self._owns_redis_client = False
         else:
@@ -113,13 +139,31 @@ class BaseCache:
         """
         if self._redis_client is None:
             # Create new Redis client
-            url = cast(str | None, self.redis_kwargs["redis_url"])
-            kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
+            url = self.redis_kwargs["redis_url"]
+            kwargs = self.redis_kwargs["connection_kwargs"]
             self._redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=url,
                 **kwargs,
             )
         return self._redis_client
+
+    def _get_async_client_lock(self) -> asyncio.Lock:
+        """Return the client-creation lock, bound to the running loop.
+
+        An ``asyncio.Lock`` records the loop that first contends it and raises
+        ``RuntimeError`` if awaited from any other, so one long-lived lock
+        would break a reconnect that lands on a second loop -- a later
+        ``asyncio.run``, a fresh pytest-asyncio loop, a notebook cell. The
+        lock only has to serialise tasks within a single loop, so discarding
+        it when the loop changes is both sufficient and cheap.
+        """
+        loop = asyncio.get_running_loop()
+        lock = self._async_client_lock
+        if lock is None or self._async_client_lock_loop is not loop:
+            lock = asyncio.Lock()
+            self._async_client_lock = lock
+            self._async_client_lock_loop = loop
+        return lock
 
     async def _get_async_redis_client(self) -> AsyncRedisClient:
         """Get or create an async Redis client.
@@ -127,22 +171,35 @@ class BaseCache:
         Returns:
             AsyncRedisClient: An async Redis client instance.
         """
-        if not hasattr(self, "_async_redis_client") or self._async_redis_client is None:
-            client = self.redis_kwargs.get("redis_client")
+        client = getattr(self, "_async_redis_client", None)
+        if client is None:
+            async with self._get_async_client_lock():
+                # Double-check: another task may have created the client while
+                # this one waited on the lock or on the factory's round trip.
+                client = getattr(self, "_async_redis_client", None)
+                if client is None:
+                    provided = self.redis_kwargs.get("redis_client")
+                    if provided and isinstance(provided, (Redis, RedisCluster)):
+                        client = RedisConnectionFactory.sync_to_async_redis(provided)
+                    else:
+                        url = self.redis_kwargs["redis_url"]
+                        kwargs = self.redis_kwargs["connection_kwargs"]
+                        client = await RedisConnectionFactory._get_aredis_connection(
+                            redis_url=url, **kwargs
+                        )
+                    self._async_redis_client = client
+        return client
 
-            if client and isinstance(client, (Redis, RedisCluster)):
-                self._async_redis_client = RedisConnectionFactory.sync_to_async_redis(
-                    client
-                )
-            else:
-                url = cast(str | None, self.redis_kwargs["redis_url"])
-                kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
-                self._async_redis_client = (
-                    RedisConnectionFactory.get_async_redis_connection(
-                        redis_url=url, **kwargs
-                    )
-                )
-        return self._async_redis_client
+    def _resolve_ttl(self, ttl: int | None = None) -> int | None:
+        """Resolve an explicit TTL against this cache's default TTL.
+
+        Args:
+            ttl (Optional[int], optional): An explicit time-to-live in seconds.
+
+        Returns:
+            Optional[int]: The TTL to apply, or None if no expiration is set.
+        """
+        return ttl if ttl is not None else self._ttl
 
     def expire(self, key: str, ttl: int | None = None) -> None:
         """Set or refresh the expiration time for a key in the cache.
@@ -157,7 +214,7 @@ class BaseCache:
             If neither the provided TTL nor the default TTL is set (both are None),
             this method will have no effect.
         """
-        _ttl = ttl if ttl is not None else self._ttl
+        _ttl = self._resolve_ttl(ttl)
         if _ttl:
             client = self._get_redis_client()
             client.expire(key, _ttl)
@@ -175,56 +232,104 @@ class BaseCache:
             If neither the provided TTL nor the default TTL is set (both are None),
             this method will have no effect.
         """
-        _ttl = ttl if ttl is not None else self._ttl
+        _ttl = self._resolve_ttl(ttl)
         if _ttl:
             client = await self._get_async_redis_client()
             await client.expire(key, _ttl)
 
-    def clear(self) -> None:
-        """Clear the cache of all keys."""
-        client = self._get_redis_client()
-        prefix = self._get_prefix()
+    def _expire_many(self, keys: list[str]) -> None:
+        """Refresh the default TTL on several keys in one round trip.
 
-        # Scan for all keys with our prefix
-        cursor = 0  # Start with cursor 0
-        while True:
-            cursor_int, keys = client.scan(cursor=cursor, match=f"{prefix}*", count=100)  # type: ignore
-            if keys:
-                client.delete(*keys)
-            if cursor_int == 0:  # Redis returns 0 when scan is complete
-                break
-            # Cluster returns a dict of cursor values. We need to stop if these all
-            # come back as 0.
-            elif isinstance(cursor_int, Mapping):
-                cursor_values = list(cursor_int.values())
-                if all(v == 0 for v in cursor_values):
-                    break
-            else:
-                cursor = cursor_int  # Update cursor for next iteration
+        The pipeline is non-transactional so that, on Redis Cluster, the keys
+        may live on different slots.
+        """
+        ttl = self._resolve_ttl()
+        if ttl and keys:
+            client = self._get_redis_client()
+            with client.pipeline(transaction=False) as pipe:
+                for key in keys:
+                    pipe.expire(key, ttl)
+                pipe.execute()
+
+    async def _aexpire_many(self, keys: list[str]) -> None:
+        """Asynchronous :meth:`_expire_many`."""
+        ttl = self._resolve_ttl()
+        if ttl and keys:
+            client = await self._get_async_redis_client()
+            async with client.pipeline(transaction=False) as pipe:
+                for key in keys:
+                    pipe.expire(key, ttl)
+                await pipe.execute()
+
+    def clear(self) -> None:
+        """Clear the cache of all keys.
+
+        Deletes every Redis key under the cache's prefix (``<name>:``) with
+        ``SCAN`` + ``DEL``. The cache object itself stays usable for future
+        writes.
+
+        Note:
+            ``SCAN`` is not a point-in-time snapshot, so this is a best-effort
+            sweep rather than an atomic flush:
+
+            - Keys written by other clients while the sweep is in progress may
+              or may not be deleted, so the cache is not guaranteed to be empty
+              when this returns. Quiesce writers first if you need that.
+            - ``SCAN`` may return the same key on more than one page. ``DEL``
+              on an already-deleted key is a no-op, so this is harmless.
+            - Deletion is not atomic across keys. If the call raises partway
+              through, some keys are already gone. The operation is idempotent,
+              so retrying is safe and converges.
+        """
+        client = self._get_redis_client()
+        # scan_iter, not a hand-rolled SCAN loop: on a cluster client SCAN is
+        # broadcast to every primary and replies with a {node_name: cursor}
+        # mapping, and those cursors are node-local -- they can neither be fed
+        # back as a single cursor nor broadcast. redis-py's scan_iter already
+        # drives each primary on its own cursor via target_nodes.
+        batch: list[Any] = []
+        for key in client.scan_iter(
+            match=match_pattern(self._get_prefix()), count=CLEAR_BATCH_SIZE
+        ):
+            batch.append(key)
+            if len(batch) >= CLEAR_BATCH_SIZE:
+                client.delete(*batch)
+                batch.clear()
+        if batch:
+            client.delete(*batch)
 
     async def aclear(self) -> None:
-        """Async clear the cache of all keys."""
-        client = await self._get_async_redis_client()
-        prefix = self._get_prefix()
+        """Asynchronously clear the cache of all keys.
 
-        # Scan for all keys with our prefix
-        cursor = 0  # Start with cursor 0
-        while True:
-            cursor_int, keys = await client.scan(
-                cursor=cursor, match=f"{prefix}*", count=100
-            )  # type: ignore
-            if keys:
-                await client.delete(*keys)
-            if cursor_int == 0:  # Redis returns 0 when scan is complete
-                break
-            # Cluster returns a dict of cursor values. We need to stop if these all
-            # come back as 0.
-            elif isinstance(cursor_int, Mapping):
-                cursor_values = list(cursor_int.values())
-                if all(v == 0 for v in cursor_values):
-                    break
-            else:
-                cursor = cursor_int  # Update cursor for next iteration
+        Deletes every Redis key under the cache's prefix (``<name>:``) with
+        ``SCAN`` + ``DEL``. The cache object itself stays usable for future
+        writes.
+
+        Note:
+            ``SCAN`` is not a point-in-time snapshot, so this is a best-effort
+            sweep rather than an atomic flush:
+
+            - Keys written by other clients while the sweep is in progress may
+              or may not be deleted, so the cache is not guaranteed to be empty
+              when this returns. Quiesce writers first if you need that.
+            - ``SCAN`` may return the same key on more than one page. ``DEL``
+              on an already-deleted key is a no-op, so this is harmless.
+            - Deletion is not atomic across keys. If the call raises partway
+              through, some keys are already gone. The operation is idempotent,
+              so retrying is safe and converges.
+        """
+        client = await self._get_async_redis_client()
+        # See the note in clear() on why this delegates to scan_iter.
+        batch: list[Any] = []
+        async for key in client.scan_iter(
+            match=match_pattern(self._get_prefix()), count=CLEAR_BATCH_SIZE
+        ):
+            batch.append(key)
+            if len(batch) >= CLEAR_BATCH_SIZE:
+                await client.delete(*batch)
+                batch.clear()
+        if batch:
+            await client.delete(*batch)
 
     def disconnect(self) -> None:
         """Disconnect from Redis."""

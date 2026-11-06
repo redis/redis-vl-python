@@ -83,10 +83,8 @@ class CohereReranker(BaseReranker):
         try:
             from cohere import AsyncClient, Client
         except ImportError:
-            raise ImportError(
-                "Cohere reranker requires the cohere library. \
-                    Please install with `pip install cohere`"
-            )
+            raise ImportError("Cohere reranker requires the cohere library. \
+                    Please install with `pip install cohere`")
 
         # Fetch the API key from api_config or environment variable
         api_key = (

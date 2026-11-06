@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import timedelta
 
@@ -25,6 +24,19 @@ from redisvl.query.filter import (
 )
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
+
+
+def _decode_redis_value(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return value
+
+
+def _result_or_hash_field(index: SearchIndex, result: dict, field: str):
+    if field in result:
+        return _decode_redis_value(result[field])
+    assert index.client is not None
+    return _decode_redis_value(index.client.hget(result["id"], field))
 
 
 @pytest.fixture
@@ -175,6 +187,7 @@ def index(sample_data, redis_url, worker_id):
             ],
         },
         redis_url=redis_url,
+        validate_on_load=True,
     )
 
     # create the index (no data yet)
@@ -278,9 +291,15 @@ def test_search_and_query(index):
     processed_results = index.query(v)
     assert len(processed_results) == 7
     assert isinstance(processed_results[0], dict)
-    result = results.docs[0].__dict__
-    result.pop("payload")
-    assert processed_results[0] == results.docs[0].__dict__
+    # Compare by id: john and mary share the query vector, so they tie at
+    # distance 0 and Redis may return them in either order on each call.
+    raw_docs = {
+        doc.id: {k: val for k, val in doc.__dict__.items() if k != "payload"}
+        for doc in results.docs
+    }
+    assert {result["id"]: result for result in processed_results} == raw_docs
+    distances = [float(result["vector_distance"]) for result in processed_results]
+    assert distances == sorted(distances)
 
 
 def test_range_query(index):
@@ -416,11 +435,14 @@ def test_filters(index, query, sample_datetimes):
     n4 = Num("age") != 18
     search(query, index, n4, 6, age_range=(0, 0, 18))
 
-    # Geographic filters
-    g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
+    # Geographic filters. A fractional radius on purpose: truncating it would
+    # render `0`, which the server rejects outright, so this is what catches a
+    # radius that stops being sent as given. The matching documents sit on the
+    # centre, so a whole-kilometre radius would give the same counts.
+    g = Geo("location") == GeoRadius(-122.4194, 37.7749, 0.5, unit="km")
     search(query, index, g, 3, location="-122.4194,37.7749")
 
-    g = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
+    g = Geo("location") != GeoRadius(-122.4194, 37.7749, 0.5, unit="km")
     search(query, index, g, 4, location="-110.0839,37.3861")
 
     # Text filters
@@ -438,6 +460,13 @@ def test_filters(index, query, sample_datetimes):
 
     t = Text("job") % "%%engine%%"
     search(query, index, t, 2)
+
+    # A quote-bearing value on `!=`, against a live index. This is the one claim
+    # no rendering assertion can make: escaping the quote instead of replacing it
+    # would ask for a term RediSearch never stored, so the negated phrase would
+    # match nothing and the exclusion would return all 7 rather than 6.
+    t = Text("description") != 'high stress,"'
+    search(query, index, t, 6)
 
     # Test empty filters
     t = Text("job") % ""
@@ -591,6 +620,57 @@ def test_paginate_range_query(index, range_query):
     assert len(all_results) == expected_count
     assert i == expected_iterations
     assert all(float(item["vector_distance"]) <= 0.2 for item in all_results)
+
+
+def test_no_content_query_returns_ids(index, sample_data):
+    """NOCONTENT results must survive the missing-field-payload filter.
+
+    Unlike the expiry race this needs no timing: under ``NOCONTENT`` the server
+    returns ids and no field data for *every* healthy match, so the drop
+    heuristic in ``process_results`` sees the same shape it uses to detect a
+    race victim. Before the ``_no_content`` short-circuit this returned an empty
+    list for every NOCONTENT query -- including through ``paginate``.
+    """
+    total = len(sample_data)
+    high_credit = sum(1 for d in sample_data if d["credit_score"] == "high")
+
+    # Plain filter, vector, and normalize-distance shapes. The last one used to
+    # raise KeyError on the absent vector_distance rather than return ids.
+    for query, expected in [
+        (FilterQuery(filter_expression=Tag("credit_score") == "high"), high_credit),
+        (
+            VectorQuery(
+                vector=[0.1, 0.1, 0.5],
+                vector_field_name="user_embedding",
+                num_results=total,
+            ),
+            total,
+        ),
+        (
+            VectorQuery(
+                vector=[0.1, 0.1, 0.5],
+                vector_field_name="user_embedding",
+                num_results=total,
+                normalize_vector_distance=True,
+            ),
+            total,
+        ),
+    ]:
+        results = index.query(query.no_content())
+        assert [doc["id"] for doc in results] and len(results) == expected
+        assert results.dropped_count == 0
+        assert results.complete
+
+    # paginate must reach the end of a NOCONTENT result set, not stop on page 1.
+    paged = [
+        doc
+        for batch in index.paginate(
+            FilterQuery(filter_expression=Tag("credit_score") == "high").no_content(),
+            page_size=2,
+        )
+        for doc in batch
+    ]
+    assert len(paged) == high_credit
 
 
 def test_sort_filter_query(index, sorted_filter_query):
@@ -841,13 +921,17 @@ def test_text_query_with_filter(index):
         text_scorer=scorer,
         filter_expression=filter_expression,
         return_fields=return_fields,
+        stopwords=None,
     )
     results = index.query(text_query)
     assert len(results) == 2
     for result in results:
-        assert any(word in result[text_field] for word in text.split())
-        assert result["credit_score"] == "high"
-        assert int(result["age"]) > 30
+        description = _result_or_hash_field(index, result, text_field)
+        credit_score = _result_or_hash_field(index, result, "credit_score")
+        age = _result_or_hash_field(index, result, "age")
+        assert any(word in description for word in text.split())
+        assert credit_score == "high"
+        assert int(age) > 30
 
 
 # test that text queries worked with text filter expressions on the same text field
@@ -1045,7 +1129,7 @@ def missing_fields_index(worker_id, client):
             "title": "Complete Document",
             "category": "electronics",
             "price": 99,
-            "location": "37.7749,-122.4194",
+            "location": "-122.4194,37.7749",
             "description": "A complete document with all fields",
         },
         {
@@ -1053,7 +1137,7 @@ def missing_fields_index(worker_id, client):
             "title": "",  # Empty title
             "category": "",  # Empty category
             "price": 150,
-            "location": "40.7128,-74.0060",
+            "location": "-74.0060,40.7128",
             "description": "Document with empty string values",
         },
         {
@@ -1074,7 +1158,7 @@ def missing_fields_index(worker_id, client):
             "title": "Zero Price Item",
             "category": "free",
             "price": 0,  # Valid zero value
-            "location": "34.0522,-118.2437",
+            "location": "-118.2437,34.0522",
             "description": "Document with zero price",
         },
     ]
@@ -1393,3 +1477,69 @@ def test_missing_fields_workflow_filtering(missing_fields_index):
     else:
         # If not indexed, that's also acceptable behavior for this test
         pass
+
+
+# A raw-string union filter is what exercises the parenthesization of a filter
+# clause: FilterExpression unions self-parenthesize via `format_expression`, so
+# only a raw string can bind across the surrounding intersection. Regression
+# coverage for issue #708.
+UNION_FILTER = "@credit_score:{high} | @credit_score:{medium}"
+
+
+def test_vector_query_with_raw_string_union_filter(index):
+    """A multi-clause KNN pre-filter must be parenthesized to be valid at all.
+
+    Redis rejects a bare multi-clause pre-filter, so before the fix this query
+    raised a syntax error rather than returning wrong results. The credit score
+    assertion additionally proves the filter is applied rather than dropped.
+    """
+    query = VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        filter_expression=UNION_FILTER,
+        return_fields=["user", "credit_score"],
+        num_results=10,
+    )
+
+    results = index.query(query)
+
+    assert {result["credit_score"] for result in results} == {"high", "medium"}
+    assert {result["user"] for result in results} == {
+        "john",
+        "nancy",
+        "tyler",
+        "tim",
+        "joe",
+    }
+
+
+def test_vector_range_query_with_raw_string_union_filter(index):
+    """A union filter must stay grouped inside the vector range intersection.
+
+    Only john and mary sit at distance 0 from the query vector, and john is the
+    only one of the two with a credit score the filter admits. Without its own
+    parentheses the query parses as (range AND high) OR medium, which also
+    returns joe -- a document whose embedding is the negation of the query
+    vector and so nowhere near the range.
+
+    `return_score=False` is load-bearing, not incidental. Redis yields no
+    distance for a document matched only through the stray union branch, and
+    with the distance requested `process_results` drops any such document as a
+    suspected Redis 8.8 expiry race. That silently masks the extra result, so
+    with the default `return_score=True` this test passes even on the unfixed
+    code -- verified against v0.27.0, which returns ["john"] with the score
+    requested and ["john", "joe"] without it.
+    """
+    query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        distance_threshold=0.01,
+        filter_expression=UNION_FILTER,
+        return_fields=["user", "credit_score"],
+        num_results=10,
+        return_score=False,
+    )
+
+    results = index.query(query)
+
+    assert [result["user"] for result in results] == ["john"]

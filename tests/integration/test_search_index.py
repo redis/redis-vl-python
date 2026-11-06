@@ -1,17 +1,20 @@
-import warnings
 from random import choice
 from unittest import mock
 
 import pytest
+import redis
 from redis import Redis
+from redis.exceptions import NoPermissionError
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 from redisvl.schema.fields import VectorIndexAlgorithm
+from tests.conftest import skip_if_no_redis_search
 
 fields = [
     {"name": "test", "type": "tag"},
@@ -114,11 +117,11 @@ def test_search_index_from_existing_url(redis_url, index):
     assert index2.schema == index.schema
 
 
-def test_search_index_from_existing_complex(client):
+def test_search_index_from_existing_complex(client, redis_test_name):
     schema = {
         "index": {
-            "name": "test",
-            "prefix": "test",
+            "name": redis_test_name("complex_index"),
+            "prefix": redis_test_name("complex"),
             "storage_type": "json",
         },
         "fields": [
@@ -144,29 +147,32 @@ def test_search_index_from_existing_complex(client):
         ],
     }
     index = SearchIndex.from_dict(schema, redis_client=client)
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     try:
-        index2 = SearchIndex.from_existing(index.name, redis_client=client)
-    except Exception as e:
-        pytest.skip(str(e))
+        try:
+            index2 = SearchIndex.from_existing(index.name, redis_client=client)
+        except Exception as e:
+            pytest.skip(str(e))
 
-    # Verify index metadata matches
-    assert index2.schema.index.name == index.schema.index.name
-    assert index2.schema.index.prefix == index.schema.index.prefix
-    assert index2.schema.index.storage_type == index.schema.index.storage_type
+        # Verify index metadata matches
+        assert index2.schema.index.name == index.schema.index.name
+        assert index2.schema.index.prefix == index.schema.index.prefix
+        assert index2.schema.index.storage_type == index.schema.index.storage_type
 
-    # Verify non-vector fields are present
-    for field_name in ["user", "credit_score", "job", "age"]:
-        assert field_name in index2.schema.fields
-        assert (
-            index2.schema.fields[field_name].type
-            == index.schema.fields[field_name].type
-        )
+        # Verify non-vector fields are present
+        for field_name in ["user", "credit_score", "job", "age"]:
+            assert field_name in index2.schema.fields
+            assert (
+                index2.schema.fields[field_name].type
+                == index.schema.fields[field_name].type
+            )
 
-    # Vector field may not be present on older Redis versions
-    if "user_embedding" in index2.schema.fields:
-        assert index2.schema.fields["user_embedding"].type == "vector"
+        # Vector field may not be present on older Redis versions
+        if "user_embedding" in index2.schema.fields:
+            assert index2.schema.fields["user_embedding"].type == "vector"
+    finally:
+        index.delete(drop=True)
 
 
 def test_search_index_from_existing_multiple_prefixes(client, redis_test_name):
@@ -269,40 +275,77 @@ def test_search_index_client(client, index_schema):
     assert index.client == client
 
 
-def test_search_index_set_client(async_client, redis_url, index_schema):
-    index = SearchIndex(schema=index_schema, redis_url=redis_url)
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        index.create(overwrite=True, drop=True)
-        assert index.client
-        # should not be able to set an async client here
-        with pytest.raises(TypeError):
-            index.set_client(async_client)
-        assert index.client is not async_client
-
-        index.disconnect()
-        assert index.client is None
-
-
-def test_search_index_connect(index, redis_url):
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        index.connect(redis_url=redis_url)
-    assert index.client
-
-
 def test_search_index_create(index):
     index.create(overwrite=True, drop=True)
     assert index.exists()
-    assert index.name in convert_bytes(index.client.execute_command("FT._LIST"))
+    # exists() and listall() reach Redis by different commands, so keeping both
+    # assertions gives each an independent witness.
+    assert index.name in index.listall()
 
 
 def test_search_index_delete(index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
     assert not index.exists()
-    assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
+    assert index.name not in index.listall()
+
+
+def test_exists_under_acl_without_admin_commands(index, client, acl_user):
+    """exists() must work for a credential that grants search but drops @admin.
+
+    Redis tags FT._LIST @admin as well as @search, so this ACL shape used to
+    make exists() -- and therefore create() and every extension constructor --
+    fail outright. Only a live server can confirm FT.INFO is not gated the same
+    way, which is why this is an integration test.
+    """
+    # Probe with the unrestricted client: the module check itself uses FT._LIST.
+    skip_if_no_redis_search(client)
+    index.create(overwrite=True, drop=True)
+
+    try:
+        with acl_user("~*", "&*", "+@all", "-@admin", name="acl_no_admin") as user:
+            restricted = user.connect()
+            # Pin the premise so this test cannot quietly become vacuous: if a
+            # future Redis stops gating FT._LIST behind @admin, the reason for
+            # preferring FT.INFO is gone and we want to hear about it here.
+            with pytest.raises(NoPermissionError):
+                restricted.execute_command("FT._LIST")
+
+            restricted_index = SearchIndex(schema=index.schema, redis_client=restricted)
+            assert restricted_index.exists() is True
+    finally:
+        index.delete(drop=True)
+
+
+def test_exists_false_for_alias_pointing_at_another_index(
+    index, client, redis_test_name
+):
+    """An alias must not report as an existing index.
+
+    FT.INFO accepts an alias and answers for its target, where FT._LIST never
+    listed aliases at all. Left unhandled, that difference would make exists()
+    return True for an alias, and create(overwrite=True, drop=True) acts on
+    that answer by issuing FT.DROPINDEX <name> DD -- destroying the aliased
+    index and its documents.
+    """
+    index.create(overwrite=True, drop=True)
+    alias = redis_test_name("exists_alias")
+    client.execute_command("FT.ALIASADD", alias, index.name)
+    try:
+        alias_index = SearchIndex(
+            schema=IndexSchema.from_dict({"index": {"name": alias}, "fields": fields}),
+            redis_client=client,
+        )
+        assert alias_index.exists() is False
+        # And the guard must not be so strict that the real name breaks.
+        assert index.exists() is True
+    finally:
+        # Only FT.ALIASDEL removes an alias. Never call delete() or
+        # create(overwrite=True, drop=True) on alias_index here: FT.DROPINDEX
+        # resolves the alias and would drop the real index's data, which is the
+        # exact failure this test exists to catch.
+        client.execute_command("FT.ALIASDEL", alias)
+        index.delete(drop=True)
 
 
 @pytest.mark.parametrize("num_docs", [0, 1, 5, 10, 2042])
@@ -510,7 +553,7 @@ def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
     assert index.client is None
 
 
-def test_search_index_no_proactive_module_validation(redis_url):
+def test_search_index_no_proactive_module_validation(redis_url, redis_test_name):
     """
     Updated test for issue #370: SearchIndex should not validate modules proactively.
     Operations should fail naturally if modules are missing.
@@ -522,7 +565,7 @@ def test_search_index_no_proactive_module_validation(redis_url):
         # Create index - validation should only set lib name, not check modules
         index = SearchIndex(
             schema=IndexSchema.from_dict(
-                {"index": {"name": "my_index"}, "fields": fields}
+                {"index": {"name": redis_test_name("my_index")}, "fields": fields}
             ),
             redis_client=client,
         )
@@ -534,8 +577,11 @@ def test_search_index_no_proactive_module_validation(redis_url):
         # The actual operation (create) will succeed if modules are present
         index.create(overwrite=True, drop=True)
 
-        # Verify index was created successfully (modules are present in test env)
-        assert index.exists()
+        try:
+            # Verify index was created successfully (modules are present in test env)
+            assert index.exists()
+        finally:
+            index.delete(drop=True)
 
 
 def test_batch_search(index):
@@ -549,6 +595,79 @@ def test_batch_search(index):
     assert results[0].docs[0]["id"] == "rvl:1"
     assert results[1].total == 1
     assert results[1].docs[0]["id"] == "rvl:2"
+
+
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        pytest.param({}, id="default"),
+        pytest.param({"protocol": 3}, id="protocol-3"),
+        pytest.param(
+            {"legacy_responses": False},
+            id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+        pytest.param(
+            {"protocol": 2, "legacy_responses": False},
+            id="resp2-new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+    ],
+)
+def test_client_from_existing_and_batch_search(
+    redis_url, redis_test_name, client_kwargs
+):
+    """User-provided redis-py clients support introspection and batch search."""
+    name = redis_test_name("client_index")
+    prefix = f"{name}:"
+    client = Redis.from_url(redis_url, **client_kwargs)
+    index = SearchIndex.from_dict(
+        {
+            "index": {"name": name, "prefix": prefix},
+            "fields": [
+                {"name": "test", "type": "tag"},
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"withsuffixtrie": True},
+                },
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_client=client,
+    )
+
+    try:
+        index.create()
+        index.load(
+            [{"id": "1", "test": "foo", "title": "suffix trie"}],
+            id_field="id",
+        )
+
+        reopened = SearchIndex.from_existing(name, redis_client=client)
+        results = reopened.batch_search(["@test:{foo}"])
+
+        assert reopened.schema == index.schema
+        assert results[0].total == 1
+        assert results[0].docs[0]["id"] == f"{prefix}1"
+    finally:
+        index.delete(drop=True)
+        client.close()
 
 
 @pytest.mark.parametrize(

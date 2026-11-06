@@ -9,9 +9,21 @@ from tenacity.retry import retry_if_not_exception_type
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
+from redisvl.utils.utils import deprecated_class
 from redisvl.utils.vectorize.base import BaseVectorizer
 
+_VERTEXAI_DEPRECATION = (
+    "Use GoogleGenAIVectorizer for text embeddings — it runs on the supported "
+    "google-genai SDK. Note the default model changes (textembedding-gecko, 768 "
+    "dims -> gemini-embedding-001, 3072 dims), so vectors are not interchangeable; "
+    "reindex when you switch. This class uses Google's Vertex AI model-garden SDK, "
+    "which is deprecated with a scheduled removal (it still works today but is on a "
+    "clock). Multimodal (image/video) migration is tracked in "
+    "https://github.com/redis/redis-vl-python/issues/620."
+)
 
+
+@deprecated_class(name="VertexAIVectorizer", replacement=_VERTEXAI_DEPRECATION)
 class VertexAIVectorizer(BaseVectorizer):
     """The VertexAIVectorizer uses Google's VertexAI embedding model
     API to create embeddings.

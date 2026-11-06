@@ -8,14 +8,18 @@ from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Coroutine, Sequence, TypeVar
+from typing import Any, Callable, Coroutine, ParamSpec, Sequence, TypeVar, cast
 from warnings import warn
 
 from pydantic import BaseModel
-from redis import Redis
 from ulid import ULID
 
+from redisvl.types import SyncRedisClient
+
 T = TypeVar("T")
+R = TypeVar("R")
+P = ParamSpec("P")
+C = TypeVar("C", bound=type)
 
 
 def create_ulid() -> str:
@@ -75,7 +79,9 @@ def deserialize(data: str) -> Any:
     return json.loads(data)
 
 
-def deprecated_argument(argument: str, replacement: str | None = None) -> Callable:
+def deprecated_argument(
+    argument: str, replacement: str | None = None
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to warn if a deprecated argument is passed.
 
@@ -93,17 +99,22 @@ def deprecated_argument(argument: str, replacement: str | None = None) -> Callab
             def test_method(cls, old_arg=None, new_arg=None):
                 pass
     """
-    message = f"Argument {argument} is deprecated and will be removed in the next major release."
+    message = (
+        f"Argument {argument} is deprecated and will be removed in a future release."
+    )
     if replacement:
         message += f" Use {replacement} instead."
 
-    def decorator(func):
-        # Check if the function is a classmethod or staticmethod
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        # The documented usage puts this decorator inside
+        # @classmethod/@staticmethod, so this branch only covers the reversed
+        # order; a classmethod object is not a Callable to the type system,
+        # hence the casts.
         if isinstance(func, (classmethod, staticmethod)):
-            underlying = func.__func__
+            underlying = cast(Callable[P, R], func.__func__)
 
             @wraps(underlying)
-            def inner_wrapped(*args, **kwargs):
+            def inner_wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
                 if argument in kwargs:
                     warn(message, DeprecationWarning, stacklevel=2)
                 else:
@@ -114,13 +125,13 @@ def deprecated_argument(argument: str, replacement: str | None = None) -> Callab
                 return underlying(*args, **kwargs)
 
             if isinstance(func, classmethod):
-                return classmethod(inner_wrapped)
+                return cast(Callable[P, R], classmethod(inner_wrapped))
             else:
-                return staticmethod(inner_wrapped)
+                return cast(Callable[P, R], staticmethod(inner_wrapped))
         else:
 
             @wraps(func)
-            def inner_normal(*args, **kwargs):
+            def inner_normal(*args: P.args, **kwargs: P.kwargs) -> R:
                 if argument in kwargs:
                     warn(message, DeprecationWarning, stacklevel=2)
                 else:
@@ -145,7 +156,9 @@ def assert_no_warnings():
         yield
 
 
-def deprecated_function(name: str | None = None, replacement: str | None = None):
+def deprecated_function(
+    name: str | None = None, replacement: str | None = None
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator to mark a function as deprecated.
 
@@ -153,17 +166,17 @@ def deprecated_function(name: str | None = None, replacement: str | None = None)
     warning.
     """
 
-    def decorator(func):
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         fn_name = name or func.__name__
         warning_message = (
             f"Function {fn_name} is deprecated and will be "
-            "removed in the next major release. "
+            "removed in a future release. "
         )
         if replacement:
             warning_message += replacement
 
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             warn(warning_message, category=DeprecationWarning, stacklevel=3)
             return func(*args, **kwargs)
 
@@ -172,7 +185,9 @@ def deprecated_function(name: str | None = None, replacement: str | None = None)
     return decorator
 
 
-def deprecated_class(name: str | None = None, replacement: str | None = None):
+def deprecated_class(
+    name: str | None = None, replacement: str | None = None
+) -> Callable[[C], C]:
     """
     Decorator to mark a class as deprecated.
 
@@ -190,23 +205,33 @@ def deprecated_class(name: str | None = None, replacement: str | None = None):
             pass
     """
 
-    def decorator(cls):
+    def decorator(cls: C) -> C:
         class_name = name or cls.__name__
         warning_message = (
             f"Class {class_name} is deprecated and will be "
-            "removed in the next major release. "
+            "removed in a future release. "
         )
         if replacement:
             warning_message += replacement
 
-        original_init = cls.__init__
+        # getattr/setattr rather than attribute access: `cls` is typed as a
+        # class object, so mypy resolves `cls.__init__` to the metaclass slot.
+        original_init = getattr(cls, "__init__")
 
         @wraps(original_init)
-        def new_init(self, *args, **kwargs):
-            warn(warning_message, category=DeprecationWarning, stacklevel=2)
+        def new_init(self: Any, *args: Any, **kwargs: Any) -> None:
+            # Emit only once per instance. When a deprecated subclass wraps a
+            # deprecated parent, both __init__ wrappers run via super().__init__;
+            # the sentinel keeps that to a single warning.
+            if not getattr(self, "_deprecation_warned", False):
+                warn(warning_message, category=DeprecationWarning, stacklevel=2)
+                try:
+                    object.__setattr__(self, "_deprecation_warned", True)
+                except Exception:
+                    pass
             original_init(self, *args, **kwargs)
 
-        cls.__init__ = new_init
+        setattr(cls, "__init__", new_init)
         return cls
 
     return decorator
@@ -256,7 +281,7 @@ def norm_cosine_distance(value: float) -> float:
     """
     Normalize a cosine distance to a similarity score between 0 and 1.
     """
-    return max((2 - value) / 2, 0)
+    return min(max((2 - value) / 2, 0), 1)
 
 
 def denorm_cosine_distance(value: float) -> float:
@@ -274,15 +299,50 @@ def norm_l2_distance(value: float) -> float:
     return 1 / (1 + value)
 
 
+# Redis glob specials (https://redis.io/docs/latest/commands/keys/). ``]``, ``^``
+# and ``-`` are absent deliberately: they only bite inside a ``[...]`` class,
+# which can never open once ``[`` is escaped.
+_GLOB_METACHARACTERS = frozenset("\\*?[")
+
+
+def match_pattern(*segments: str) -> str:
+    """Build a ``SCAN``/``KEYS`` ``MATCH`` pattern from literal key segments.
+
+    Every segment -- prefix, separator, cache or route name -- is escaped, so a
+    name containing glob metacharacters matches its own keys instead of someone
+    else's. Build patterns here rather than interpolating names into a pattern.
+
+    Args:
+        *segments (str): Literal parts of the key prefix, in order. Passing none
+            (or only empty ones) yields ``"*"``.
+
+    Returns:
+        str: A pattern matching exactly the keys starting with those segments.
+    """
+    return (
+        "".join(
+            "\\" + char if char in _GLOB_METACHARACTERS else char
+            for segment in segments
+            for char in segment
+        )
+        + "*"
+    )
+
+
 def scan_by_pattern(
-    redis_client: Redis,
+    redis_client: SyncRedisClient,
     pattern: str,
 ) -> Sequence[str]:
     """
     Scan the Redis database for keys matching a specific pattern.
 
+    Uses scan_iter, so this is correct for both standalone and cluster clients:
+    on a cluster, SCAN is broadcast to every primary and each one has to be
+    iterated on its own node-local cursor.
+
     Args:
-        redis (Redis): The Redis client instance.
+        redis_client (SyncRedisClient): The Redis client instance. Standalone
+            or cluster.
         pattern (str): The pattern to match keys against.
 
     Returns:

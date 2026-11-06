@@ -2,15 +2,11 @@ import warnings
 from contextlib import suppress
 
 import pytest
-from redis.exceptions import ConnectionError
+from redis.exceptions import ConnectionError, NoPermissionError
 
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
-from tests.conftest import SKIP_HF, skip_if_no_redis_search
-
-requires_hf = pytest.mark.skipif(
-    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
-)
+from tests.conftest import skip_if_no_redis_search
 
 
 @pytest.fixture
@@ -34,6 +30,13 @@ def semantic_history(app_name, client, hf_vectorizer):
     yield history
     history.clear()
     history.delete()
+
+
+def _numbered_messages(count):
+    return [
+        {"role": "user" if i % 2 == 0 else "llm", "content": f"message {i:04d}"}
+        for i in range(count)
+    ]
 
 
 @pytest.fixture(autouse=True)
@@ -246,6 +249,15 @@ def test_standard_messages_property(standard_history):
     ]
 
 
+def test_standard_messages_property_past_1000(standard_history):
+    messages = _numbered_messages(1005)
+    standard_history.add_messages(messages)
+    standard_history.add_messages(_numbered_messages(15), session_tag="other_session")
+    assert standard_history.count() == 1005
+
+    assert standard_history.messages == messages
+
+
 def test_standard_scope(standard_history):
     # store entries under default session tag
     standard_history.store("some prompt", "some response")
@@ -339,7 +351,7 @@ def test_standard_count(standard_history):
 
 
 # test semantic message history
-@requires_hf
+@pytest.mark.requires_hf
 def test_semantic_specify_client(app_name, client, hf_vectorizer):
     skip_if_no_redis_search(client)
     history = None
@@ -360,7 +372,7 @@ def test_semantic_specify_client(app_name, client, hf_vectorizer):
                 history.delete()
 
 
-@requires_hf
+@pytest.mark.requires_hf
 def test_semantic_bad_connection_info(app_name, hf_vectorizer):
     with pytest.raises(ConnectionError):
         SemanticMessageHistory(
@@ -371,7 +383,7 @@ def test_semantic_bad_connection_info(app_name, hf_vectorizer):
         )
 
 
-@requires_hf
+@pytest.mark.requires_hf
 def test_semantic_scope(semantic_history):
     # store entries under default session tag
     semantic_history.store("some prompt", "some response")
@@ -399,7 +411,23 @@ def test_semantic_scope(semantic_history):
     assert no_context == []
 
 
-@requires_hf
+@pytest.mark.requires_hf
+def test_semantic_get_relevant_falls_back_within_the_requested_session(
+    semantic_history,
+):
+    semantic_history.store("default prompt", "default response")
+    semantic_history.store("other prompt", "other response", session_tag="other")
+
+    context = semantic_history.get_relevant(
+        "unrelated", session_tag="other", fall_back=True, distance_threshold=0
+    )
+    assert context == [
+        {"role": "user", "content": "other prompt"},
+        {"role": "llm", "content": "other response"},
+    ]
+
+
+@pytest.mark.requires_hf
 def test_semantic_store_and_get_recent(semantic_history):
     context = semantic_history.get_recent()
     assert len(context) == 0
@@ -485,7 +513,7 @@ def test_semantic_store_and_get_recent(semantic_history):
         bad_context = semantic_history.get_recent(top_k="3")
 
 
-@requires_hf
+@pytest.mark.requires_hf
 def test_semantic_messages_property(semantic_history):
     semantic_history.add_messages(
         [
@@ -530,7 +558,16 @@ def test_semantic_messages_property(semantic_history):
     ]
 
 
-@requires_hf
+@pytest.mark.requires_hf
+def test_semantic_messages_property_past_10(semantic_history):
+    messages = _numbered_messages(12)
+    semantic_history.add_messages(messages)
+    assert semantic_history.count() == 12
+
+    assert semantic_history.messages == messages
+
+
+@pytest.mark.requires_hf
 def test_semantic_add_and_get_relevant(semantic_history):
     semantic_history.add_message(
         {"role": "system", "content": "discussing common fruits and vegetables"}
@@ -606,7 +643,31 @@ def test_semantic_add_and_get_relevant(semantic_history):
         bad_context = semantic_history.get_relevant("test prompt", top_k="3")
 
 
-@requires_hf
+@pytest.mark.requires_hf
+def test_semantic_get_relevant_with_zero_distance_threshold(semantic_history):
+    """A per-call distance_threshold of 0 must be honored, not treated as unset.
+
+    Regression test: `distance_threshold or self._distance_threshold` treated the
+    valid threshold 0 as falsy and silently fell back to the configured default,
+    so callers requesting exact-match-only context received fuzzy matches.
+    """
+    semantic_history.store(
+        prompt="list of common fruits",
+        response="apples, oranges, bananas, strawberries",
+    )
+    semantic_history.set_distance_threshold(0.5)
+
+    # Semantically similar but not identical -> must NOT match at threshold 0
+    assert (
+        semantic_history.get_relevant("list of typical fruits", distance_threshold=0)
+        == []
+    )
+
+    # Sanity check: the same query does match at the configured default
+    assert semantic_history.get_relevant("list of typical fruits") != []
+
+
+@pytest.mark.requires_hf
 def test_semantic_get_raw(semantic_history):
     semantic_history.store("first prompt", "first response")
     semantic_history.store("second prompt", "second response")
@@ -618,7 +679,7 @@ def test_semantic_get_raw(semantic_history):
     assert raw[1]["content"] == "first response"
 
 
-@requires_hf
+@pytest.mark.requires_hf
 def test_semantic_drop(semantic_history):
     semantic_history.store("first prompt", "first response")
     semantic_history.store("second prompt", "second response")
@@ -647,7 +708,7 @@ def test_semantic_drop(semantic_history):
     ]
 
 
-@requires_hf
+@pytest.mark.requires_hf
 def test_semantic_count(semantic_history):
     semantic_history.store("first prompt", "first response")
     assert semantic_history.count() == 2
@@ -655,6 +716,7 @@ def test_semantic_count(semantic_history):
     assert semantic_history.count() == 0
 
 
+@pytest.mark.requires_hf
 def test_different_vector_dtypes(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     sessions = []
@@ -704,6 +766,7 @@ def test_different_vector_dtypes(client, redis_url, redis_test_name):
                 sess.delete()
 
 
+@pytest.mark.requires_hf
 def test_bad_dtype_connecting_to_exiting_history(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
@@ -743,7 +806,7 @@ def test_bad_dtype_connecting_to_exiting_history(client, redis_url, redis_test_n
                 history.delete()
 
 
-@requires_hf
+@pytest.mark.requires_hf
 def test_vectorizer_dtype_mismatch(
     client, redis_url, hf_vectorizer_float16, redis_test_name
 ):
@@ -769,6 +832,7 @@ def test_invalid_vectorizer(client, redis_url, redis_test_name):
         )
 
 
+@pytest.mark.requires_hf
 def test_passes_through_dtype_to_default_vectorizer(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     # The default is float32, so we should see float64 if we pass it in.
@@ -789,6 +853,7 @@ def test_passes_through_dtype_to_default_vectorizer(client, redis_url, redis_tes
                 cache.delete()
 
 
+@pytest.mark.requires_hf
 def test_deprecated_dtype_argument(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     history = None
@@ -806,3 +871,55 @@ def test_deprecated_dtype_argument(client, redis_url, redis_test_name):
                 history.clear()
             with suppress(Exception):
                 history.delete()
+
+
+def test_create_index_false_clear_works_under_a_read_write_acl(
+    app_name, client, redis_url, acl_user
+):
+    """The `FT.INFO` removal from `SearchIndex.clear()`, end to end.
+
+    `MessageHistory.clear()` delegates to `SearchIndex.clear()`, which used to
+    read `FT.INFO` -- `@search` only, and so denied to the credential this flag
+    serves. This extension needs no vectorizer, making it the cheap place to
+    prove the fix against a real restricted credential rather than a mock.
+    """
+    skip_if_no_redis_search(client)
+    name = app_name
+
+    owner = MessageHistory(name=name, redis_url=redis_url)
+    try:
+        owner.add_messages(
+            [
+                {"role": "user", "content": "hello"},
+                {"role": "llm", "content": "hi there"},
+            ]
+        )
+        assert len(owner.get_recent(top_k=10)) == 2
+
+        with acl_user(
+            "~*", "&*", "+@read", "+@write", "-@dangerous", name="acl_history_user"
+        ) as user:
+            restricted = MessageHistory(
+                name=name,
+                redis_url=redis_url,
+                connection_kwargs={
+                    "username": user.username,
+                    "password": user.password,
+                },
+                create_index=False,
+            )
+
+            # Pin the premise: this credential cannot read FT.INFO.
+            with pytest.raises(NoPermissionError):
+                user.connect().execute_command("FT.INFO", name)
+
+            restricted.clear()
+
+        # Read back through the owner: the restricted instance is gone.
+        assert owner.get_recent(top_k=10) == []
+        # And clearing left the index standing, so the history is still usable.
+        assert owner._index.exists()
+        owner.add_messages([{"role": "user", "content": "again"}])
+        assert len(owner.get_recent(top_k=10)) == 1
+    finally:
+        owner.delete()

@@ -33,3 +33,20 @@ DIMENSIONS_FIELD_NAME: str = "dimensions"
 
 # SemanticRouter
 ROUTE_VECTOR_FIELD_NAME: str = "vector"
+
+# Raised by every constructor that accepts both `create_index` and `overwrite`.
+CREATE_INDEX_OVERWRITE_CONFLICT: str = (
+    "create_index=False and overwrite=True contradict each other: overwrite asks "
+    "RedisVL to drop and recreate the index, which it cannot do when it is told "
+    "not to manage the index at all."
+)
+
+# Raised when an extension attached to an externally managed index is asked to
+# drop that index. Removing entries is deliberately not covered: `clear()`
+# leaves the index in place, so it is not a lifecycle operation.
+EXTERNAL_INDEX_DROP_CONFLICT: str = (
+    "Cannot delete the index when create_index=False because RedisVL does not "
+    "manage that index's lifecycle. Use the externally managed provisioning "
+    "path to drop it. To remove every entry while leaving the index in place, "
+    "use clear()."
+)

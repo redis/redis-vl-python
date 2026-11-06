@@ -39,7 +39,7 @@ Schema → Index → Load → Query
 **Solve specific problems.** Task-oriented recipes for LLM extensions, querying, embeddings, optimization, and storage.
 
 +++
-LLM Caching • Filtering • MCP • Reranking
+LLM Caching • Filtering • MCP • Reranking • Migrations
 :::
 
 :::{grid-item-card} 🧠 MCP Setup
@@ -59,7 +59,7 @@ stdio, HTTP, SSE • One index • Search and upsert
 **Command-line tools.** Manage indices, inspect stats, and work with schemas using the `rvl` CLI.
 
 +++
-rvl index • rvl stats • Schema YAML
+rvl index • rvl stats • rvl migrate • Schema YAML
 :::
 
 :::{grid-item-card} 💡 Use Cases

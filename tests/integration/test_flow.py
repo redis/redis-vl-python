@@ -92,7 +92,15 @@ def test_simple(client, schema, sample_data, worker_id):
     assert float(users[1].vector_distance) == 0.0
     assert float(users[2].vector_distance) > 0
 
-    for doc1, doc2 in zip(results.docs, results_2):
+    # Compare the two result sets independent of ordering. john and mary share
+    # the query vector (vector_distance == 0.0), so their relative order can
+    # differ between the two separate FT.SEARCH calls above; key by the unique
+    # `user` field instead of comparing positionally.
+    docs_by_user = {doc.user: doc for doc in results.docs}
+    processed_by_user = {doc["user"]: doc for doc in results_2}
+    assert docs_by_user.keys() == processed_by_user.keys()
+    for user, doc1 in docs_by_user.items():
+        doc2 = processed_by_user[user]
         for field in return_fields:
             assert getattr(doc1, field) == doc2[field]
 
