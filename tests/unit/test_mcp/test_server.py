@@ -478,3 +478,52 @@ async def test_shutdown_after_stop_is_idempotent():
     await server.shutdown()
 
     assert server._lifecycle_state.name == "STOPPED"
+
+
+class _SlowInfoClient:
+    def __init__(self, info_delay: float):
+        self.info_delay = info_delay
+        self.aclose_calls = 0
+
+    async def info(self, section):
+        await asyncio.sleep(self.info_delay)
+        return {"redis_version": "8.0.0"}
+
+    async def aclose(self):
+        self.aclose_calls += 1
+
+
+def _patch_slow_connect(monkeypatch, client, connect_delay: float):
+    async def slow_connect(redis_url=None, **kwargs):
+        await asyncio.sleep(connect_delay)
+        return client
+
+    monkeypatch.setattr(
+        "redisvl.mcp.server.RedisConnectionFactory._get_aredis_connection",
+        slow_connect,
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_redis_client_shares_one_deadline(monkeypatch):
+    # Each step fits the timeout alone, but not both together.
+    client = _SlowInfoClient(info_delay=0.15)
+    _patch_slow_connect(monkeypatch, client, connect_delay=0.15)
+    server = RedisVLMCPServer(_dummy_settings())
+    server.config = _startup_config()
+
+    with pytest.raises(TimeoutError):
+        await server._connect_redis_client(0.2)
+
+    assert client.aclose_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_connect_redis_client_returns_client_within_deadline(monkeypatch):
+    client = _SlowInfoClient(info_delay=0.05)
+    _patch_slow_connect(monkeypatch, client, connect_delay=0.05)
+    server = RedisVLMCPServer(_dummy_settings())
+    server.config = _startup_config()
+
+    assert await server._connect_redis_client(1) is client
+    assert client.aclose_calls == 0

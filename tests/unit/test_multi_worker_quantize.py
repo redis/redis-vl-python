@@ -9,10 +9,13 @@ Tests:
   - Progress aggregation
 """
 
+import asyncio
+import logging
 import struct
 from unittest.mock import MagicMock, patch
 
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 
 def _make_float32_vector(dims: int = 4, seed: float = 0.0) -> bytes:
@@ -364,3 +367,171 @@ class TestWorkerResume:
                 fields=dt_changes,
                 batch_size=2,
             )
+
+
+class _FakeAsyncRedis:
+    """Hash store shared by every worker; ``on_execute`` may fail or stall."""
+
+    def __init__(self, store, on_execute):
+        self.store = store
+        self.on_execute = on_execute
+        self.closed = False
+
+    def pipeline(self, transaction=False):
+        return _FakePipeline(self)
+
+    async def aclose(self):
+        self.closed = True
+
+
+class _FakePipeline:
+    def __init__(self, client):
+        self.client = client
+        self.ops = []
+
+    def hget(self, key, field):
+        self.ops.append(("hget", key, field))
+
+    def hset(self, key, mapping):
+        self.ops.append(("hset", key, mapping))
+
+    async def execute(self):
+        results = []
+        for op, key, arg in self.ops:
+            if op == "hget":
+                results.append(self.client.store.get(key, {}).get(arg))
+            else:
+                self.client.store.setdefault(key, {}).update(arg)
+                results.append(len(arg))
+        # Runs after the commands land, like a reply lost after Redis applied them.
+        await self.client.on_execute(self.ops)
+        return results
+
+
+class _WorkerFailure:
+    """Worker 0 fails once workers 1 and 2 are stalled inside their second batch.
+
+    Keys are ``doc:0``..``doc:11``: three workers of four keys each, in
+    batches of two.
+    """
+
+    def __init__(self, op):
+        self.op = op
+        self.stalled = 0
+        self.siblings_stalled = asyncio.Event()
+        self.cancelled = []
+
+    async def on_execute(self, ops):
+        op, key, _ = ops[0]
+        if op != self.op:
+            return
+        doc = int(key.split(":")[1])
+        worker = doc // 4
+        if worker == 0:
+            await self.siblings_stalled.wait()
+            raise RedisConnectionError("worker 0 lost its connection")
+        if doc % 4 == 2:
+            self.stalled += 1
+            if self.stalled == 2:
+                self.siblings_stalled.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled.append(worker)
+                raise
+
+
+async def _healthy(ops):
+    return None
+
+
+class TestAsyncMultiWorkerFailure:
+    """One worker's failure cancels its siblings, and the shards still resume."""
+
+    DATATYPE_CHANGES = {
+        "embedding": {"source": "float32", "target": "float16", "dims": 4}
+    }
+
+    def _run(self, store, on_execute, tmp_path, clients):
+        from redisvl.migration.quantize import async_multi_worker_quantize
+
+        def from_url(url):
+            client = _FakeAsyncRedis(store, on_execute)
+            clients.append(client)
+            return client
+
+        async def run():
+            with patch("redis.asyncio.from_url", from_url):
+                async with asyncio.timeout(5):
+                    return await async_multi_worker_quantize(
+                        redis_url="redis://localhost:6379",
+                        keys=[f"doc:{i}" for i in range(12)],
+                        datatype_changes=self.DATATYPE_CHANGES,
+                        backup_dir=str(tmp_path),
+                        index_name="idx",
+                        num_workers=3,
+                        batch_size=2,
+                    )
+
+        return run()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "op, dump_batches, quantized_batches",
+        [("hget", 1, 0), ("hset", 2, 1)],
+        ids=["during-dump", "during-quantize"],
+    )
+    async def test_failure_cancels_siblings_and_backups_resume(
+        self, tmp_path, op, dump_batches, quantized_batches
+    ):
+        from redisvl.migration.backup import VectorBackup
+        from redisvl.migration.quantize import (
+            build_worker_backup_paths,
+            convert_vectors,
+        )
+
+        originals = {
+            f"doc:{i}": {"embedding": _make_float32_vector(4, seed=float(i))}
+            for i in range(12)
+        }
+        store = {key: dict(fields) for key, fields in originals.items()}
+        scenario = _WorkerFailure(op)
+        clients = []
+
+        with pytest.raises(RedisConnectionError, match="worker 0"):
+            await self._run(store, scenario.on_execute, tmp_path, clients)
+
+        # The siblings were cancelled before the error surfaced, not left running.
+        assert sorted(scenario.cancelled) == [1, 2]
+        assert len(clients) == 3
+        assert all(client.closed for client in clients)
+
+        # Each cancelled shard recorded only the batches it finished.
+        paths = build_worker_backup_paths(str(tmp_path), "idx", 3)
+        for path in paths[1:]:
+            header = VectorBackup.load(path).header
+            assert header.dump_completed_batches == dump_batches
+            assert header.quantize_completed_batches == quantized_batches
+
+        result = await self._run(store, _healthy, tmp_path, [])
+
+        assert result.total_docs_quantized == 12
+        assert all(VectorBackup.load(p).header.phase == "completed" for p in paths)
+        assert store == convert_vectors(originals, self.DATATYPE_CHANGES)
+
+    @pytest.mark.asyncio
+    async def test_simultaneous_failures_raise_the_first_not_a_group(
+        self, tmp_path, caplog
+    ):
+        store = {f"doc:{i}": {"embedding": _make_float32_vector(4)} for i in range(12)}
+
+        async def every_worker_fails(ops):
+            raise RedisConnectionError(f"failed at {ops[0][1]}")
+
+        with (
+            caplog.at_level(logging.ERROR, logger="redisvl.migration.quantize"),
+            pytest.raises(RedisConnectionError, match="failed at doc:0"),
+        ):
+            await self._run(store, every_worker_fails, tmp_path, [])
+
+        assert caplog.text.count("Another quantization worker also failed") == 2
