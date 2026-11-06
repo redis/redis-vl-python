@@ -1,7 +1,7 @@
 [project]
 name = "redisvl"
 # NOTE: This version value is automatically incremented by the release workflow - do not manually adjust it.
-version = "0.30.0"
+version = "0.31.0"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
 requires-python = ">=3.10,<3.16"
@@ -44,7 +44,11 @@ mcp = [
     # stateless redesign of the protocol core, so a major bump could change both
     # the negotiated version and how tools advertise their input schemas.
     # Supporting that revision is its own piece of work.
-    "fastmcp>=2.0.0,<4",
+    # The floor is the oldest release RedisVL works with, not a security floor:
+    # earlier 2.x releases lack fastmcp.server.auth, fail to import with
+    # pydantic 2.13, reject the base_url the JWT verifier is built with, or
+    # (2.12.1 to 2.12.5) leave SSE clients hanging while they list tools.
+    "fastmcp>=2.13.0,<4",
     "pydantic-settings>=2.0,<3",
     # fastmcp pulls in beartype transitively. Releases before 0.23 import
     # typing.no_type_check_decorator, which Python 3.15 removed, so fastmcp

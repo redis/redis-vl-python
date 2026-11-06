@@ -1,5 +1,8 @@
 import pytest
+from redis import Redis
+from redis.backoff import NoBackoff
 from redis.exceptions import ConnectionError, NoPermissionError
+from redis.retry import Retry
 
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -172,3 +175,24 @@ async def test_validate_async_redis_custom_lib_name(async_client):
     await RedisConnectionFactory.validate_async_redis(async_client, "langchain_v0.1.0")
     lib_name = await async_client.client_info()
     assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"
+
+
+@pytest.mark.asyncio
+async def test_converted_client_recovers_after_client_kill(client, redis_url):
+    """The converted client's retry policy must run on the async connection.
+
+    After CLIENT KILL the pooled connection's socket is closed. When the ping
+    follows straight away, the event loop has not yet seen the server close
+    it, so the pool hands the connection out and the first attempt fails. Only
+    the async Retry's reconnect-and-retry makes the ping succeed; with a sync
+    Retry it raises ConnectionError.
+    """
+    sync_client = Redis.from_url(redis_url, retry=Retry(NoBackoff(), 1))
+    converted = RedisConnectionFactory.sync_to_async_redis(sync_client)
+    try:
+        killed_id = await converted.client_id()
+        assert client.client_kill_filter(_id=killed_id) == 1
+        assert await converted.ping() is True
+    finally:
+        await converted.aclose()
+        sync_client.close()
