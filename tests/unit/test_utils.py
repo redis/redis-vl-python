@@ -24,10 +24,19 @@ from redisvl.utils.utils import (
 )
 
 
-def test_norm_cosine_distance():
-    input = 2
-    expected = 0
-    assert norm_cosine_distance(input) == expected
+@pytest.mark.parametrize(
+    ("distance", "expected"),
+    [
+        # Approximate FLOAT32 epsilon seen as a negative self-match distance.
+        (-1.19e-7, 1),
+        (0, 1),
+        (1, 0.5),
+        (2, 0),
+        (2.1, 0),
+    ],
+)
+def test_norm_cosine_distance(distance, expected):
+    assert norm_cosine_distance(distance) == expected
 
 
 def test_denorm_cosine_distance():
