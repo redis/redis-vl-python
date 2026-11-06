@@ -70,6 +70,7 @@ class SemanticCache(BaseLLMCache):
         connection_kwargs: dict[str, Any] | None = None,
         overwrite: bool = False,
         create_index: bool = True,
+        refresh_ttl_on_hit: bool = True,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -104,6 +105,8 @@ class SemanticCache(BaseLLMCache):
                 externally, or when the credential cannot run ``FT.INFO``. See
                 :doc:`/user_guide/installation` for the ACL details. Defaults to
                 true.
+            refresh_ttl_on_hit (bool): Whether cache hits refresh matched
+                entries' TTL by default. Defaults to True.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
@@ -139,6 +142,8 @@ class SemanticCache(BaseLLMCache):
             redis_url=redis_url,
             connection_kwargs=connection_kwargs,
         )
+
+        self.refresh_ttl_on_hit = refresh_ttl_on_hit
 
         # Handle the deprecated dtype parameter
         dtype = kwargs.pop("dtype", None)
@@ -440,6 +445,8 @@ class SemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
@@ -464,6 +471,9 @@ class SemanticCache(BaseLLMCache):
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
                 vector distance.
+            refresh_ttl (Optional[bool]): Whether this cache hit should refresh
+                matched entries' TTL. If None, uses the cache-level
+                refresh_ttl_on_hit setting.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -514,8 +524,8 @@ class SemanticCache(BaseLLMCache):
             )
             _telemetry.record_lookup(span, candidates, prompt)
 
-        # Refresh TTL on all found keys
-        self._expire_many(redis_keys)
+        if self._should_refresh_ttl(refresh_ttl):
+            self._expire_many(redis_keys)
         _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         return cache_hits
@@ -529,6 +539,8 @@ class SemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Async check the semantic cache for results similar to the specified prompt
         or vector.
@@ -553,6 +565,9 @@ class SemanticCache(BaseLLMCache):
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
                 vector distance.
+            refresh_ttl (Optional[bool]): Whether this cache hit should refresh
+                matched entries' TTL. If None, uses the cache-level
+                refresh_ttl_on_hit setting.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -605,8 +620,8 @@ class SemanticCache(BaseLLMCache):
             )
             _telemetry.record_lookup(span, candidates, prompt)
 
-        # Refresh TTL on all found keys
-        await self._aexpire_many(redis_keys)
+        if self._should_refresh_ttl(refresh_ttl):
+            await self._aexpire_many(redis_keys)
         _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         return cache_hits
@@ -631,6 +646,10 @@ class SemanticCache(BaseLLMCache):
             filter_expression=filter_expression,
             dtype=self._vectorizer.dtype,
         )
+
+    def _should_refresh_ttl(self, refresh_ttl: bool | None) -> bool:
+        """Resolve a per-call ``refresh_ttl`` against ``refresh_ttl_on_hit``."""
+        return self.refresh_ttl_on_hit if refresh_ttl is None else refresh_ttl
 
     @staticmethod
     def _within_threshold(

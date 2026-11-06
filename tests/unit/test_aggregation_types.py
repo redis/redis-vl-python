@@ -232,7 +232,7 @@ def test_hybrid_query_text_weights():
 
     assert (
         str(query)
-        == "(~@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}))=>[KNN 10 @user_embedding $vector AS vector_distance] SCORER BM25STD ADDSCORES DIALECT 2 APPLY (2 - @vector_distance)/2 AS vector_similarity APPLY @__score AS text_score APPLY 0.30000000000000004*@text_score + 0.7*@vector_similarity AS hybrid_score SORTBY 2 @hybrid_score DESC MAX 10"
+        == "(~@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}))=>[KNN 10 @user_embedding $vector AS vector_distance] SCORER BM25STD ADDSCORES DIALECT 2 APPLY (2 - (@vector_distance + abs(@vector_distance))/2)/2 AS vector_similarity APPLY @__score AS text_score APPLY 0.30000000000000004*@text_score + 0.7*@vector_similarity AS hybrid_score SORTBY 2 @hybrid_score DESC MAX 10"
     )
 
     # raise an error if weights are not positive floats
@@ -398,7 +398,7 @@ def test_multi_vector_query_string():
 
     assert (
         str(multi_vector_query)
-        == f"@{field_1}:[VECTOR_RANGE {max_distance_1} $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} @{field_2}:[VECTOR_RANGE {max_distance_2} $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
+        == f"@{field_1}:[VECTOR_RANGE {max_distance_1} $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} @{field_2}:[VECTOR_RANGE {max_distance_2} $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - (@distance_0 + abs(@distance_0))/2)/2 AS score_0 APPLY (2 - (@distance_1 + abs(@distance_1))/2)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
     )
 
     # The filter is intersected with whitespace and parenthesized, so a union
