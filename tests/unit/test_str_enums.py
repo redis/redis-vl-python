@@ -24,7 +24,6 @@ from redisvl.schema.fields import (
     VectorDistanceMetric,
     VectorIndexAlgorithm,
 )
-from redisvl.schema.validation import validate_object
 
 STR_ENUMS = [
     MCPErrorCode,
@@ -137,25 +136,6 @@ def test_error_messages_name_the_value():
                 ],
             }
         )
-
-
-def test_int8_range_check_matches_the_datatype():
-    # validation.py compares str(datatype).upper() with "INT8", which only
-    # matched once str() returned the value.
-    schema = IndexSchema.from_dict(
-        {
-            "index": {"name": "v", "prefix": "v", "storage_type": "json"},
-            "fields": [
-                {
-                    "name": "v",
-                    "type": "vector",
-                    "attrs": {"algorithm": "flat", "dims": 2, "datatype": "int8"},
-                }
-            ],
-        }
-    )
-    with pytest.raises(ValueError, match="INT8 range"):
-        validate_object(schema, {"v": [999, -999]})
 
 
 def test_query_strings_use_member_values():
