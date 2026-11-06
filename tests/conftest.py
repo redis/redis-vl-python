@@ -326,8 +326,7 @@ def otel_sdk():
         metrics_internal._METER_PROVIDER_SET_ONCE = Once()
         metrics_internal._METER_PROVIDER = None
         metrics_internal._PROXY_METER_PROVIDER = metrics_internal._ProxyMeterProvider()
-        otel.get_tracer.cache_clear()
-        otel.get_meter.cache_clear()
+        otel._clear_caches()
 
     spans, reader = InMemorySpanExporter(), InMemoryMetricReader()
     tracer_provider = TracerProvider()
