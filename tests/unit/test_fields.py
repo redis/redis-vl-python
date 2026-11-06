@@ -356,60 +356,26 @@ def test_redis_field_creation_with_index_attributes(
     # We can't directly inspect them, but we can verify the field creation doesn't fail
 
 
-def test_vector_fields_redis_creation_with_index_missing():
-    """Test that vector fields properly handle index_missing in Redis field creation."""
-
-    # Test FlatVectorField with index_missing
-    flat_field = FlatVectorField(
-        name="flat_embedding",
-        attrs={
-            "algorithm": "flat",
-            "dims": 128,
-            "index_missing": True,
-            "block_size": 100,
-        },
-    )
-    redis_field = flat_field.as_redis_field()
-    assert isinstance(redis_field, RedisVectorField)
-    assert redis_field.name == "flat_embedding"
-
-    # Test HNSWVectorField with index_missing
-    hnsw_field = HNSWVectorField(
-        name="hnsw_embedding",
-        attrs={"algorithm": "hnsw", "dims": 256, "index_missing": True, "m": 24},
-    )
-    redis_field = hnsw_field.as_redis_field()
-    assert isinstance(redis_field, RedisVectorField)
-    assert redis_field.name == "hnsw_embedding"
-
-
-def test_vector_field_data_includes_index_missing():
-    """Test that vector field field_data includes INDEXMISSING when enabled."""
-
-    # Test with index_missing=True
-    flat_field_with_missing = FlatVectorField(
+@pytest.mark.parametrize(
+    "field_class,algorithm",
+    [
+        (FlatVectorField, "flat"),
+        (HNSWVectorField, "hnsw"),
+        (SVSVectorField, "svs-vamana"),
+    ],
+)
+def test_vector_field_index_missing_follows_attribute_block(field_class, algorithm):
+    """INDEXMISSING is a field modifier, so it must follow the vector attribute
+    block rather than be counted and sent inside it."""
+    field = field_class(
         name="embedding",
-        attrs={"algorithm": "flat", "dims": 128, "index_missing": True},
+        attrs={"algorithm": algorithm, "dims": 128, "index_missing": True},
     )
-    field_data = flat_field_with_missing.attrs.field_data
-    assert "INDEXMISSING" in field_data
-    assert field_data["INDEXMISSING"] == True
 
-    # Test with index_missing=False (default)
-    flat_field_without_missing = FlatVectorField(
-        name="embedding", attrs={"algorithm": "flat", "dims": 128}
-    )
-    field_data = flat_field_without_missing.attrs.field_data
-    assert "INDEXMISSING" not in field_data
-
-    # Test HNSW field with index_missing=True
-    hnsw_field_with_missing = HNSWVectorField(
-        name="embedding",
-        attrs={"algorithm": "hnsw", "dims": 256, "index_missing": True},
-    )
-    field_data = hnsw_field_with_missing.attrs.field_data
-    assert "INDEXMISSING" in field_data
-    assert field_data["INDEXMISSING"] == True
+    args = field.as_redis_field().redis_args()
+    attr_count = args[3]
+    assert "INDEXMISSING" not in args[: 4 + attr_count]
+    assert args[4 + attr_count :] == ["INDEXMISSING"]
 
 
 def test_field_factory_with_new_attributes():
