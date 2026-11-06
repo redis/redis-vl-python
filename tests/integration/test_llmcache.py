@@ -3,7 +3,6 @@ import warnings
 from collections import namedtuple
 from contextlib import suppress
 from time import sleep, time
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -387,63 +386,6 @@ def test_ttl_refresh(cache_with_ttl, vectorizer):
     assert len(check_result) == 1
 
 
-def test_check_can_skip_ttl_refresh(cache_with_ttl, vectorizer):
-    prompt = "This is a test prompt."
-    response = "This is a test response."
-    vector = vectorizer.embed(prompt)
-
-    cache_with_ttl.store(prompt, response, vector=vector)
-
-    with patch.object(cache_with_ttl, "expire") as expire:
-        check_result = cache_with_ttl.check(vector=vector, refresh_ttl=False)
-
-    assert len(check_result) == 1
-    expire.assert_not_called()
-
-
-def test_check_respects_cache_ttl_refresh_setting(
-    client, vectorizer, redis_url, worker_id
-):
-    skip_if_no_redis_search(client)
-    cache_instance = SemanticCache(
-        name=f"llmcache_no_refresh_{worker_id}",
-        vectorizer=vectorizer,
-        distance_threshold=0.2,
-        ttl=2,
-        redis_url=redis_url,
-        refresh_ttl_on_hit=False,
-    )
-    prompt = "This is a test prompt."
-    response = "This is a test response."
-    vector = vectorizer.embed(prompt)
-
-    try:
-        cache_instance.store(prompt, response, vector=vector)
-
-        with patch.object(cache_instance, "expire") as expire:
-            check_result = cache_instance.check(vector=vector)
-    finally:
-        cache_instance._index.delete(True)
-
-    assert len(check_result) == 1
-    expire.assert_not_called()
-
-
-def test_check_refresh_ttl_override(cache_with_ttl, vectorizer):
-    prompt = "This is a test prompt."
-    response = "This is a test response."
-    vector = vectorizer.embed(prompt)
-    cache_with_ttl.refresh_ttl_on_hit = False
-
-    cache_with_ttl.store(prompt, response, vector=vector)
-
-    with patch.object(cache_with_ttl, "expire") as expire:
-        check_result = cache_with_ttl.check(vector=vector, refresh_ttl=True)
-
-    assert len(check_result) == 1
-    expire.assert_called_once()
-
-
 @pytest.mark.asyncio
 async def test_async_ttl_refresh(cache_with_ttl, vectorizer):
     prompt = "This is a test prompt."
@@ -488,37 +430,41 @@ async def test_check_refreshes_ttl_of_every_hit(
     assert all(0 < client.ttl(key) <= 2 for key in keys)
 
 
-@pytest.mark.asyncio
-async def test_async_check_can_skip_ttl_refresh(cache_with_ttl, vectorizer):
-    prompt = "This is a test prompt."
-    response = "This is a test response."
-    vector = vectorizer.embed(prompt)
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize(
+    "refresh_ttl_on_hit, refresh_ttl, refreshed",
+    [
+        (True, None, True),
+        (True, False, False),
+        (False, None, False),
+        (False, True, True),
+    ],
+)
+async def test_check_refresh_ttl_controls(
+    cache_with_ttl,
+    vectorizer,
+    client,
+    use_async,
+    refresh_ttl_on_hit,
+    refresh_ttl,
+    refreshed,
+):
+    """refresh_ttl overrides refresh_ttl_on_hit; a refresh resets the TTL to the default."""
+    vector = vectorizer.embed("This is a test prompt.")
+    key = cache_with_ttl.store("prompt", "response", vector=vector, ttl=100)
+    cache_with_ttl.refresh_ttl_on_hit = refresh_ttl_on_hit
 
-    async with cache_with_ttl:
-        await cache_with_ttl.astore(prompt, response, vector=vector)
+    if use_async:
+        async with cache_with_ttl:
+            hits = await cache_with_ttl.acheck(vector=vector, refresh_ttl=refresh_ttl)
+    else:
+        hits = cache_with_ttl.check(vector=vector, refresh_ttl=refresh_ttl)
 
-        with patch.object(cache_with_ttl, "aexpire", new_callable=AsyncMock) as aexpire:
-            check_result = await cache_with_ttl.acheck(vector=vector, refresh_ttl=False)
-
-    assert len(check_result) == 1
-    aexpire.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_async_check_refresh_ttl_override(cache_with_ttl, vectorizer):
-    prompt = "This is a test prompt."
-    response = "This is a test response."
-    vector = vectorizer.embed(prompt)
-    cache_with_ttl.refresh_ttl_on_hit = False
-
-    async with cache_with_ttl:
-        await cache_with_ttl.astore(prompt, response, vector=vector)
-
-        with patch.object(cache_with_ttl, "aexpire", new_callable=AsyncMock) as aexpire:
-            check_result = await cache_with_ttl.acheck(vector=vector, refresh_ttl=True)
-
-    assert len(check_result) == 1
-    aexpire.assert_awaited_once()
+    assert [hit["key"] for hit in hits] == [key]
+    if refreshed:
+        assert 0 < client.ttl(key) <= 2
+    else:
+        assert client.ttl(key) > 2
 
 
 # Test manual expiration of single document
