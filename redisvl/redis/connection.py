@@ -15,9 +15,11 @@ from redis.asyncio.connection import SSLConnection as AsyncSSLConnection
 from redis.asyncio.connection import (
     UnixDomainSocketConnection as AsyncUnixDomainSocketConnection,
 )
+from redis.asyncio.retry import Retry as AsyncRetry
 from redis.asyncio.sentinel import Sentinel as AsyncSentinel
 from redis.connection import SSLConnection, UnixDomainSocketConnection
 from redis.exceptions import ResponseError
+from redis.retry import Retry
 from redis.sentinel import Sentinel, SentinelConnectionPool
 
 from redisvl import __version__
@@ -365,6 +367,25 @@ def _is_unset(
     return value is default or (type(value) is type(default) and value == default)
 
 
+def _async_retry(retry: Retry) -> AsyncRetry:
+    """Rebuild a sync ``Retry`` as ``redis.asyncio.retry.Retry``, same policy.
+
+    The async connection awaits ``retry.call_with_retry``; a sync ``Retry``
+    there returns the coroutine unawaited, so the policy silently never runs.
+    Backoff classes are shared between the sync and async APIs, so the backoff
+    is carried over as is. ``_backoff`` and ``_supported_errors`` have no
+    public getter in redis-py 6.3 through 8.1.
+    """
+    # The sync default error set includes socket.timeout, which is not a
+    # RedisError; the async except clause takes any exception type, and
+    # redis-py itself adds asyncio.TimeoutError to it for retry_on_timeout.
+    return AsyncRetry(
+        backoff=retry._backoff,
+        retries=retry.get_retries(),
+        supported_errors=retry._supported_errors,  # type: ignore[arg-type]
+    )
+
+
 def _async_connection_kwargs(
     connection_kwargs: Mapping[str, Any],
     connection_class: type[AsyncAbstractConnection],
@@ -376,7 +397,8 @@ def _async_connection_kwargs(
     meaning they still hold the sync class's own default, or when they are
     pool plumbing the async pool computes for itself. One that the user set,
     such as ``ssl_validate_ocsp=True``, is a setting the async client cannot
-    honour, so it raises instead of being silently lost.
+    honour, so it raises instead of being silently lost. A sync ``Retry`` is
+    rebuilt as the async ``Retry`` with the same backoff, count and errors.
     """
     accepted = _init_parameters(connection_class)
     sync_defaults = _init_parameters(sync_connection_class)
@@ -396,6 +418,8 @@ def _async_connection_kwargs(
             f"{', '.join(sorted(lost))}. Pass redis_url and connection_kwargs "
             "instead so the async client is built directly."
         )
+    if isinstance(kwargs.get("retry"), Retry):
+        kwargs["retry"] = _async_retry(kwargs["retry"])
     return kwargs
 
 
@@ -978,8 +1002,9 @@ class RedisConnectionFactory:
         The async client is built from the sync client's connection settings:
         TLS and unix-socket connections map to redis-py's stock async
         connection classes, so the behaviour of a custom ``SSLConnection``
-        subclass is not carried over. Keywords that only the sync classes
-        accept are dropped when unset.
+        subclass is not carried over. The retry policy is rebuilt as an async
+        ``Retry`` with the same backoff, retry count and error set. Keywords
+        that only the sync classes accept are dropped when unset.
 
         Raises:
             ValueError: For a ``RedisCluster`` client, a Sentinel-managed
