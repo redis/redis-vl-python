@@ -11,11 +11,13 @@ from redisvl.extensions.cache.llm.schema import (
     SemanticCacheIndexSchema,
 )
 from redisvl.extensions.cache.llm.semantic import SemanticCache
+from redisvl.extensions.cache.llm.stats import CacheStats
 
 __all__ = [
     "SemanticCache",
     "LangCacheSemanticCache",
     "CacheEntry",
     "CacheHit",
+    "CacheStats",
     "SemanticCacheIndexSchema",
 ]

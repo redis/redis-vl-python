@@ -28,6 +28,17 @@ LangCacheSemanticCache
    :inherited-members:
 
 
+Cache Stats
+===========
+
+.. _cache_stats_api:
+
+.. currentmodule:: redisvl.extensions.cache.llm.stats
+
+.. autoclass:: CacheStats
+   :members:
+
+
 Cache Schema Classes
 ====================
 
