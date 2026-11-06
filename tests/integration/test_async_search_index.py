@@ -7,9 +7,10 @@ from redis.asyncio import Redis as AsyncRedis
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
 from redisvl.index import AsyncSearchIndex
-from redisvl.query import VectorQuery
+from redisvl.query import CountQuery, TextQuery, VectorQuery
+from redisvl.query.filter import FilterExpression, Tag
 from redisvl.query.query import FilterQuery
-from redisvl.redis.utils import convert_bytes
+from redisvl.redis.utils import array_to_buffer, convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 from redisvl.schema.fields import VectorIndexAlgorithm
 
@@ -602,6 +603,108 @@ async def test_client_from_existing_and_batch_search(
         assert reopened.schema == index.schema
         assert results[0].total == 1
         assert results[0].docs[0]["id"] == f"{prefix}1"
+    finally:
+        await index.delete(drop=True)
+        await client.aclose()
+
+
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        pytest.param({}, id="default"),
+        pytest.param({"protocol": 3}, id="protocol-3"),
+        pytest.param(
+            {"legacy_responses": False},
+            id="new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+        pytest.param(
+            {"protocol": 2, "legacy_responses": False},
+            id="resp2-new-response-format",
+            marks=pytest.mark.skipif(
+                int(redis.__version__.split(".")[0]) < 8,
+                reason="legacy_responses requires redis-py 8",
+            ),
+        ),
+    ],
+)
+async def test_client_query_search_and_clear(redis_url, redis_test_name, client_kwargs):
+    """User-provided async redis-py clients support query, paginate, search and clear."""
+    name = redis_test_name("async_client_query_index")
+    prefix = f"{name}:"
+    client = AsyncRedis.from_url(redis_url, **client_kwargs)
+    index = AsyncSearchIndex.from_dict(
+        {
+            "index": {"name": name, "prefix": prefix},
+            "fields": [
+                {"name": "test", "type": "tag"},
+                {"name": "title", "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_client=client,
+    )
+
+    try:
+        await index.create()
+        await index.load(
+            [
+                {
+                    "id": "1",
+                    "test": "foo",
+                    "title": "hello world",
+                    "embedding": array_to_buffer([0.1, 0.1, 0.5], "float32"),
+                },
+                {
+                    "id": "2",
+                    "test": "bar",
+                    "title": "goodbye",
+                    "embedding": array_to_buffer([0.5, 0.1, 0.1], "float32"),
+                },
+            ],
+            id_field="id",
+        )
+
+        assert await index.query(
+            FilterQuery(Tag("test") == "foo", return_fields=["test"])
+        ) == [{"id": f"{prefix}1", "test": "foo"}]
+        # TextQuery asks for scores, which take their own branch on RESP3.
+        text_results = await index.query(
+            TextQuery("hello", "title", return_fields=["test"])
+        )
+        assert [doc["id"] for doc in text_results] == [f"{prefix}1"]
+        assert float(text_results[0]["score"]) > 0
+        vector_results = await index.query(
+            VectorQuery(
+                [0.1, 0.1, 0.5], "embedding", return_fields=["test"], num_results=1
+            )
+        )
+        assert [doc["id"] for doc in vector_results] == [f"{prefix}1"]
+        assert await index.query(CountQuery(FilterExpression("*"))) == 2
+        pages = [
+            page
+            async for page in index.paginate(
+                FilterQuery(FilterExpression("*"), return_fields=["test"]),
+                page_size=1,
+            )
+        ]
+        assert sum(len(page) for page in pages) == 2
+        assert (await index.search("@test:{foo}")).total == 1
+
+        assert await index.clear() == 2
+        assert await index.query(CountQuery(FilterExpression("*"))) == 0
     finally:
         await index.delete(drop=True)
         await client.aclose()
