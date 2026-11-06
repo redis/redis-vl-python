@@ -1080,7 +1080,8 @@ class SearchIndex(BaseSearchIndex):
     def _to_async(self) -> "AsyncSearchIndex":
         """Build an AsyncSearchIndex over the same Redis index.
 
-        An index that manages its own connection passes its URL on, so
+        An index that manages its own connection builds the copy from the
+        same address, its URL or the ``REDIS_URL`` environment variable, so
         URL-only setups such as Sentinel keep working. Otherwise the sync
         client is converted with ``RedisConnectionFactory.sync_to_async_redis``.
         Either way the new index owns a fresh client and shares this index's
@@ -1090,7 +1091,9 @@ class SearchIndex(BaseSearchIndex):
             ValueError: If the client cannot be converted (see
                 ``sync_to_async_redis``).
         """
-        if self._owns_redis_client and self._redis_url:
+        if self._owns_redis_client and (
+            self._redis_url or not self._client_was_injected
+        ):
             return AsyncSearchIndex(
                 schema=self.schema,
                 redis_url=self._redis_url,
