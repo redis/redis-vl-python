@@ -430,6 +430,52 @@ async def test_check_refreshes_ttl_of_every_hit(
     assert all(0 < client.ttl(key) <= 2 for key in keys)
 
 
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize(
+    "refresh_ttl_on_hit, refresh_ttl, refreshed",
+    [
+        (True, None, True),
+        (True, False, False),
+        (False, None, False),
+        (False, True, True),
+    ],
+)
+async def test_check_refresh_ttl_controls(
+    cache_with_ttl,
+    vectorizer,
+    client,
+    redis_url,
+    use_async,
+    refresh_ttl_on_hit,
+    refresh_ttl,
+    refreshed,
+):
+    """refresh_ttl overrides refresh_ttl_on_hit; a refresh resets the TTL to the default."""
+    # A second instance over the fixture's index, so the fixture still cleans up.
+    cache = SemanticCache(
+        name=cache_with_ttl.index.name,
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        ttl=2,
+        redis_url=redis_url,
+        refresh_ttl_on_hit=refresh_ttl_on_hit,
+    )
+    vector = vectorizer.embed("This is a test prompt.")
+    key = cache.store("prompt", "response", vector=vector, ttl=100)
+
+    if use_async:
+        async with cache:
+            hits = await cache.acheck(vector=vector, refresh_ttl=refresh_ttl)
+    else:
+        hits = cache.check(vector=vector, refresh_ttl=refresh_ttl)
+
+    assert [hit["key"] for hit in hits] == [key]
+    if refreshed:
+        assert 0 < client.ttl(key) <= 2
+    else:
+        assert client.ttl(key) > 2
+
+
 # Test manual expiration of single document
 def test_drop_document(cache, vectorizer):
     prompt = "This is a test prompt."
