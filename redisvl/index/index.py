@@ -106,6 +106,37 @@ def _parse_batch_search_result(
     parsed_result = search._parse_results(  # type: ignore
         "FT.SEARCH", result, query=query, duration=duration
     )
+    return _resp3_search_to_result(search, parsed_result, query, duration)
+
+
+def _search_reply_to_result(
+    search: Any,
+    reply: Any,
+    duration: float,
+    query: Any,
+    query_params: dict[str, Any] | None = None,
+) -> Result:
+    """Return the reply of a direct FT.SEARCH call as a Result on any protocol.
+
+    ``query`` and ``query_params`` are the arguments that were passed to
+    ``search()``, which accepts a query string or a ``Query`` object.
+    """
+    if not isinstance(reply, dict):
+        return reply
+    _, built_query = search._mk_query_args(  # type: ignore
+        query, query_params=query_params
+    )
+    return _resp3_search_to_result(search, reply, built_query, duration)
+
+
+def _resp3_search_to_result(
+    search: Any, parsed_result: Any, query: Any, duration: float
+) -> Result:
+    """Convert a parsed RESP3 FT.SEARCH map into a Result.
+
+    Anything else, such as the Result redis-py builds from a RESP2 reply, is
+    returned unchanged.
+    """
     if not isinstance(parsed_result, dict):
         return parsed_result
 
@@ -113,8 +144,8 @@ def _parse_batch_search_result(
     if resp3_parser is not None:
         return resp3_parser(parsed_result, query=query, duration=duration)
 
-    # redis-py 6.x returns the raw RESP3 map from _parse_results. Convert it to
-    # the RESP2 shape expected by its private _parse_search callback.
+    # redis-py 6.x and 7.x return the raw RESP3 map from _parse_results. Convert
+    # it to the RESP2 shape expected by their private _parse_search callback.
     def value(mapping: dict[Any, Any], key: str, default: Any = None) -> Any:
         return mapping.get(key, mapping.get(key.encode(), default))
 
@@ -2115,17 +2146,17 @@ class SearchIndex(BaseSearchIndex):
             Result: Raw Redis search results.
         """
         try:
+            search = self._redis_client.ft(self.schema.index.name)
+            st = time.monotonic()
             if isinstance(self._redis_client, RedisCluster):
                 # Use special cluster search for RedisCluster
-                return cluster_search(
-                    self._redis_client.ft(self.schema.index.name),
-                    *args,
-                    **kwargs,  # type: ignore
-                )
+                results = cluster_search(search, *args, **kwargs)  # type: ignore
             else:
-                return self._redis_client.ft(self.schema.index.name).search(
-                    *args, **kwargs
-                )  # type: ignore
+                results = search.search(*args, **kwargs)  # type: ignore
+            # A client on RESP3 gets the reply as a dict instead of a Result.
+            return _search_reply_to_result(
+                search, results, (time.monotonic() - st) * 1000.0, *args, **kwargs
+            )
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(
@@ -3428,15 +3459,17 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         try:
             client = await self._get_client()
+            search = client.ft(self.schema.index.name)
+            st = time.monotonic()
             if isinstance(client, AsyncRedisCluster):
                 # Use special cluster search for AsyncRedisCluster
-                return await async_cluster_search(
-                    client.ft(self.schema.index.name),
-                    *args,
-                    **kwargs,  # type: ignore
-                )
+                results = await async_cluster_search(search, *args, **kwargs)  # type: ignore
             else:
-                return await client.ft(self.schema.index.name).search(*args, **kwargs)  # type: ignore
+                results = await search.search(*args, **kwargs)  # type: ignore
+            # A client on RESP3 gets the reply as a dict instead of a Result.
+            return _search_reply_to_result(
+                search, results, (time.monotonic() - st) * 1000.0, *args, **kwargs
+            )
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(
