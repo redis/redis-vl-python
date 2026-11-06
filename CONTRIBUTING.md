@@ -75,8 +75,9 @@ For more installation options, see the [official UV installation guide](https://
 Once UV is installed, set up the project dependencies:
 
 ```bash
-# Install all dependencies including development and optional extras
-uv sync --all-extras
+# Install all dependencies, including development, optional extras and the
+# OpenTelemetry SDK the tests need
+uv sync --all-extras --group otel-test
 ```
 
 This will create a virtual environment and install all necessary dependencies for development.

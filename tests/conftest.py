@@ -297,6 +297,51 @@ def cluster_client(redis_cluster_url):
     yield conn
 
 
+@pytest.fixture
+def otel_sdk():
+    """Configure OpenTelemetry SDK providers with in-memory exporters.
+
+    Yields ``(span_exporter, metric_reader)``. The API lets a process set its
+    global providers only once, so teardown resets those private globals, as
+    opentelemetry-test-utils does.
+    """
+    pytest.importorskip("opentelemetry.sdk")
+    from opentelemetry import metrics, trace
+    from opentelemetry.metrics import _internal as metrics_internal
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+    from opentelemetry.util._once import Once
+
+    from redisvl.utils import otel
+
+    def reset():
+        trace._TRACER_PROVIDER_SET_ONCE = Once()
+        trace._TRACER_PROVIDER = None
+        trace._PROXY_TRACER_PROVIDER = trace.ProxyTracerProvider()
+        metrics_internal._METER_PROVIDER_SET_ONCE = Once()
+        metrics_internal._METER_PROVIDER = None
+        metrics_internal._PROXY_METER_PROVIDER = metrics_internal._ProxyMeterProvider()
+        otel.get_tracer.cache_clear()
+        otel.get_meter.cache_clear()
+
+    spans, reader = InMemorySpanExporter(), InMemoryMetricReader()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(spans))
+    meter_provider = MeterProvider(metric_readers=[reader])
+    reset()
+    trace.set_tracer_provider(tracer_provider)
+    metrics.set_meter_provider(meter_provider)
+    yield spans, reader
+    tracer_provider.shutdown()
+    meter_provider.shutdown()
+    reset()
+
+
 @pytest.fixture(scope="session")
 def hf_vectorizer():
     return HFTextVectorizer(
