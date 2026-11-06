@@ -27,6 +27,8 @@ Install the MCP extra:
 pip install redisvl[mcp]
 ```
 
+The extra installs FastMCP 2.13.0 or later, below 4. If you pin FastMCP yourself, stay within that range, because the server does not work with older releases.
+
 If your vectorizer needs a provider extra, install that too:
 
 ```bash
