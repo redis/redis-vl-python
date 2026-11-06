@@ -272,8 +272,9 @@ class LangCacheSemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
-        refresh_ttl: bool | None = None,
         attributes: dict[str, Any] | None = None,
+        *,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Check the cache for semantically similar prompts.
 
@@ -287,9 +288,10 @@ class LangCacheSemanticCache(BaseLLMCache):
                 Converted to similarity_threshold according to distance_scale:
                 If "redis", uses norm_cosine_distance(distance_threshold) ([0,2] -> [0,1]).
                 If "normalized", uses (1.0 - distance_threshold) ([0,1] -> [0,1]).
-            refresh_ttl (Optional[bool]): Not supported by LangCache API.
             attributes (Optional[Dict[str, Any]]): LangCache attributes to filter by.
                 Note: Attributes must be pre-configured in your LangCache instance.
+            refresh_ttl (Optional[bool]): Not supported by LangCache; ignored
+                with a warning if set.
 
         Returns:
             List[Dict[str, Any]]: List of matching cache entries.
@@ -351,8 +353,9 @@ class LangCacheSemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
-        refresh_ttl: bool | None = None,
         attributes: dict[str, Any] | None = None,
+        *,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Async check the cache for semantically similar prompts.
 
@@ -366,9 +369,10 @@ class LangCacheSemanticCache(BaseLLMCache):
                 Converted to similarity_threshold according to distance_scale:
                 If "redis", uses norm_cosine_distance(distance_threshold) ([0,2] -> [0,1]).
                 If "normalized", uses (1.0 - distance_threshold) ([0,1] -> [0,1]).
-            refresh_ttl (Optional[bool]): Not supported by LangCache API.
             attributes (Optional[Dict[str, Any]]): LangCache attributes to filter by.
                 Note: Attributes must be pre-configured in your LangCache instance.
+            refresh_ttl (Optional[bool]): Not supported by LangCache; ignored
+                with a warning if set.
 
         Returns:
             List[Dict[str, Any]]: List of matching cache entries.

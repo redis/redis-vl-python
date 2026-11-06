@@ -441,6 +441,7 @@ class SemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
         refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
@@ -528,6 +529,7 @@ class SemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
         refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Async check the semantic cache for results similar to the specified prompt

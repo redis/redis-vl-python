@@ -444,21 +444,30 @@ async def test_check_refresh_ttl_controls(
     cache_with_ttl,
     vectorizer,
     client,
+    redis_url,
     use_async,
     refresh_ttl_on_hit,
     refresh_ttl,
     refreshed,
 ):
     """refresh_ttl overrides refresh_ttl_on_hit; a refresh resets the TTL to the default."""
+    # A second instance over the fixture's index, so the fixture still cleans up.
+    cache = SemanticCache(
+        name=cache_with_ttl.index.name,
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        ttl=2,
+        redis_url=redis_url,
+        refresh_ttl_on_hit=refresh_ttl_on_hit,
+    )
     vector = vectorizer.embed("This is a test prompt.")
-    key = cache_with_ttl.store("prompt", "response", vector=vector, ttl=100)
-    cache_with_ttl.refresh_ttl_on_hit = refresh_ttl_on_hit
+    key = cache.store("prompt", "response", vector=vector, ttl=100)
 
     if use_async:
-        async with cache_with_ttl:
-            hits = await cache_with_ttl.acheck(vector=vector, refresh_ttl=refresh_ttl)
+        async with cache:
+            hits = await cache.acheck(vector=vector, refresh_ttl=refresh_ttl)
     else:
-        hits = cache_with_ttl.check(vector=vector, refresh_ttl=refresh_ttl)
+        hits = cache.check(vector=vector, refresh_ttl=refresh_ttl)
 
     assert [hit["key"] for hit in hits] == [key]
     if refreshed:

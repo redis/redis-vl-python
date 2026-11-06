@@ -43,6 +43,7 @@ class BaseLLMCache(BaseCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
         refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Check the cache for semantically similar prompts.
@@ -70,6 +71,7 @@ class BaseLLMCache(BaseCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
         refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Async check the cache for semantically similar prompts."""
