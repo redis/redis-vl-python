@@ -266,3 +266,26 @@ def test_span_content_capture_records_the_query_and_documents(
     # A relevance score, higher for closer matches, beside the raw distance.
     assert document["score"] == pytest.approx(0.98, abs=0.005)
     assert document["score"] == pytest.approx(1 - span.attributes[otel.CACHE_DISTANCE])
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_the_off_switch_keeps_results_and_records_nothing(
+    cache, otel_sdk, monkeypatch, use_async
+):
+    spans, reader = otel_sdk
+    monkeypatch.setenv(otel.DISABLED_ENV_VAR, "true")
+    otel._clear_caches()
+
+    await _call(cache, "store", use_async, "paris", "Paris")
+    (hit,) = await _call(cache, "check", use_async, "near paris")
+    assert hit["response"] == "Paris"
+    assert await _call(cache, "check", use_async, "rome") == []
+
+    assert spans.get_finished_spans() == ()
+    data = reader.get_metrics_data()
+    assert not data or not [
+        metric
+        for resource_metrics in data.resource_metrics
+        for scope_metrics in resource_metrics.scope_metrics
+        for metric in scope_metrics.metrics
+    ]
