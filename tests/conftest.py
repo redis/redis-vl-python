@@ -81,9 +81,10 @@ def redis_cluster_container(worker_id):
     compose_file = os.path.join(
         os.environ.get("GITHUB_WORKSPACE", pwd), "tests", "cluster-compose.yml"
     )
-    os.environ["COMPOSE_PROJECT_NAME"] = (
-        project_name  # For docker compose to pick it up if needed
-    )
+    # Every command below passes `-p project_name`. Don't export it as
+    # COMPOSE_PROJECT_NAME: `redis_container`'s testcontainers commands read
+    # that variable, so `redis_url` would then look for the standalone `redis`
+    # service in the cluster's project and fail.
     # Cluster tests use a pinned Redis 8 image for consistency.
     os.environ.setdefault("REDIS_IMAGE", "redis:8.4")
 

@@ -158,4 +158,4 @@ Cursor Bugbot reviews every PR, and humans may comment too. Handle each point as
 ## Honesty rules
 
 - Never claim a check in the Reviewer Brief unless you ran it and saw its output.
-- Say what you didn't check. Cluster tests and tests that need API keys don't run in CI, so name them when the change touches those paths.
+- Say what you didn't check. Cluster tests don't run in pull-request CI (only nightly), and tests that need API keys don't run in CI, so name them when the change touches those paths.
