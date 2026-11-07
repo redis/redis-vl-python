@@ -5,9 +5,9 @@ from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression, intersect_with_filter, render_filter
 from redisvl.redis.utils import array_to_buffer
+from redisvl.utils.full_text_query_helper import FullTextQueryHelper
 from redisvl.utils.log import get_logger
 from redisvl.utils.stopwords import get_stopwords
-from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import denorm_cosine_distance
 
 logger = get_logger(__name__)
@@ -1350,7 +1350,8 @@ class TextQuery(BaseQuery):
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
         Raises:
-            ValueError: if stopwords language string cannot be loaded.
+            ValueError: If the text is empty after stopword filtering, or the
+                stopwords language string cannot be loaded.
             TypeError: If stopwords is not a valid iterable set of strings.
         """
         self._text = text
@@ -1359,6 +1360,8 @@ class TextQuery(BaseQuery):
         self._num_results = num_results
 
         self._set_stopwords(stopwords)
+        # Reject empty text before the query reaches Redis.
+        self._tokenize_and_escape_query(self._text)
         self.set_filter(filter_expression)
 
         if params:
@@ -1420,22 +1423,10 @@ class TextQuery(BaseQuery):
         Raises:
             ValueError: If the text string becomes empty after stopwords are removed.
         """
-        escaper = TokenEscaper()
-
-        tokens = [
-            escaper.escape(
-                token.strip().strip(",").replace("“", "").replace("”", "").lower()
-            )
-            for token in user_query.split()
-        ]
-        token_list = [
-            token for token in tokens if token and token not in self._stopwords
-        ]
-        for i, token in enumerate(token_list):
-            if token in self._text_weights:
-                token_list[i] = f"{token}=>{{$weight:{self._text_weights[token]}}}"
-
-        return " | ".join(token_list)
+        helper = FullTextQueryHelper(
+            stopwords=self._stopwords, text_weights=self._text_weights
+        )
+        return helper._tokenize_and_escape_query(user_query)
 
     def _parse_field_weights(
         self, field_spec: str | dict[str, float]
