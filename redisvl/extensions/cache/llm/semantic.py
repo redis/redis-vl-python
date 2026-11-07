@@ -356,7 +356,7 @@ class SemanticCache(BaseLLMCache):
         """
         await super().aclear()
 
-    @_telemetry.timed("drop")
+    @_telemetry.operation("drop")
     def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
         """Drop specific entries from the cache by ID or Redis key.
 
@@ -381,7 +381,7 @@ class SemanticCache(BaseLLMCache):
         if keys is not None:
             self._index.drop_keys(keys)
 
-    @_telemetry.timed("drop")
+    @_telemetry.operation("drop")
     async def adrop(
         self, ids: list[str] | None = None, keys: list[str] | None = None
     ) -> None:
@@ -436,7 +436,7 @@ class SemanticCache(BaseLLMCache):
         ].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
-    @_telemetry.timed("check", lookup=True)
+    @_telemetry.operation("check", lookup=True)
     def check(
         self,
         prompt: str | None = None,
@@ -514,11 +514,15 @@ class SemanticCache(BaseLLMCache):
 
         # Search the cache!
         query = self._build_check_query(vector, num_results, filter_expression)
-        candidates = self._index.query(query)
-        redis_keys, cache_hits = self._process_cache_results(
-            self._within_threshold(candidates, distance_threshold),
-            return_fields,
-        )
+        with _telemetry.retrieval(
+            self._index.name, num_results, distance_threshold
+        ) as span:
+            candidates = self._index.query(query)
+            redis_keys, cache_hits = self._process_cache_results(
+                self._within_threshold(candidates, distance_threshold),
+                return_fields,
+            )
+            _telemetry.record_lookup(span, candidates, prompt)
 
         if self._should_refresh_ttl(refresh_ttl):
             self._expire_many(redis_keys)
@@ -526,7 +530,7 @@ class SemanticCache(BaseLLMCache):
 
         return cache_hits
 
-    @_telemetry.timed("check", lookup=True)
+    @_telemetry.operation("check", lookup=True)
     async def acheck(
         self,
         prompt: str | None = None,
@@ -606,11 +610,15 @@ class SemanticCache(BaseLLMCache):
 
         # Search the cache!
         query = self._build_check_query(vector, num_results, filter_expression)
-        candidates = await aindex.query(query)
-        redis_keys, cache_hits = self._process_cache_results(
-            self._within_threshold(candidates, distance_threshold),
-            return_fields,
-        )
+        with _telemetry.retrieval(
+            self._index.name, num_results, distance_threshold
+        ) as span:
+            candidates = await aindex.query(query)
+            redis_keys, cache_hits = self._process_cache_results(
+                self._within_threshold(candidates, distance_threshold),
+                return_fields,
+            )
+            _telemetry.record_lookup(span, candidates, prompt)
 
         if self._should_refresh_ttl(refresh_ttl):
             await self._aexpire_many(redis_keys)
@@ -722,7 +730,7 @@ class SemanticCache(BaseLLMCache):
 
         return redis_keys, cache_hits
 
-    @_telemetry.timed("store")
+    @_telemetry.operation("store")
     def store(
         self,
         prompt: str,
@@ -791,7 +799,7 @@ class SemanticCache(BaseLLMCache):
         # Return the key where the entry was stored
         return keys[0]
 
-    @_telemetry.timed("store")
+    @_telemetry.operation("store")
     async def astore(
         self,
         prompt: str,
@@ -862,7 +870,7 @@ class SemanticCache(BaseLLMCache):
         # Return the key where the entry was stored
         return keys[0]
 
-    @_telemetry.timed("update")
+    @_telemetry.operation("update")
     def update(self, key: str, **kwargs) -> None:
         """Update specific fields within an existing cache entry. If no fields
         are passed, then only the document TTL is refreshed.
@@ -904,7 +912,7 @@ class SemanticCache(BaseLLMCache):
         # Refresh TTL regardless of whether fields were updated
         self.expire(key)
 
-    @_telemetry.timed("update")
+    @_telemetry.operation("update")
     async def aupdate(self, key: str, **kwargs) -> None:
         """Async update specific fields within an existing cache entry. If no fields
         are passed, then only the document TTL is refreshed.

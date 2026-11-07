@@ -1,5 +1,5 @@
-"""RedisVL's OpenTelemetry plumbing: scope, off switch, and running with only
-the API or with no OpenTelemetry at all."""
+"""RedisVL's OpenTelemetry plumbing: scope, off switch, failure isolation, and
+running with only the API or with no OpenTelemetry at all."""
 
 import importlib.metadata
 import json
@@ -53,6 +53,20 @@ def test_off_switch_silences_redisvl_despite_a_configured_sdk(otel_sdk, monkeypa
     assert "probe.disabled" not in _metric_scopes(reader)
 
 
+@pytest.mark.parametrize(
+    "value, enabled",
+    [("SPAN_ONLY", True), ("span_and_event", True), ("true", False), ("", False)],
+)
+def test_only_the_span_modes_turn_on_content_capture(monkeypatch, value, enabled):
+    # "true" turns capture on in older GenAI instrumentations, but not here.
+    monkeypatch.setenv(otel.CAPTURE_CONTENT_ENV_VAR, value)
+    otel.capture_content.cache_clear()
+    try:
+        assert otel.capture_content() is enabled
+    finally:
+        otel.capture_content.cache_clear()
+
+
 def test_error_type_qualifies_all_but_builtin_exceptions():
     from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -60,6 +74,51 @@ def test_error_type_qualifies_all_but_builtin_exceptions():
     assert otel.error_type(RedisConnectionError()) == (
         "redis.exceptions.ConnectionError"
     )
+
+
+def _broken_tracer(monkeypatch, sampler=None, processor=None):
+    """Point RedisVL at an SDK tracer whose sampler or span processor raises."""
+    from opentelemetry.sdk.trace import TracerProvider
+
+    provider = TracerProvider(**({"sampler": sampler} if sampler else {}))
+    if processor:
+        provider.add_span_processor(processor)
+    monkeypatch.setattr(otel, "get_tracer", lambda: provider.get_tracer("redisvl"))
+
+
+def test_a_raising_sampler_still_runs_the_operation(monkeypatch):
+    pytest.importorskip("opentelemetry.sdk")
+    from opentelemetry.sdk.trace.sampling import Sampler
+
+    class RaisingSampler(Sampler):
+        def should_sample(self, *args, **kwargs):
+            raise RuntimeError("sampler")
+
+        def get_description(self):
+            return "raising"
+
+    _broken_tracer(monkeypatch, sampler=RaisingSampler())
+    ran = []
+    with otel.start_span("probe", {}):
+        ran.append(True)
+    assert ran == [True]
+
+
+def test_a_raising_processor_keeps_the_operation_outcome(monkeypatch):
+    pytest.importorskip("opentelemetry.sdk")
+    from opentelemetry.sdk.trace import SpanProcessor
+
+    class RaisingProcessor(SpanProcessor):
+        def on_end(self, span):
+            raise RuntimeError("processor")
+
+    _broken_tracer(monkeypatch, processor=RaisingProcessor())
+    with otel.start_span("probe", {}):
+        pass  # a success stays a success
+
+    with pytest.raises(ValueError, match="operation"):
+        with otel.start_span("probe", {}):
+            raise ValueError("operation")
 
 
 def test_without_an_sdk_redisvl_configures_nothing_and_costs_microseconds():
@@ -177,9 +236,9 @@ def test_without_opentelemetry_redisvl_imports_and_uses_its_stand_ins():
                 ):
                     broken[module.name] = f"{source.name}: {error}"
 
-        with otel.get_tracer().start_as_current_span("probe") as span:
-            span.set_attribute(otel.CACHE_NAME, "cache")
-        otel.get_meter().create_histogram("probe").record(1.0)
+        with otel.start_span("probe", {otel.CACHE_NAME: "cache"}) as span:
+            span.set_attribute(otel.CACHE_RESULT, "hit")
+        otel.histogram(otel.SEMANTIC_CACHE_OPERATION_DURATION).record(1.0)
 
         print(json.dumps({
             "broken": broken,
