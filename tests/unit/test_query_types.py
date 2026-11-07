@@ -1332,6 +1332,12 @@ def test_filter_query_json_unpack_keeps_healthy_doc():
     assert results[0] == {"id": "doc:1", "brand": "Nike"}
 
 
+def test_filter_query_json_unpack_id_is_key_not_document_field():
+    doc = Result([1, "doc:1", ["json", '{"id": "1", "brand": "Nike"}']], True)
+    results = process_results(doc, FilterQuery(Tag("brand") == "Nike"), _json_schema())
+    assert results == [{"id": "doc:1", "brand": "Nike"}]
+
+
 def test_filter_query_return_fields_id_only_not_skipped():
     """Over-skip guard: a legitimate return_fields=['id'] doc must be KEPT.
 

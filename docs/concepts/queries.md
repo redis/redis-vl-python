@@ -350,6 +350,12 @@ query = HybridQuery(
 )
 ```
 
+## Result ids
+
+For search queries, such as `VectorQuery`, `RangeQuery`, `FilterQuery` and `TextQuery`, every result's `id` is the record's full Redis key, such as `users:t1`, whatever the storage type or `return_fields`. A field the document itself names `id` never replaces it. Aggregation, hybrid and SQL results are rows of loaded fields rather than documents: they do not set `id` to the key, and a field you load under the name `id` keeps the document's value. Redis-py already drops a hash field called `id` from search results, and a JSON `FilterQuery` without `return_fields`, which returns the whole document, drops the document's own `id` in the same way.
+
+To read that field back, request it under another name. On JSON, either add its path to `return_fields`, as in `return_fields=["status", "$.id"]`, which returns it under the `$.id` key, or index it under an alias such as `{"name": "doc_id", "type": "tag", "path": "$.id"}` and return `doc_id`. `index.fetch()` returns the stored document unchanged, `id` field included.
+
 ## Results and expiring documents
 
 RedisVL returns query results as a list of dictionaries, one per matched document. On Redis 8.8+ a document can occasionally come back with its field payload missing: the RediSearch worker pool now defaults to a nonzero number of background worker threads, and if a document — or one of its indexed fields — expires (via TTL or `HPEXPIRE`) at the exact moment a background search is reading it, the server returns the matched id with an empty field payload instead of dropping it from the result set. This is most likely in workloads that combine search with short TTLs, such as a semantic cache or chat history.
