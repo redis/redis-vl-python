@@ -4,6 +4,8 @@ RedisVL Exception Classes
 This module defines all custom exceptions used throughout the RedisVL library.
 """
 
+from redis.exceptions import ResponseError
+
 
 class RedisVLError(Exception):
     """Base exception for all RedisVL errors."""
@@ -78,35 +80,32 @@ class RedisModuleVersionError(RedisVLError):
         return cls(message)
 
 
-# Redis Search reports an absent index as an ordinary error reply whose wording
-# depends on the server version, so matching the message is the only option.
-# Every known wording lives here rather than at each call site. See the "Telling
-# 'the index is missing' apart from other failures" section of docs/api/exceptions.rst.
-_MISSING_INDEX_ERROR_FRAGMENTS = (
-    "unknown index name",
-    "no such index",
-    "search_index_not_found",
-    "index not found",
-)
+# redis-py raises a ResponseError subclass for most error codes that mean the
+# check itself failed, but leaves these unmapped, so they arrive as a bare
+# ResponseError with the code still leading the message: BUSY while a script or
+# function runs, and ERRCLUSTER, which Redis Search's FT.INFO sends on a cluster
+# whose topology is not yet initialized.
+_UNMAPPED_TRANSIENT_ERROR_CODES = frozenset({"BUSY", "ERRCLUSTER"})
 
 
 def _is_missing_index_error(exc: RedisSearchError) -> bool:
-    """Check whether a Redis Search error means the index does not exist.
+    """Check whether a failed ``FT.INFO`` means the index does not exist.
 
-    Different Redis Search versions phrase the error differently, so every
-    known wording is matched. The check reads the underlying Redis error rather
-    than the :class:`RedisSearchError` wrapping it, because the wrapper's
-    message interpolates the index name and would otherwise match for an index
-    named after one of the wordings.
+    An absent index is a bare :class:`~redis.exceptions.ResponseError` whose
+    wording changes between Redis versions, so the reply is classified by type
+    and leading error code, never by the wording after the code. Error codes
+    redis-py maps to a subclass (``NOPERM``, ``LOADING``, ``CLUSTERDOWN`` and
+    others), connection failures and the unmapped ``BUSY`` and ``ERRCLUSTER``
+    replies all mean the check failed.
 
     Args:
         exc: A :class:`RedisSearchError` wrapping the ``redis-py`` exception
-            that Redis raised. Wrappers raised without a cause are matched on
-            their own message.
+            that Redis raised.
 
     Returns:
         bool: True if the error indicates a missing index, False otherwise.
     """
-    cause = exc.__cause__ if exc.__cause__ is not None else exc
-    message = str(cause).lower()
-    return any(fragment in message for fragment in _MISSING_INDEX_ERROR_FRAGMENTS)
+    cause = exc.__cause__
+    if type(cause) is not ResponseError:
+        return False
+    return str(cause).split(" ", 1)[0] not in _UNMAPPED_TRANSIENT_ERROR_CODES

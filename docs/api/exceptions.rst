@@ -186,14 +186,20 @@ Telling "the index is missing" apart from other failures
 Redis Search reports an absent index as an ordinary error reply rather than a distinct
 type, and the wording has changed between versions -- older releases say ``Unknown index
 name``, Redis 8.6 and earlier say ``<name>: no such index``, and Redis 8.8 introduced
-``SEARCH_INDEX_NOT_FOUND Index not found: <name>``. There is no error code to branch on,
-so code that needs to distinguish "missing" from "something went wrong" has to match the
-message.
+``SEARCH_INDEX_NOT_FOUND Index not found: <name>``. Matching the message couples your code
+to one of those wordings.
 
-:meth:`~redisvl.index.SearchIndex.exists` already does this for you, which is the reason
-to prefer it over catching errors from :meth:`~redisvl.index.SearchIndex.info`: it
-returns ``False`` only for a recognized missing-index reply and re-raises everything
-else, so a permission or connection failure is never reported as an absent index.
+:meth:`~redisvl.index.SearchIndex.exists` makes the distinction without reading the
+message, which is the reason to prefer it over catching errors from
+:meth:`~redisvl.index.SearchIndex.info`. redis-py raises a plain ``ResponseError`` for an
+ordinary error reply, and a more specific exception for the replies that mean the check
+itself failed, such as ``NoPermissionError``, ``BusyLoadingError`` or ``ClusterDownError``;
+connection failures are not ``ResponseError`` at all. The exceptions are ``BUSY``, sent
+while a script or function is running, and ``ERRCLUSTER``, which Redis Search sends on a
+cluster whose topology is not yet initialized; redis-py leaves both as a plain
+``ResponseError``. ``exists()`` returns ``False`` only for a plain ``ResponseError`` whose
+reply starts with neither code, and re-raises everything else, so a permission, connection,
+busy-server or cluster-startup failure is never reported as an absent index.
 
 .. code-block:: python
 
@@ -209,10 +215,9 @@ else, so a permission or connection failure is never reported as an absent index
         if "no such index" in str(e):  # breaks on Redis 8.8
             index.create()
 
-When you do need the distinction elsewhere, read ``e.__cause__`` rather than the
-:class:`RedisSearchError` message: the wrapper interpolates the index name, so an index
-whose name happens to contain one of the wordings above would make an unrelated failure
-look like an absence.
+When you do need the distinction elsewhere, apply the same rule to ``e.__cause__``, the
+original redis-py exception: a plain ``ResponseError`` that starts with neither ``BUSY`` nor
+``ERRCLUSTER`` means the index is absent, and anything else means the check failed.
 
 Catching everything
 -------------------
