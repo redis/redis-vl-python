@@ -12,6 +12,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 - [Manage LLM Message History](../07_message_history.ipynb): persistent chat history with relevancy retrieval
 - [Route Queries with SemanticRouter](../08_semantic_router.ipynb): classify intents and route queries
 - [Observe the Semantic Cache with OpenTelemetry](observability.md): traces, hit rate and match distances for threshold tuning
+- [Tune the Semantic Cache with Telemetry](../15_semantic_cache_observability.ipynb): hands-on notebook that reads a cache's traces and metrics, with a local Grafana stack
 :::
 
 :::{grid-item-card} 🔍 Querying
@@ -58,6 +59,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Store chat history | [Manage LLM Message History](../07_message_history.ipynb) |
 | Route queries by intent | [Route Queries with SemanticRouter](../08_semantic_router.ipynb) |
 | Monitor cache hit rate and tune the threshold | [Observe the Semantic Cache with OpenTelemetry](observability.md) |
+| Try cache telemetry and a starter dashboard locally | [Tune the Semantic Cache with Telemetry](../15_semantic_cache_observability.ipynb) |
 | Filter results by multiple criteria | [Query and Filter Data](../02_complex_filtering.ipynb) |
 | Use hybrid or multi-vector queries | [Use Advanced Query Types](../11_advanced_queries.ipynb) |
 | Translate SQL to Redis | [Write SQL Queries for Redis](../12_sql_to_redis_queries.ipynb) |
@@ -80,6 +82,7 @@ Use LangCache as the LLM cache <../13_langcache_semantic_cache>
 Manage LLM Message History <../07_message_history>
 Route Queries with SemanticRouter <../08_semantic_router>
 Observe the Semantic Cache with OpenTelemetry <observability>
+Tune the Semantic Cache with Telemetry <../15_semantic_cache_observability>
 Query and Filter Data <../02_complex_filtering>
 Create Embeddings with Vectorizers <../04_vectorizers>
 Choose a Storage Type <../05_hash_vs_json>
