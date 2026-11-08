@@ -4585,7 +4585,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.30.0"
+version = "0.31.0"
 source = { editable = "." }
 default-groups = ["dev", "docs"]
 dependencies = [
@@ -4609,6 +4609,7 @@ all = [
     { name = "mistralai" },
     { name = "ollama" },
     { name = "openai" },
+    { name = "opentelemetry-api" },
     { name = "pillow" },
     { name = "protobuf", version = "5.29.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
     { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
@@ -4644,6 +4645,9 @@ ollama = [
 openai = [
     { name = "openai" },
 ]
+otel = [
+    { name = "opentelemetry-api" },
+]
 pillow = [
     { name = "pillow" },
 ]
@@ -4672,6 +4676,7 @@ dev = [
     { name = "langcache" },
     { name = "mypy" },
     { name = "nbval" },
+    { name = "opentelemetry-sdk" },
     { name = "pre-commit" },
     { name = "pylint" },
     { name = "pytest" },
@@ -4700,7 +4705,7 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.36.0,<2" },
     { name = "cohere", marker = "extra == 'all'", specifier = ">=4.44" },
     { name = "cohere", marker = "extra == 'cohere'", specifier = ">=4.44" },
-    { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.0.0,<4" },
+    { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.13.0,<4" },
     { name = "google-cloud-aiplatform", marker = "extra == 'all'", specifier = ">=1.26,<2.0.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertexai'", specifier = ">=1.26,<2.0.0" },
     { name = "google-genai", marker = "extra == 'all'", specifier = ">=1.0.0" },
@@ -4716,6 +4721,8 @@ requires-dist = [
     { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.5.4" },
     { name = "openai", marker = "extra == 'all'", specifier = ">=1.1.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.1.0" },
+    { name = "opentelemetry-api", marker = "extra == 'all'", specifier = ">=1.30.0" },
+    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.30.0" },
     { name = "pillow", marker = "extra == 'all'", specifier = ">=11.3.0" },
     { name = "pillow", marker = "extra == 'pillow'", specifier = ">=11.3.0" },
     { name = "protobuf", marker = "extra == 'all'", specifier = ">=5.28.0" },
@@ -4735,7 +4742,7 @@ requires-dist = [
     { name = "voyageai", extras = ["video"], marker = "extra == 'all'", specifier = ">=0.5.0" },
     { name = "voyageai", extras = ["video"], marker = "extra == 'voyageai'", specifier = ">=0.5.0" },
 ]
-provides-extras = ["mcp", "mistralai", "openai", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "google-genai", "bedrock", "pillow", "sql-redis", "all", "ollama"]
+provides-extras = ["mcp", "mistralai", "openai", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "google-genai", "bedrock", "pillow", "sql-redis", "otel", "all", "ollama"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4747,6 +4754,7 @@ dev = [
     { name = "langcache", specifier = ">=0.9.0" },
     { name = "mypy", specifier = ">=1.11.0,<2" },
     { name = "nbval", specifier = ">=0.11.0,<0.12" },
+    { name = "opentelemetry-sdk", specifier = ">=1.32.0" },
     { name = "pre-commit", specifier = ">=4.1.0,<5" },
     { name = "pylint", specifier = ">=3.1.0,<5" },
     { name = "pytest", specifier = ">=9.0.3,<10" },

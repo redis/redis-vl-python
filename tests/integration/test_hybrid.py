@@ -226,7 +226,7 @@ def test_hybrid_query_with_geo_filter(index):
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
-@pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
+@pytest.mark.parametrize("alpha", [0.0, 0.1, 0.5, 0.9])
 def test_hybrid_query_alpha(index, alpha):
     skip_if_redis_version_below(index.client, "8.4.0")
 
@@ -253,9 +253,27 @@ def test_hybrid_query_alpha(index, alpha):
         score = alpha * float(result["text_score"]) + (1 - alpha) * float(
             result["vector_similarity"]
         )
-        assert (
-            float(result["hybrid_score"]) - score <= 0.0001
-        )  # allow for small floating point error
+        assert float(result["hybrid_score"]) == pytest.approx(score, abs=1e-4)
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_zero_rrf_constant_is_applied(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
+    hybrid_query = HybridQuery(
+        text="a medical professional with expertise in lung cancer",
+        text_field_name="description",
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        combination_method="RRF",
+        rrf_constant=0,
+        yield_combined_score_as="hybrid_score",
+    )
+
+    results = index.query(hybrid_query)
+    # With a constant of 0, a top-ranked result scores at least 1/1. The server's
+    # default constant of 60 caps the score of any result at 2/61.
+    assert max(float(result["hybrid_score"]) for result in results) >= 1.0
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)

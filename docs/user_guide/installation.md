@@ -35,6 +35,7 @@ $ pip install redisvl[bedrock]             # AWS Bedrock embeddings
 $ pip install redisvl[mcp]                 # RedisVL MCP server support (Python 3.11+)
 $ pip install redisvl[langcache]           # LangCache managed service integration
 $ pip install redisvl[sql-redis]           # SQL query support
+$ pip install redisvl[otel]                # OpenTelemetry traces and metrics (API only)
 ```
 
 If you use ZSH, remember to escape the brackets:
@@ -231,7 +232,7 @@ RedisSearchError: Error while fetching llmcache index info:
 User <name> has no permissions to run the 'FT.INFO' command
 ```
 
-Reading a cache is not read-only either. When a cache has a TTL configured — at construction or later via `set_ttl()` — every read that hits refreshes the matched entries' TTL, so it issues `EXPIRE`. That includes `SemanticCache.check()`, every `EmbeddingsCache` getter, their async equivalents, and the reads a vectorizer performs for you when constructed with `cache=`. `EXPIRE` is in `@write`, not `@read` (measured with `ACL CAT write`), so a lookup-only credential fails on a cache *hit* rather than on the write that populated it. `EmbeddingsCache` getters send `EXPIRE` in the same pipeline as the lookup, so for them it fails on a miss too.
+Reading a cache is not read-only either. When a cache has a TTL configured — at construction or later via `set_ttl()` — every read that hits refreshes the matched entries' TTL by default, so it issues `EXPIRE`. That includes `SemanticCache.check()`, every `EmbeddingsCache` getter, their async equivalents, and the reads a vectorizer performs for you when constructed with `cache=`. `EXPIRE` is in `@write`, not `@read` (measured with `ACL CAT write`), so a lookup-only credential fails on a cache *hit* rather than on the write that populated it. `EmbeddingsCache` getters send `EXPIRE` in the same pipeline as the lookup, so for them it fails on a miss too.
 
 Granting the command is only half of it, because the key patterns must permit writes too. Measured on 8.4.5 with `ACL DRYRUN <user> EXPIRE llmcache:abc 60`:
 
@@ -241,7 +242,7 @@ Granting the command is only half of it, because the key patterns must permit wr
 | `+@read +expire ~llmcache:*` | Permitted |
 | `+@read +expire %R~llmcache:*` | `no permissions to access the 'llmcache:abc' key` |
 
-So `%R~llmcache:*` — the read-only shape the [Key permissions](#key-permissions) table below presents as sufficient for querying — is denied on the key, not the command. `+@read +@write` is unaffected, as is a cache with no TTL. See [Cache LLM Responses](03_llmcache.ipynb) for the refresh behaviour itself, including that `set_ttl()` starts adding TTLs to entries stored without one.
+So `%R~llmcache:*` — the read-only shape the [Key permissions](#key-permissions) table below presents as sufficient for querying — is denied on the key, not the command. `+@read +@write` is unaffected, as is a cache with no TTL. A `SemanticCache` constructed with `refresh_ttl_on_hit=False`, or a single `check(..., refresh_ttl=False)` call, sends no `EXPIRE` for the matched entries, so the read-only shape works for those lookups; `EmbeddingsCache` getters, including the reads a vectorizer makes with `cache=`, still refresh. See [Cache LLM Responses](03_llmcache.ipynb) for the refresh behaviour itself, including that `set_ttl()` starts adding TTLs to entries stored without one.
 
 ### "no permissions to run the 'FT.INFO' command"
 
