@@ -197,9 +197,12 @@ itself failed, such as ``NoPermissionError``, ``BusyLoadingError`` or ``ClusterD
 connection failures are not ``ResponseError`` at all. The exceptions are ``BUSY``, sent
 while a script or function is running, and ``ERRCLUSTER``, which Redis Search sends on a
 cluster whose topology is not yet initialized; redis-py leaves both as a plain
-``ResponseError``. ``exists()`` returns ``False`` only for a plain ``ResponseError`` whose
-reply starts with neither code, and re-raises everything else, so a permission, connection,
-busy-server or cluster-startup failure is never reported as an absent index.
+``ResponseError`` with the code leading the message. A server with Redis Search not loaded
+at all answers with ``unknown command`` instead, which is checked for separately since
+that phrase isn't a leading code. ``exists()`` returns ``False`` only for a plain
+``ResponseError`` that is none of these, and re-raises everything else, so a permission,
+connection, busy-server, cluster-startup, or missing-module failure is never reported as an
+absent index.
 
 .. code-block:: python
 
@@ -217,7 +220,8 @@ busy-server or cluster-startup failure is never reported as an absent index.
 
 When you do need the distinction elsewhere, apply the same rule to ``e.__cause__``, the
 original redis-py exception: a plain ``ResponseError`` that starts with neither ``BUSY`` nor
-``ERRCLUSTER`` means the index is absent, and anything else means the check failed.
+``ERRCLUSTER``, and doesn't contain ``unknown command``, means the index is absent, and
+anything else means the check failed.
 
 Catching everything
 -------------------

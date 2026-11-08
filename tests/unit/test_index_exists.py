@@ -49,7 +49,9 @@ MISSING_INDEX_MESSAGES = [
 # skip the schema-compatibility check the extensions perform first. redis-py
 # raises most of these as ResponseError subclasses (NOPERM, READONLY,
 # CLUSTERDOWN) or outside ResponseError entirely (connection); BUSY and
-# ERRCLUSTER it leaves unmapped, so exists() excludes them by error code.
+# ERRCLUSTER it leaves unmapped, so exists() excludes them by error code, and
+# "unknown command" (Redis Search not loaded at all) it also leaves unmapped,
+# so exists() excludes that by substring instead, since it isn't a leading code.
 # _info() catches bare Exception, so narrowing it to ResponseError would let the
 # connection case escape unwrapped.
 NON_MISSING_INDEX_ERRORS = [
@@ -63,6 +65,9 @@ NON_MISSING_INDEX_ERRORS = [
         "SHUTDOWN NOSAVE."
     ),
     ResponseError("ERRCLUSTER Uninitialized cluster state, could not perform command"),
+    # A server with Redis Search not loaded rejects FT.INFO itself, before it
+    # can say anything about a specific index (#818 CI failure).
+    ResponseError("ERR unknown command 'FT.INFO', with args beginning with: "),
     ConnectionError("Error 111 connecting to localhost:6379. Connection refused."),
 ]
 

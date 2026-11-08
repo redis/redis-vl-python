@@ -87,6 +87,12 @@ class RedisModuleVersionError(RedisVLError):
 # whose topology is not yet initialized.
 _UNMAPPED_TRANSIENT_ERROR_CODES = frozenset({"BUSY", "ERRCLUSTER"})
 
+# "unknown command" means Redis Search isn't loaded at all -- there's no index
+# to be missing. Unlike BUSY/ERRCLUSTER this isn't a leading error code: a real
+# server sends it as "ERR unknown command 'FT.INFO', with args beginning with:
+# ...", so it's matched as a substring rather than the first token.
+_MODULE_NOT_LOADED_PHRASE = "unknown command"
+
 
 def _is_missing_index_error(exc: RedisSearchError) -> bool:
     """Check whether a failed ``FT.INFO`` means the index does not exist.
@@ -95,8 +101,9 @@ def _is_missing_index_error(exc: RedisSearchError) -> bool:
     wording changes between Redis versions, so the reply is classified by type
     and leading error code, never by the wording after the code. Error codes
     redis-py maps to a subclass (``NOPERM``, ``LOADING``, ``CLUSTERDOWN`` and
-    others), connection failures and the unmapped ``BUSY`` and ``ERRCLUSTER``
-    replies all mean the check failed.
+    others), connection failures, the unmapped ``BUSY`` and ``ERRCLUSTER``
+    replies, and "unknown command" (Redis Search not loaded) all mean the
+    check failed.
 
     Args:
         exc: A :class:`RedisSearchError` wrapping the ``redis-py`` exception
@@ -108,4 +115,7 @@ def _is_missing_index_error(exc: RedisSearchError) -> bool:
     cause = exc.__cause__
     if type(cause) is not ResponseError:
         return False
-    return str(cause).split(" ", 1)[0] not in _UNMAPPED_TRANSIENT_ERROR_CODES
+    message = str(cause)
+    if _MODULE_NOT_LOADED_PHRASE in message.lower():
+        return False
+    return message.split(" ", 1)[0] not in _UNMAPPED_TRANSIENT_ERROR_CODES
