@@ -63,7 +63,8 @@ class CohereReranker(BaseReranker):
             return_score (bool): Whether to return scores alongside the
                 reranked results.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+                Missing or empty keys fall back to the
+                ``COHERE_API_KEY`` environment variable. Defaults to None.
 
         Raises:
             ImportError: If the cohere library is not installed.
@@ -87,9 +88,7 @@ class CohereReranker(BaseReranker):
                     Please install with `pip install cohere`")
 
         # Fetch the API key from api_config or environment variable
-        api_key = (
-            api_config.get("api_key") if api_config else os.getenv("COHERE_API_KEY")
-        )
+        api_key = (api_config or {}).get("api_key") or os.getenv("COHERE_API_KEY")
         if not api_key:
             raise ValueError(
                 "Cohere API key is required. "

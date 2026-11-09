@@ -81,7 +81,9 @@ class OpenAITextVectorizer(BaseVectorizer):
             model (str): Model to use for embedding. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key and any additional OpenAI API options. Defaults to None.
+                API key and any additional OpenAI API options. The API key
+                falls back to the ``OPENAI_API_KEY`` environment variable when it
+                is missing or empty. Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.

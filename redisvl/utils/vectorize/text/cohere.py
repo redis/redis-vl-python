@@ -94,7 +94,8 @@ class CohereTextVectorizer(BaseVectorizer):
         Args:
             model (str): Model to use for embedding. Defaults to 'embed-english-v3.0'.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+                Missing or empty keys fall back to the
+                ``COHERE_API_KEY`` environment variable. Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 'float32' will use Cohere's float embeddings, 'int8' and 'uint8' will map
@@ -149,9 +150,7 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Please install with `pip install cohere`"
             )
 
-        api_key = (
-            api_config.get("api_key") if api_config else os.getenv("COHERE_API_KEY")
-        )
+        api_key = (api_config or {}).get("api_key") or os.getenv("COHERE_API_KEY")
         if not api_key:
             raise ValueError(
                 "Cohere API key is required. "

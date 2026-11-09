@@ -81,7 +81,8 @@ class MistralAITextVectorizer(BaseVectorizer):
             model (str): Model to use for embedding. Defaults to
                 'mistral-embed'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key. Defaults to None.
+                API key. Missing or empty keys fall back to the
+                ``MISTRAL_API_KEY`` environment variable. Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
@@ -130,9 +131,7 @@ class MistralAITextVectorizer(BaseVectorizer):
             )
 
         # Fetch the API key from api_config or environment variable
-        api_key = (
-            api_config.get("api_key") if api_config else os.getenv("MISTRAL_API_KEY")
-        )
+        api_key = (api_config or {}).get("api_key") or os.getenv("MISTRAL_API_KEY")
         if not api_key:
             raise ValueError(
                 "MISTRAL API key is required. "

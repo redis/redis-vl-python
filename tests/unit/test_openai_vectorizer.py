@@ -6,19 +6,10 @@ import pytest
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
 
 
-class _Item:
-    def __init__(self, embedding):
-        self.embedding = embedding
-
-
-class _Response:
-    def __init__(self, data):
-        self.data = data
-
-
 class _Embeddings:
     def create(self, *, input, model, **kwargs):
-        return _Response([_Item([1.0, 2.0, 3.0]) for _ in input])
+        data = [types.SimpleNamespace(embedding=[1.0, 2.0, 3.0]) for _ in input]
+        return types.SimpleNamespace(data=data)
 
 
 class FakeOpenAI:
@@ -80,3 +71,22 @@ def test_api_config_not_mutated():
 def test_missing_api_key_raises():
     with pytest.raises(ValueError, match="OpenAI API key is required"):
         OpenAITextVectorizer(api_config={"base_url": "https://proxy.example.test/v1"})
+
+
+def test_env_only_without_api_config(monkeypatch):
+    """The default, most common path: no api_config at all."""
+    monkeypatch.setenv("OPENAI_API_KEY", "env-key")
+    vectorizer = OpenAITextVectorizer()
+
+    assert vectorizer.dims == 3
+    assert FakeOpenAI.instances[0].kwargs["api_key"] == "env-key"
+    assert FakeAsyncOpenAI.instances[0].kwargs["api_key"] == "env-key"
+
+
+@pytest.mark.parametrize("empty", ["", None])
+def test_empty_api_key_falls_back_to_env(monkeypatch, empty):
+    monkeypatch.setenv("OPENAI_API_KEY", "env-key")
+    OpenAITextVectorizer(api_config={"api_key": empty})
+
+    assert FakeOpenAI.instances[0].kwargs["api_key"] == "env-key"
+    assert FakeAsyncOpenAI.instances[0].kwargs["api_key"] == "env-key"

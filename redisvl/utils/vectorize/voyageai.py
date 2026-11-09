@@ -159,7 +159,8 @@ class VoyageAIVectorizer(BaseVectorizer):
         Args:
             model (str): Model to use for embedding. Defaults to "voyage-3-large".
             api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+                Missing or empty keys fall back to the
+                ``VOYAGE_API_KEY`` environment variable. Defaults to None.
             dtype (str): the default datatype to use when embedding content as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
@@ -277,9 +278,7 @@ class VoyageAIVectorizer(BaseVectorizer):
             )
 
         # Fetch the API key from api_config or environment variable
-        api_key = (
-            api_config.get("api_key") if api_config else os.getenv("VOYAGE_API_KEY")
-        )
+        api_key = (api_config or {}).get("api_key") or os.getenv("VOYAGE_API_KEY")
         if not api_key:
             raise ValueError(
                 "VoyageAI API key is required. "
