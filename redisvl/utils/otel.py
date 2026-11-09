@@ -1,0 +1,286 @@
+"""OpenTelemetry plumbing for RedisVL's own instrumentation. Internal.
+
+RedisVL depends only on the OpenTelemetry API, through the optional
+``redisvl[otel]`` extra; the application owns the SDK and exporters. The tracer
+and meter come from the global providers, so they do nothing until the
+application configures an SDK. When the API is not installed, or
+``REDISVL_OTEL_DISABLED`` is ``true``, stand-ins with the same interface are
+returned instead, so instrumented code never needs to check.
+
+The stand-in span leaves the active context alone, so write to a span through
+the handle from ``start_span(...) as span``, never through
+``trace.get_current_span()``, which would reach the caller's span instead.
+
+RedisVL never constructs a provider and never initialises redis-py's own
+observability; both belong to the application.
+"""
+
+import os
+from contextlib import ContextDecorator, contextmanager
+from enum import Enum
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Iterator
+
+from redisvl.utils.log import get_logger
+from redisvl.version import __version__
+
+logger = get_logger(__name__)
+
+try:
+    from opentelemetry import context, metrics, trace
+    from opentelemetry.trace import SpanKind, Status, StatusCode
+except ImportError:  # the redisvl[otel] extra is not installed
+    context = metrics = trace = Status = StatusCode = None  # type: ignore[assignment,misc]
+
+    class SpanKind(Enum):  # type: ignore[no-redef]
+        """Stand-in for ``opentelemetry.trace.SpanKind``."""
+
+        INTERNAL = 0
+        SERVER = 1
+        CLIENT = 2
+        PRODUCER = 3
+        CONSUMER = 4
+
+
+if TYPE_CHECKING:
+    from opentelemetry.metrics import Histogram, Meter
+    from opentelemetry.trace import Span, Tracer
+
+INSTRUMENTATION_SCOPE = "redisvl"
+# The semantic-conventions release the standard names below follow. Bump the
+# two together.
+SCHEMA_URL = "https://opentelemetry.io/schemas/1.44.0"
+# Read once, on first use. Same convention as OTEL_SDK_DISABLED: only "true",
+# in any case, disables.
+DISABLED_ENV_VAR = "REDISVL_OTEL_DISABLED"
+# Content capture, as opentelemetry-util-genai reads it: SPAN_ONLY or
+# SPAN_AND_EVENT, in any case, records query text and retrieved documents on
+# spans. Unlike some older GenAI instrumentations, "true" does not, and no
+# stability opt-in is needed. Read once, on first use.
+CAPTURE_CONTENT_ENV_VAR = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+
+# Metric and attribute names. ``redisvl.*`` names are RedisVL's own; the rest
+# come from the OpenTelemetry semantic conventions, where ``gen_ai.*`` is still
+# in Development and may be renamed upstream.
+SEMANTIC_CACHE_OPERATION_DURATION = "redisvl.semantic_cache.operation.duration"
+SEMANTIC_CACHE_DISTANCE = "redisvl.semantic_cache.distance"
+GEN_AI_CLIENT_OPERATION_DURATION = "gen_ai.client.operation.duration"
+CACHE_NAME = "redisvl.cache.name"
+CACHE_OPERATION = "redisvl.cache.operation"
+CACHE_RESULT = "redisvl.cache.result"
+CACHE_DISTANCE = "redisvl.cache.distance"
+CACHE_DISTANCE_THRESHOLD = "redisvl.cache.distance_threshold"
+EMBEDDINGS_CACHE_RESULT = "redisvl.embeddings_cache.result"
+ERROR_TYPE = "error.type"
+DB_SYSTEM_NAME = "db.system.name"
+DB_COLLECTION_NAME = "db.collection.name"
+DB_OPERATION_NAME = "db.operation.name"
+GEN_AI_OPERATION_NAME = "gen_ai.operation.name"
+GEN_AI_PROVIDER_NAME = "gen_ai.provider.name"
+GEN_AI_REQUEST_MODEL = "gen_ai.request.model"
+GEN_AI_EMBEDDINGS_DIMENSION_COUNT = "gen_ai.embeddings.dimension.count"
+GEN_AI_DATA_SOURCE_ID = "gen_ai.data_source.id"
+GEN_AI_RETRIEVAL_TOP_K = "gen_ai.retrieval.top_k"
+GEN_AI_RETRIEVAL_QUERY_TEXT = "gen_ai.retrieval.query.text"
+GEN_AI_RETRIEVAL_DOCUMENTS = "gen_ai.retrieval.documents"
+
+
+# Bucket advice. The GenAI duration buckets start at 10 ms, but a cache lookup
+# on local Redis takes about 250 us excluding embedding, so these start at
+# 100 us. Distance buckets are dense where cosine thresholds usually sit and
+# coarse up to the maximum of 2. Applications can override both with SDK views.
+_HISTOGRAMS = {
+    SEMANTIC_CACHE_OPERATION_DURATION: (
+        "s",
+        "Duration of SemanticCache operations.",
+        (0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05)
+        + (0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    ),
+    SEMANTIC_CACHE_DISTANCE: (
+        "1",
+        "Vector distance of the nearest SemanticCache candidate per lookup.",
+        tuple(i / 100 for i in range(1, 11))
+        + (0.125, 0.15, 0.175, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0),
+    ),
+    # The GenAI conventions' own advice for this metric.
+    GEN_AI_CLIENT_OPERATION_DURATION: (
+        "s",
+        "Duration of GenAI client operations.",
+        tuple(0.01 * 2**i for i in range(14)),
+    ),
+}
+
+
+class _NoOpSpan(ContextDecorator):
+    """A span that records nothing, usable as its own context manager or
+    decorator, like ``start_as_current_span``'s result."""
+
+    def __enter__(self) -> "_NoOpSpan":
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        return None
+
+    def is_recording(self) -> bool:
+        return False
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        pass
+
+    def set_attributes(self, attributes: Any) -> None:
+        pass
+
+    def set_status(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def record_exception(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def end(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+
+class _NoOpTracer:
+    _span = _NoOpSpan()
+
+    def start_as_current_span(self, *args: Any, **kwargs: Any) -> _NoOpSpan:
+        return self._span
+
+    def start_span(self, *args: Any, **kwargs: Any) -> _NoOpSpan:
+        return self._span
+
+
+class _NoOpHistogram:
+    def record(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+
+class _NoOpMeter:
+    _histogram = _NoOpHistogram()
+
+    def create_histogram(self, *args: Any, **kwargs: Any) -> _NoOpHistogram:
+        return self._histogram
+
+
+def _enabled() -> bool:
+    disabled = os.environ.get(DISABLED_ENV_VAR, "").strip().lower() == "true"
+    return trace is not None and not disabled
+
+
+@lru_cache(maxsize=None)
+def get_tracer() -> "Tracer":
+    """Return RedisVL's tracer, or a no-op stand-in."""
+    if not _enabled():
+        return _NoOpTracer()  # type: ignore[return-value]
+    return trace.get_tracer(INSTRUMENTATION_SCOPE, __version__, schema_url=SCHEMA_URL)
+
+
+@lru_cache(maxsize=None)
+def get_meter() -> "Meter":
+    """Return RedisVL's meter, or a no-op stand-in."""
+    if not _enabled():
+        return _NoOpMeter()  # type: ignore[return-value]
+    return metrics.get_meter(INSTRUMENTATION_SCOPE, __version__, schema_url=SCHEMA_URL)
+
+
+@lru_cache(maxsize=None)
+def histogram(name: str) -> "Histogram":
+    """Return one of RedisVL's histograms, created once on its meter."""
+    unit, description, boundaries = _HISTOGRAMS[name]
+    return get_meter().create_histogram(
+        name,
+        unit=unit,
+        description=description,
+        explicit_bucket_boundaries_advisory=boundaries,
+    )
+
+
+def error_type(error: BaseException) -> str:
+    """Name an exception's type as the SDK names it on exception events: the
+    qualified class name, prefixed by its module unless it is a builtin."""
+    cls = type(error)
+    if cls.__module__ == "builtins":
+        return cls.__qualname__
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
+@contextmanager
+def start_span(
+    name: str,
+    attributes: dict[str, Any],
+    kind: SpanKind = SpanKind.INTERNAL,  # type: ignore[assignment]
+) -> Iterator["Span"]:
+    """Start a RedisVL span as the current span.
+
+    A failure marks the span with an error status and ``error.type``, then
+    re-raises unchanged. The SDK's own exception recording is never used,
+    because it would put the exception's message, which can carry prompt text,
+    on the span.
+
+    Telemetry never changes the operation's outcome: a sampler or span
+    processor that raises while the span starts or ends is logged at debug
+    level, and the operation still runs and returns or raises as it would
+    without telemetry.
+    """
+    span, token = _open_span(name, attributes, kind)
+    try:
+        yield span
+    except Exception as error:
+        _mark_failed(span, error)
+        raise
+    finally:
+        _close_span(span, token)
+
+
+def _open_span(
+    name: str, attributes: dict[str, Any], kind: SpanKind
+) -> tuple["Span", Any]:
+    try:
+        span = get_tracer().start_span(name, kind=kind, attributes=attributes)
+    except Exception:
+        logger.debug("Could not start a RedisVL span", exc_info=True)
+        return _NoOpTracer._span, None  # type: ignore[return-value]
+    if isinstance(span, _NoOpSpan):  # the stand-in leaves the context alone
+        return span, None
+    try:
+        return span, context.attach(trace.set_span_in_context(span))
+    except Exception:
+        logger.debug("Could not make a RedisVL span current", exc_info=True)
+        return span, None
+
+
+def _close_span(span: "Span", token: Any) -> None:
+    if token is not None:
+        try:
+            context.detach(token)
+        except Exception:
+            logger.debug("Could not restore the context", exc_info=True)
+    try:
+        span.end()
+    except Exception:
+        logger.debug("Could not end a RedisVL span", exc_info=True)
+
+
+def _mark_failed(span: "Span", error: Exception) -> None:
+    # Never let telemetry replace the exception the caller should see.
+    try:
+        span.set_attribute(ERROR_TYPE, error_type(error))
+        if StatusCode is not None:
+            span.set_status(Status(StatusCode.ERROR))
+    except Exception:
+        logger.debug("Could not record RedisVL telemetry", exc_info=True)
+
+
+@lru_cache(maxsize=None)
+def capture_content() -> bool:
+    """Whether prompts and retrieved documents may be recorded on spans."""
+    mode = os.environ.get(CAPTURE_CONTENT_ENV_VAR, "").strip().upper()
+    return mode in ("SPAN_ONLY", "SPAN_AND_EVENT")
+
+
+def _clear_caches() -> None:
+    """Forget the cached tracer, meter, instruments and settings. For tests."""
+    get_tracer.cache_clear()
+    get_meter.cache_clear()
+    histogram.cache_clear()
+    capture_content.cache_clear()

@@ -14,9 +14,10 @@ from redisvl.extensions.constants import (
 )
 from redisvl.extensions.message_history import BaseMessageHistory
 from redisvl.extensions.message_history.schema import ChatMessage, MessageHistorySchema
-from redisvl.index import SearchIndex
+from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import CountQuery, FilterQuery
 from redisvl.query.filter import Tag
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import serialize
 
@@ -81,6 +82,7 @@ class MessageHistory(BaseMessageHistory):
         )
 
         self._create_index = create_index
+        self._aindex: AsyncSearchIndex | None = None
         if create_index:
             self._index.create(overwrite=False)
         else:
@@ -108,6 +110,14 @@ class MessageHistory(BaseMessageHistory):
         """
         self._index.clear()
 
+    async def aclear(self) -> None:
+        """Async version of :meth:`clear`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
+        aindex = self._get_async_index()
+        await aindex.clear()
+
     def delete(self) -> None:
         """Remove every message and drop the search index.
 
@@ -131,15 +141,37 @@ class MessageHistory(BaseMessageHistory):
 
         self._index._redis_client.delete(self._index.key(id))
 
-    def count(self, session_tag=None):
-        query = CountQuery(
+    async def adrop(self, id: str | None = None) -> None:
+        """Async version of :meth:`drop`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
+        aindex = self._get_async_index()
+        if id is None:
+            recent = await self.aget_recent(top_k=1, raw=True)
+            id = recent[0][ID_FIELD_NAME]  # type: ignore
+
+        await aindex.drop_keys(aindex.key(id))
+
+    def _count_query(self, session_tag: str | None) -> CountQuery:
+        return CountQuery(
             filter_expression=(
                 Tag(SESSION_FIELD_NAME) == session_tag
                 if session_tag
                 else self._default_session_filter
             )
         )
-        return self._index.query(query)
+
+    def count(self, session_tag=None):
+        return self._index.query(self._count_query(session_tag))
+
+    async def acount(self, session_tag=None):
+        """Async version of :meth:`count`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
+        aindex = self._get_async_index()
+        return await aindex.query(self._count_query(session_tag))
 
     @property
     def messages(self) -> list[str] | list[dict[str, str]]:
@@ -200,6 +232,38 @@ class MessageHistory(BaseMessageHistory):
             ValueError: if top_k is not an integer greater than or equal to 0,
                 or if role contains invalid values.
         """
+        query = self._recent_query(top_k, session_tag, role)
+        messages = self._index.query(query)
+        return self._recent_result(messages, as_text, raw)
+
+    async def aget_recent(
+        self,
+        top_k: int = 5,
+        as_text: bool = False,
+        raw: bool = False,
+        session_tag: str | None = None,
+        role: str | list[str] | None = None,
+    ) -> list[str] | list[dict[str, str]]:
+        """Async version of :meth:`get_recent`: the same query on an
+        :class:`~redisvl.index.AsyncSearchIndex`, without blocking the loop.
+
+        Pass ``redis_url`` rather than a client to the history if you need the
+        async methods over Sentinel or Redis Cluster: those clients cannot be
+        converted to their async form. The async client is
+        bound to the event loop that made the first call, so call
+        :meth:`adisconnect` before switching loops.
+        """
+        query = self._recent_query(top_k, session_tag, role)
+        aindex = self._get_async_index()
+        messages = await aindex.query(query)
+        return self._recent_result(messages, as_text, raw)
+
+    def _recent_query(
+        self,
+        top_k: int,
+        session_tag: str | None,
+        role: str | list[str] | None,
+    ) -> FilterQuery:
         if type(top_k) is not int or top_k < 0:
             raise ValueError("top_k must be an integer greater than or equal to 0")
 
@@ -242,8 +306,11 @@ class MessageHistory(BaseMessageHistory):
             num_results=top_k,
         )
         query.sort_by(TIMESTAMP_FIELD_NAME, asc=False)
-        messages = self._index.query(query)
+        return query
 
+    def _recent_result(
+        self, messages: list[dict[str, Any]], as_text: bool, raw: bool
+    ) -> list[str] | list[dict[str, str]]:
         if raw:
             return messages[::-1]
         return self._format_context(messages[::-1], as_text)
@@ -259,13 +326,23 @@ class MessageHistory(BaseMessageHistory):
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
                 conversation session. Defaults to instance ULID.
         """
-        self.add_messages(
-            [
-                {ROLE_FIELD_NAME: "user", CONTENT_FIELD_NAME: prompt},
-                {ROLE_FIELD_NAME: "llm", CONTENT_FIELD_NAME: response},
-            ],
-            session_tag,
-        )
+        self.add_messages(self._exchange(prompt, response), session_tag)
+
+    async def astore(
+        self, prompt: str, response: str, session_tag: str | None = None
+    ) -> None:
+        """Async version of :meth:`store`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
+        await self.aadd_messages(self._exchange(prompt, response), session_tag)
+
+    @staticmethod
+    def _exchange(prompt: str, response: str) -> list[dict[str, str]]:
+        return [
+            {ROLE_FIELD_NAME: "user", CONTENT_FIELD_NAME: prompt},
+            {ROLE_FIELD_NAME: "llm", CONTENT_FIELD_NAME: response},
+        ]
 
     def add_messages(
         self, messages: list[dict[str, str]], session_tag: str | None = None
@@ -279,6 +356,23 @@ class MessageHistory(BaseMessageHistory):
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
                 conversation session. Defaults to instance ULID.
         """
+        chat_messages = self._chat_messages(messages, session_tag)
+        self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
+
+    async def aadd_messages(
+        self, messages: list[dict[str, str]], session_tag: str | None = None
+    ) -> None:
+        """Async version of :meth:`add_messages`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
+        chat_messages = self._chat_messages(messages, session_tag)
+        aindex = self._get_async_index()
+        await aindex.load(data=chat_messages, id_field=ID_FIELD_NAME)
+
+    def _chat_messages(
+        self, messages: list[dict[str, str]], session_tag: str | None
+    ) -> list[dict[str, Any]]:
         session_tag = session_tag or self._session_tag
         chat_messages: list[dict[str, Any]] = []
 
@@ -296,7 +390,7 @@ class MessageHistory(BaseMessageHistory):
                 chat_message.metadata = serialize(message[METADATA_FIELD_NAME])
             chat_messages.append(chat_message.to_dict())
 
-        self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
+        return chat_messages
 
     def add_message(
         self, message: dict[str, str], session_tag: str | None = None
@@ -311,3 +405,49 @@ class MessageHistory(BaseMessageHistory):
                 conversation session. Defaults to instance ULID.
         """
         self.add_messages([message], session_tag)
+
+    async def aadd_message(
+        self, message: dict[str, str], session_tag: str | None = None
+    ) -> None:
+        """Async version of :meth:`add_message`.
+
+        See :meth:`aget_recent` for the connection caveats.
+        """
+        await self.aadd_messages([message], session_tag)
+
+    def _get_async_index(self) -> AsyncSearchIndex:
+        """Lazily construct the async search index over the same Redis index."""
+        if self._aindex is None:
+            index = self._index
+            if index._owns_redis_client and index._redis_url:
+                self._aindex = AsyncSearchIndex(
+                    schema=index.schema,
+                    redis_url=index._redis_url,
+                    connection_kwargs=index._connection_kwargs or None,
+                    lib_name=index._lib_name,
+                )
+            else:
+                self._aindex = AsyncSearchIndex(
+                    schema=index.schema,
+                    redis_client=RedisConnectionFactory.sync_to_async_redis(
+                        index._redis_client  # type: ignore[arg-type]
+                    ),
+                    owns_client=True,
+                )
+        return self._aindex
+
+    @property
+    def aindex(self) -> AsyncSearchIndex | None:
+        """The AsyncSearchIndex used by the async methods, once created.
+
+        Returns:
+            AsyncSearchIndex: The async search index, or None before the first
+            async call.
+        """
+        return self._aindex
+
+    async def adisconnect(self) -> None:
+        """Close the async Redis connection opened by the async methods."""
+        if self._aindex is not None:
+            await self._aindex.disconnect()
+            self._aindex = None
