@@ -31,6 +31,8 @@ def cache():
     # Bypass __init__, which would connect to Redis and load a vectorizer, and
     # stub what a lookup touches so that it returns no candidates.
     cache = SemanticCache.__new__(SemanticCache)
+    cache.name = "test_threshold"
+    cache.refresh_ttl_on_hit = True
     cache._distance_threshold = 0.1
     cache._index = Mock(query=Mock(return_value=[]))
     cache._get_async_index = AsyncMock(
