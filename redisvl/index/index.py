@@ -40,6 +40,7 @@ from redisvl.redis.utils import (
     cluster_search,
     convert_bytes,
     make_dict,
+    to_search_result,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
 from redisvl.utils.utils import deprecated_argument, sync_wrapper
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
 from redis.client import NEVER_DECODE
 from redis.commands.search.aggregation import AggregateRequest, Cursor
 from redis.commands.search.index_definition import IndexDefinition
+from redis.commands.search.query import Query
 
 # Need Result outside TYPE_CHECKING for cast
 from redis.commands.search.result import Result
@@ -106,60 +108,7 @@ def _parse_batch_search_result(
     parsed_result = search._parse_results(  # type: ignore
         "FT.SEARCH", result, query=query, duration=duration
     )
-    return _resp3_search_to_result(search, parsed_result, query, duration)
-
-
-def _search_reply_to_result(
-    search: Any,
-    reply: Any,
-    duration: float,
-    query: Any,
-    query_params: dict[str, Any] | None = None,
-) -> Result:
-    """Return the reply of a direct FT.SEARCH call as a Result on any protocol.
-
-    ``query`` and ``query_params`` are the arguments that were passed to
-    ``search()``, which accepts a query string or a ``Query`` object.
-    """
-    if not isinstance(reply, dict):
-        return reply
-    _, built_query = search._mk_query_args(  # type: ignore
-        query, query_params=query_params
-    )
-    return _resp3_search_to_result(search, reply, built_query, duration)
-
-
-def _resp3_search_to_result(
-    search: Any, parsed_result: Any, query: Any, duration: float
-) -> Result:
-    """Convert a parsed RESP3 FT.SEARCH map into a Result.
-
-    Anything else, such as the Result redis-py builds from a RESP2 reply, is
-    returned unchanged.
-    """
-    if not isinstance(parsed_result, dict):
-        return parsed_result
-
-    resp3_parser = getattr(search, "_parse_search_resp3", None)
-    if resp3_parser is not None:
-        return resp3_parser(parsed_result, query=query, duration=duration)
-
-    # redis-py 6.x and 7.x return the raw RESP3 map from _parse_results. Convert
-    # it to the RESP2 shape expected by their private _parse_search callback.
-    def value(mapping: dict[Any, Any], key: str, default: Any = None) -> Any:
-        return mapping.get(key, mapping.get(key.encode(), default))
-
-    response: list[Any] = [value(parsed_result, "total_results", 0)]
-    for document in value(parsed_result, "results", []):
-        response.append(value(document, "id", ""))
-        if query._with_scores:
-            response.append(value(document, "score", 0))
-        if query._with_payloads:
-            response.append(value(document, "payload"))
-        if not query._no_content:
-            fields = value(document, "extra_attributes", {})
-            response.append([item for pair in fields.items() for item in pair])
-    return search._parse_search(response, query=query, duration=duration)
+    return to_search_result(search, parsed_result, query, duration)
 
 
 _HYBRID_SEARCH_ERROR_MESSAGE = "Hybrid search is not available in this version of redis-py. Please upgrade to redis-py >= 7.1.0."
@@ -2135,28 +2084,37 @@ class SearchIndex(BaseSearchIndex):
                     all_results.append(parsed_result)
         return all_results
 
-    def search(self, *args, **kwargs) -> "Result":
+    def search(
+        self, query: str | Query, query_params: dict[str, Any] | None = None
+    ) -> "Result":
         """Perform a search against the index.
 
         Wrapper around the search API that adds the index name
         to the query and passes along the rest of the arguments
         to the redis-py ft().search() method.
 
+        Args:
+            query (str | Query): The query string or redis-py ``Query`` to run.
+            query_params (dict[str, Any] | None): Values for the parameters
+                the query refers to, such as a query vector. Defaults to None.
+
         Returns:
-            Result: Raw Redis search results.
+            Result: The search results as a redis-py ``Result``, on every
+            protocol.
         """
         try:
             search = self._redis_client.ft(self.schema.index.name)
-            st = time.monotonic()
             if isinstance(self._redis_client, RedisCluster):
                 # Use special cluster search for RedisCluster
-                results = cluster_search(search, *args, **kwargs)  # type: ignore
-            else:
-                results = search.search(*args, **kwargs)  # type: ignore
-            # A client on RESP3 gets the reply as a dict instead of a Result.
-            return _search_reply_to_result(
-                search, results, (time.monotonic() - st) * 1000.0, *args, **kwargs
-            )
+                return cluster_search(search, query, query_params)  # type: ignore
+            st = time.monotonic()
+            results = search.search(query, query_params)  # type: ignore
+            if isinstance(results, dict):  # RESP3 clients get a dict back
+                _, built_query = search._mk_query_args(query, query_params)
+                results = to_search_result(
+                    search, results, built_query, (time.monotonic() - st) * 1000.0
+                )
+            return results
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(
@@ -3447,29 +3405,38 @@ class AsyncSearchIndex(BaseSearchIndex):
                     all_results.append(parsed_result)
         return all_results
 
-    async def search(self, *args, **kwargs) -> "Result":
+    async def search(
+        self, query: str | Query, query_params: dict[str, Any] | None = None
+    ) -> "Result":
         """Perform an async search against the index.
 
         Wrapper around the search API that adds the index name
         to the query and passes along the rest of the arguments
         to the redis-py ft().search() method.
 
+        Args:
+            query (str | Query): The query string or redis-py ``Query`` to run.
+            query_params (dict[str, Any] | None): Values for the parameters
+                the query refers to, such as a query vector. Defaults to None.
+
         Returns:
-            Result: Raw Redis search results.
+            Result: The search results as a redis-py ``Result``, on every
+            protocol.
         """
         try:
             client = await self._get_client()
             search = client.ft(self.schema.index.name)
-            st = time.monotonic()
             if isinstance(client, AsyncRedisCluster):
                 # Use special cluster search for AsyncRedisCluster
-                results = await async_cluster_search(search, *args, **kwargs)  # type: ignore
-            else:
-                results = await search.search(*args, **kwargs)  # type: ignore
-            # A client on RESP3 gets the reply as a dict instead of a Result.
-            return _search_reply_to_result(
-                search, results, (time.monotonic() - st) * 1000.0, *args, **kwargs
-            )
+                return await async_cluster_search(search, query, query_params)  # type: ignore
+            st = time.monotonic()
+            results = await search.search(query, query_params)  # type: ignore
+            if isinstance(results, dict):  # RESP3 clients get a dict back
+                _, built_query = search._mk_query_args(query, query_params)
+                results = to_search_result(
+                    search, results, built_query, (time.monotonic() - st) * 1000.0
+                )
+            return results
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(

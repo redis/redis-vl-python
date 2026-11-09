@@ -1,88 +1,71 @@
 """
 Unit tests for how SearchIndex.search() and AsyncSearchIndex.search() return a
-RESP3 FT.SEARCH reply.
+RESP3 FT.SEARCH reply on a cluster client.
 
 A client on RESP3 gets the reply back as a dict rather than a Result, and
-query(), paginate() and clear() all read it as a Result. The integration suite
-covers standalone clients on every response format; these tests cover the
-cluster branch, which the integration suite runs only with --run-cluster-tests
-and CI does not run.
+query() reads it as a Result. The integration suite covers standalone clients
+on every response format; these tests cover the cluster branch, which the
+integration suite runs only with --run-cluster-tests and CI does not run.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
 from redis.commands.search import AsyncSearch, Search
 
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import CountQuery, FilterQuery
-from redisvl.query.filter import FilterExpression, Tag
+from redisvl.query.filter import FilterExpression
 from redisvl.schema import IndexSchema
 
 INDEX_NAME = "my_index"
 
+# An FT.SEARCH reply for one document, as a RESP3 client returns it.
+RESP3_REPLY = {
+    "attributes": [],
+    "format": "STRING",
+    "results": [{"id": "test:1", "extra_attributes": {"t": "foo"}, "values": []}],
+    "total_results": 1,
+    "warning": [],
+}
 
-def _schema():
-    return IndexSchema.from_dict(
+
+def _resp3_cluster_index(index_cls, client_cls, search_cls):
+    """Build an index on a RESP3 cluster client whose FT.SEARCH returns RESP3_REPLY.
+
+    The client is mocked, but ft() returns a real Search or AsyncSearch, so the
+    reply goes through cluster_search() and redis-py's own parsers.
+    """
+    schema = IndexSchema.from_dict(
         {
             "index": {"name": INDEX_NAME, "prefix": "test"},
             "fields": [{"name": "t", "type": "tag"}],
         }
     )
+    client = MagicMock(spec=client_cls)
+    client.nodes_manager = MagicMock(connection_kwargs={"protocol": 3})
+    client.get_default_node.return_value = MagicMock()
+    client.execute_command.return_value = RESP3_REPLY
+    client.ft.return_value = search_cls(client, index_name=INDEX_NAME)
+    return index_cls(schema=schema, redis_client=client)
 
 
-def _resp3_reply():
-    """An FT.SEARCH reply for one document, as a RESP3 client returns it."""
-    return {
-        "attributes": [],
-        "format": "STRING",
-        "results": [{"id": "test:1", "extra_attributes": {"t": "foo"}, "values": []}],
-        "total_results": 1,
-        "warning": [],
-    }
+def test_cluster_query_on_resp3():
+    index = _resp3_cluster_index(SearchIndex, RedisCluster, Search)
+
+    assert index.query(FilterQuery(filter_expression="@t:{foo}")) == [
+        {"id": "test:1", "t": "foo"}
+    ]
+    assert index.query(CountQuery(FilterExpression("*"))) == 1
 
 
-class TestSearchOnResp3Cluster:
-    """On a cluster, search() goes through cluster_search(), not ft().search()."""
+@pytest.mark.asyncio
+async def test_async_cluster_query_on_resp3():
+    index = _resp3_cluster_index(AsyncSearchIndex, AsyncRedisCluster, AsyncSearch)
 
-    def _index(self):
-        client = MagicMock(spec=RedisCluster)
-        # A real Search, so the reply is converted by redis-py's own parsers.
-        client.ft.return_value = Search(Redis(protocol=3), index_name=INDEX_NAME)
-        return SearchIndex(schema=_schema(), redis_client=client)
-
-    @patch("redisvl.index.index.cluster_search")
-    def test_query_returns_documents(self, cluster_search):
-        cluster_search.return_value = _resp3_reply()
-        index = self._index()
-
-        assert index.query(FilterQuery(Tag("t") == "foo")) == [
-            {"id": "test:1", "t": "foo"}
-        ]
-
-    @patch("redisvl.index.index.cluster_search")
-    def test_count_query_returns_total(self, cluster_search):
-        cluster_search.return_value = _resp3_reply()
-        index = self._index()
-
-        assert index.query(CountQuery(FilterExpression("*"))) == 1
-
-    @pytest.mark.asyncio
-    @patch("redisvl.index.index.async_cluster_search", new_callable=AsyncMock)
-    async def test_async_query_returns_documents(self, async_cluster_search):
-        async_cluster_search.return_value = _resp3_reply()
-        client = MagicMock()
-        client.__class__ = AsyncRedisCluster  # isinstance drives the branch
-        client.ft.return_value = AsyncSearch(
-            AsyncRedis(protocol=3), index_name=INDEX_NAME
-        )
-        index = AsyncSearchIndex(schema=_schema(), redis_client=client)
-
-        assert await index.query(FilterQuery(Tag("t") == "foo")) == [
-            {"id": "test:1", "t": "foo"}
-        ]
-        assert await index.query(CountQuery(FilterExpression("*"))) == 1
+    assert await index.query(FilterQuery(filter_expression="@t:{foo}")) == [
+        {"id": "test:1", "t": "foo"}
+    ]
+    assert await index.query(CountQuery(FilterExpression("*"))) == 1
