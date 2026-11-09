@@ -6,26 +6,33 @@ on:
     branches:
       - main
 
+# A new push to a PR cancels that PR's previous run; pushes to main are never
+# cancelled. Same rule as test.yml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   UV_VERSION: "0.13.1"
+  # The uv cache key below hard-codes the runner OS, so the jobs pin
+  # `runs-on: ubuntu-24.04` (all of them, for uniformity). Change both together.
 
 jobs:
   lock:
     name: Check uv.lock is up to date
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Check out repository
       uses: actions/checkout@v6
 
+    # No cache: `uv lock --check` installs nothing, so a cache would only take
+    # up space.
     - name: Install uv
       uses: astral-sh/setup-uv@v10.0.0
       with:
         version: ${{ env.UV_VERSION }}
-        enable-cache: true
-        cache-dependency-glob: |
-          pyproject.toml
-          uv.lock
+        enable-cache: false
 
     # Fails a pyproject.toml change that was never locked, before the drift
     # lands on main and dirties the next contributor's tree.
@@ -34,7 +41,7 @@ jobs:
 
   check:
     name: Style-check ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version:
@@ -58,11 +65,21 @@ jobs:
       uses: astral-sh/setup-uv@v10.0.0
       with:
         version: ${{ env.UV_VERSION }}
-        enable-cache: true
+        enable-cache: false
+        cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
         python-version: ${{ matrix.python-version }}   # sets UV_PYTHON
-        cache-dependency-glob: |
-          pyproject.toml
-          uv.lock
+
+    # Restore-only: the Test Suite workflow saves these caches (same key format
+    # as test.yml; keep them in sync). This job installs the test legs'
+    # `--all-extras` environment plus the docs group, so it reuses them as
+    # they are.
+    - name: Restore uv cache
+      uses: actions/cache/restore@v5
+      with:
+        path: ~/.cache/uv
+        key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ matrix.python-version }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ matrix.python-version }}-pruned-
 
     - name: Install dependencies
       run: |
