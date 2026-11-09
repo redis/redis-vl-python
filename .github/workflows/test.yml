@@ -145,23 +145,26 @@ jobs:
   notebooks:
     name: Notebook Validation
     runs-on: ubuntu-latest
+    # Ordered after service-tests so it restores the uv cache that job saves;
+    # not gated on it; see the `test` job.
+    needs: service-tests
     # Needs API-key secrets, unavailable to fork PRs and Dependabot. Keep in
     # sync with service-tests.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      # Separate from the `Linux-hf-cache` entry the test jobs share. That one
-      # is saved by whichever test job misses first and holds only the models
-      # the tests load, and actions/cache never re-saves after an exact hit, so
+      # Separate from the HF cache the test jobs share, which holds only the
+      # models the tests load and is never re-saved after an exact hit, so
       # models only the notebooks use were downloaded inside nbval cells on
-      # every run. This key changes whenever the model list does.
+      # every run. This job is the only one that saves this key, and the key
+      # changes whenever the model list does.
       - name: Restore HuggingFace models
         id: hf-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: hf_cache
           key: ${{ runner.os }}-hf-notebooks-${{ hashFiles('.github/scripts/prefetch_notebook_models.py') }}
@@ -197,7 +200,7 @@ jobs:
       # not stop the models from being cached.
       - name: Save HuggingFace models
         if: steps.hf-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: hf_cache
           key: ${{ steps.hf-cache.outputs.cache-primary-key }}
