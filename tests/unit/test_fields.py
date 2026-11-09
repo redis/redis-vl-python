@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from pydantic import ValidationError
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
 from redis.commands.search.field import TagField as RedisTagField
@@ -638,6 +639,12 @@ def test_svs_vector_field_leanvec8x8_with_reduce():
     assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec8x8"
     assert "REDUCE" in redis_field.args
     assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 512
+
+
+def test_svs_vector_field_compression_unknown_value_raises_validation_error():
+    """Test that an unknown compression value raises ValidationError."""
+    with pytest.raises(ValidationError):
+        create_svs_vector_field(compression="foo")
 
 
 def test_uses_svs_vamana_true():

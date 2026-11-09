@@ -10,6 +10,16 @@ from redisvl.schema.fields import VectorDataType
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
 
 
+def _cosine_similarity(distance_field: str) -> str:
+    """Build an APPLY expression for ``(2 - max(distance, 0)) / 2``.
+
+    APPLY has no ``max`` function, so ``max(distance, 0)`` is expressed as
+    ``(distance + abs(distance)) / 2``.
+    """
+    distance = f"@{distance_field}"
+    return f"(2 - ({distance} + abs({distance}))/2)/2"
+
+
 class Vector(BaseModel):
     """
     Simple object containing the necessary arguments to perform a multi vector query.
@@ -183,7 +193,8 @@ class AggregateHybridQuery(AggregationQuery):
         self.scorer(text_scorer)
         self.add_scores()
         self.apply(
-            vector_similarity=f"(2 - @{self.DISTANCE_ID})/2", text_score="@__score"
+            vector_similarity=_cosine_similarity(self.DISTANCE_ID),
+            text_score="@__score",
         )
         self.apply(hybrid_score=f"{1-alpha}*@text_score + {alpha}*@vector_similarity")
         self.sort_by(Desc("@hybrid_score"), max=num_results)  # type: ignore
@@ -341,7 +352,7 @@ class MultiVectorQuery(AggregationQuery):
 
         # calculate the respective vector similarities
         for i in range(len(self._vectors)):
-            self.apply(**{f"score_{i}": f"(2 - @distance_{i})/2"})
+            self.apply(**{f"score_{i}": _cosine_similarity(f"distance_{i}")})
 
         # construct the scoring string based on the vector similarity scores and weights
         combined_scores = []
