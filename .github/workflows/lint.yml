@@ -15,7 +15,7 @@ concurrency:
 env:
   UV_VERSION: "0.13.1"
   # The uv cache key below hard-codes the runner OS, so the jobs pin
-  # `runs-on: ubuntu-24.04`. Change both together.
+  # `runs-on: ubuntu-24.04` (all of them, for uniformity). Change both together.
 
 jobs:
   lock:
@@ -70,8 +70,9 @@ jobs:
         python-version: ${{ matrix.python-version }}   # sets UV_PYTHON
 
     # Restore-only: the Test Suite workflow saves these caches (same key format
-    # as test.yml; keep them in sync). This job installs the same
-    # `--all-extras` environment, so it reuses them as they are.
+    # as test.yml; keep them in sync). This job installs the test legs'
+    # `--all-extras` environment plus the docs group, so it reuses them as
+    # they are.
     - name: Restore uv cache
       uses: actions/cache/restore@v5
       with:

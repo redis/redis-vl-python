@@ -64,6 +64,11 @@ jobs:
     name: Service Tests
     runs-on: ubuntu-24.04
     needs: setup
+    # This job runs fork code on the dispatching ref (main), and a cache saved
+    # here would be restored by every later run on main and by every PR.
+    # `read` lets it restore but makes the cache toolkit skip every save,
+    # whichever step attempts it.
+    cache-mode: read
     steps:
       - name: Create check run
         id: check
@@ -85,11 +90,15 @@ jobs:
         with:
           repository: ${{ needs.setup.outputs.head_repo }}
           ref: ${{ needs.setup.outputs.head_sha }}
+          # Keep GITHUB_TOKEN (checks: write) out of .git/config, where the
+          # fork's code could read it.
+          persist-credentials: false
 
-      # This run is on the dispatching ref (main), so any cache it saved would
-      # be restored by every later run on main and by every PR. Run the action
-      # from this repository rather than from the fork checkout, so the fork
-      # cannot edit away `save-cache: "false"`.
+      # Run the action from this repository rather than from the fork
+      # checkout, so the fork cannot edit away `save-cache: "false"`. Together
+      # with `cache-mode: read` this stops the workflow's own steps saving a
+      # cache; it cannot stop fork code that obtains the runner's cache token
+      # and calls the cache service itself.
       - name: Check out trusted actions
         uses: actions/checkout@v6
         with:

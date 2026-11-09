@@ -37,9 +37,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      # The canary saves the Python 3.11 uv cache and the HuggingFace model
-      # cache. It finishes before the matrix starts, so the matrix legs and
-      # notebooks restore what it saved and never save themselves.
+      # The canary saves the Python 3.11 uv cache and, when its tests pass, the
+      # HuggingFace model cache. It finishes before the matrix starts, so the
+      # matrix legs and notebooks restore what it saved and never save these
+      # themselves. When it is skipped (fork and Dependabot PRs) they restore
+      # from the base branch instead.
       - name: Run service tests
         uses: ./.github/actions/run-service-tests
         with:
@@ -103,6 +105,8 @@ jobs:
         redis-py-version: ["6.x", "7.x", "8.x"]
         # `redis:latest` floats, so a failure on it is not reproducible from a
         # SHA; it is advisory below. Pinned tags carry the blocking coverage.
+        # The uv cache saver below matches redis-py-version 8.x and
+        # redis:latest; update it if either value goes.
         redis-image: ["redis:8.2", "redis:8.4", "redis:latest"]
         include:
           - redis-image: "redis:latest"
@@ -149,6 +153,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The docs group (Sphinx and friends) is only for building docs;
+          # no test imports it.
           uv sync --all-extras --no-group docs --frozen
 
           # Must cover every redis-py-version matrix value; unhandled values fail.
@@ -167,15 +173,17 @@ jobs:
 
       # One saver per Python version, so legs don't race to save the same key.
       # service-tests saves 3.11; for the other versions the redis-py 8.x x
-      # redis:8.4 leg saves. Saving here rather than after the tests keeps the
+      # redis:latest leg saves (`redis:latest` is the image value that never
+      # rotates; its continue-on-error doesn't matter because the save comes
+      # before the tests). Saving here rather than after the tests keeps the
       # cache when a test fails. `prune --ci` keeps only wheels built from
       # source; pre-built wheels download faster than they restore.
       - name: Prune uv cache
-        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:8.4' && steps.uv-cache.outputs.cache-hit != 'true' }}
+        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:latest' && steps.uv-cache.outputs.cache-hit != 'true' }}
         run: uv cache prune --ci
 
       - name: Save uv cache
-        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:8.4' && steps.uv-cache.outputs.cache-hit != 'true' }}
+        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:latest' && steps.uv-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: ~/.cache/uv
