@@ -213,15 +213,15 @@ jobs:
       # one under a static key after its tests, so it holds only the models the
       # tests load, and models only the notebooks use were downloaded inside
       # nbval cells on every run. This job is the only one that saves this key,
-      # and the key changes whenever the model list does.
+      # and the key changes whenever the model list does. There is deliberately
+      # no restore-keys fallback: an older entry would still hold models since
+      # removed from the list, and nbval would pass offline on them.
       - name: Restore HuggingFace models
         id: hf-cache
         uses: actions/cache/restore@v5
         with:
           path: hf_cache
           key: ${{ runner.os }}-hf-notebooks-${{ hashFiles('.github/scripts/prefetch_notebook_models.py') }}
-          restore-keys: |
-            ${{ runner.os }}-hf-notebooks-
 
       - name: Install Python
         uses: actions/setup-python@v6
