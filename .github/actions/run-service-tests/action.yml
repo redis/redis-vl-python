@@ -8,15 +8,26 @@ inputs:
   uv-version:
     description: 'uv version to use'
     required: true
+  save-cache:
+    description: >-
+      Save the uv and HuggingFace caches. Only one job per cache key should
+      save; pass "false" from every other caller, and always from a run that
+      executes untrusted code.
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Cache HuggingFace Models
-      uses: actions/cache@v5
+    # Bump the version suffix to drop a stale model cache; the key is static,
+    # so a saved cache is never refreshed otherwise. Keep it in sync with the
+    # restore steps in test.yml.
+    - name: Restore HuggingFace models
+      id: hf-cache
+      uses: actions/cache/restore@v5
       with:
         path: hf_cache
-        key: ${{ runner.os }}-hf-cache
+        key: ${{ runner.os }}-hf-cache-v2
 
     - name: Set HuggingFace token
       shell: bash
@@ -29,15 +40,26 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    # Caching is done by the restore/save steps around the install instead of
+    # by setup-uv, which has no restore-keys fallback. See test.yml.
     - name: Install uv
       uses: astral-sh/setup-uv@v10.0.0
       with:
         version: ${{ inputs.uv-version }}
-        enable-cache: true
+        enable-cache: false
+        cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
         python-version: ${{ inputs.python-version }}
-        cache-dependency-glob: |
-          pyproject.toml
-          uv.lock
+
+    # The runner OS is hard-coded in the key; callers pin runs-on: ubuntu-24.04.
+    # Key format is shared with test.yml and lint.yml; keep all three in sync.
+    - name: Restore uv cache
+      id: uv-cache
+      uses: actions/cache/restore@v5
+      with:
+        path: ~/.cache/uv
+        key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ inputs.python-version }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ inputs.python-version }}-pruned-
 
     - name: Install required dependencies
       shell: bash
@@ -54,6 +76,20 @@ runs:
       run: |
         uv sync --all-extras
 
+    # Saved before the tests, so a failing test doesn't cost the next run its
+    # cache. `prune --ci` keeps only wheels built from source.
+    - name: Prune uv cache
+      if: inputs.save-cache == 'true' && steps.uv-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: uv cache prune --ci
+
+    - name: Save uv cache
+      if: inputs.save-cache == 'true' && steps.uv-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ~/.cache/uv
+        key: ${{ steps.uv-cache.outputs.cache-primary-key }}
+
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v1
       with:
@@ -63,3 +99,13 @@ runs:
       shell: bash
       run: |
         make test-all
+
+    # After the tests, which download the models. Only on success, because the
+    # key is static: a cache saved after an early failure would be missing
+    # models until the key is bumped.
+    - name: Save HuggingFace models
+      if: inputs.save-cache == 'true' && steps.hf-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: hf_cache
+        key: ${{ steps.hf-cache.outputs.cache-primary-key }}

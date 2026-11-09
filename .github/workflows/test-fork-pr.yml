@@ -13,6 +13,9 @@ permissions:
   checks: write
   pull-requests: read
 
+# No `concurrency` block: cancelling a run would leave the check run created
+# below stuck at in_progress on the fork PR.
+
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.13.1"
@@ -20,7 +23,7 @@ env:
 jobs:
   setup:
     name: Validate PR
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       head_sha: ${{ steps.pr-info.outputs.head_sha }}
       head_repo: ${{ steps.pr-info.outputs.head_repo }}
@@ -59,7 +62,7 @@ jobs:
 
   service-tests:
     name: Service Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: setup
     steps:
       - name: Create check run
@@ -83,11 +86,23 @@ jobs:
           repository: ${{ needs.setup.outputs.head_repo }}
           ref: ${{ needs.setup.outputs.head_sha }}
 
+      # This run is on the dispatching ref (main), so any cache it saved would
+      # be restored by every later run on main and by every PR. Run the action
+      # from this repository rather than from the fork checkout, so the fork
+      # cannot edit away `save-cache: "false"`.
+      - name: Check out trusted actions
+        uses: actions/checkout@v6
+        with:
+          path: trusted-actions
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
       - name: Run service tests
-        uses: ./.github/actions/run-service-tests
+        uses: ./trusted-actions/.github/actions/run-service-tests
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           uv-version: ${{ env.UV_VERSION }}
+          save-cache: "false"
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
