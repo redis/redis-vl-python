@@ -799,6 +799,31 @@ def test_hybrid_query_combination_method_rrf_with_constant():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_combination_method_rrf_zero_params():
+    """Test that RRF params of 0 are sent rather than treated as unset."""
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        combination_method="RRF",
+        rrf_window=0,
+        rrf_constant=0,
+    )
+
+    assert hybrid_query.combination_method is not None
+    assert hybrid_query.combination_method.get_args() == [
+        "COMBINE",
+        "RRF",
+        4,
+        "WINDOW",
+        0,
+        "CONSTANT",
+        0,
+    ]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_combination_method_rrf_with_both_params():
     """Test HybridQuery with RRF combination method with both window and constant."""
     hybrid_query = HybridQuery(
@@ -830,7 +855,7 @@ def test_hybrid_query_combination_method_rrf_with_both_params():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
-@pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
+@pytest.mark.parametrize("alpha", [0.0, 0.1, 0.5, 0.9])
 def test_hybrid_query_combination_method_linear(alpha: float):
     """Test HybridQuery with LINEAR combination method."""
     hybrid_query = HybridQuery(
