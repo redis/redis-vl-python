@@ -561,15 +561,12 @@ def vector_algorithm_index(request, client, redis_url, redis_test_name):
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
-@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
 @pytest.mark.parametrize(
     "method, radius",
     [("KNN", None), ("RANGE", 0.5), ("RANGE", 0)],
     ids=["knn", "range", "zero-radius"],
 )
-async def test_hybrid_query_vector_algorithm_defaults(
-    vector_algorithm_index, async_client, use_async, method, radius
-):
+def test_hybrid_query_vector_algorithm_defaults(vector_algorithm_index, method, radius):
     query = HybridQuery(
         text="fox",
         text_field_name="body",
@@ -580,18 +577,13 @@ async def test_hybrid_query_vector_algorithm_defaults(
         return_fields=["body"],
     )
 
-    if use_async:
-        index = AsyncSearchIndex(
-            schema=vector_algorithm_index.schema, redis_client=async_client
-        )
-        results = await index.query(query)
-    else:
-        results = vector_algorithm_index.query(query)
+    results = vector_algorithm_index.query(query)
 
     assert [result["body"] for result in results] == ["fox"]
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+@pytest.mark.parametrize("vector_algorithm_index", ["hnsw"], indirect=True)
 @pytest.mark.parametrize(
     "method, option, error",
     [

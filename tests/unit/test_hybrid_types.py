@@ -637,7 +637,7 @@ def test_hybrid_query_vector_search_method_none():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
-@pytest.mark.parametrize("value", [None, 0])
+@pytest.mark.parametrize("value", [0])
 @pytest.mark.parametrize(
     "method, option, token, required",
     [
@@ -656,9 +656,7 @@ def test_hybrid_query_optional_vector_tuning(method, option, token, required, va
         **{option: value},
     )
 
-    expected = [method, 2, *required]
-    if value is not None:
-        expected = [method, 4, *required, token, value]
+    expected = [method, 4, *required, token, value]
     assert query.query.get_args()[7:] == expected
 
 

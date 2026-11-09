@@ -137,8 +137,8 @@ HybridQuery requires Redis >= 8.4.0 and redis-py >= 7.1.0.
 ```
 
 For explicit `vector_search_method="KNN"` or `"RANGE"`, the optional tuning
-parameters default to `None`. RedisVL omits these parameters and leaves tuning
-to Redis. Set `knn_ef_runtime` only for HNSW,
+parameters default to `None`. RedisVL omits these parameters, so Redis uses the
+index's configured values. Set `knn_ef_runtime` only for HNSW,
 and `range_epsilon` only for HNSW or SVS-VAMANA. FLAT supports neither option.
 Explicit values, including zero, are sent to Redis for validation.
 

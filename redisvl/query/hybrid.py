@@ -85,10 +85,10 @@ class HybridQuery:
             yield_text_score_as: The name of the field to yield the text score as.
             vector_search_method: The vector search method to use. Options are {KNN, RANGE}. Defaults to None.
             knn_ef_runtime: The exploration factor for HNSW when `vector_search_method` is "KNN".
-                Defaults to None, which omits EF_RUNTIME and uses the server default.
+                Defaults to None, which omits EF_RUNTIME and uses the index's configured value.
             range_radius: The search radius, required if `vector_search_method` is "RANGE". Zero is valid.
             range_epsilon: The search accuracy parameter for HNSW and SVS-VAMANA when
-                `vector_search_method` is "RANGE". Defaults to None, which omits EPSILON and uses the server default.
+                `vector_search_method` is "RANGE". Defaults to None, which omits EPSILON and uses the index's configured value.
             yield_vsim_score_as: The name of the field to yield the vector similarity score as.
             filter_expression: The filter expression to use for both the text and vector searches. Defaults to None.
             combination_method: The combination method to use. Options are {RRF, LINEAR}. If not specified, the server
@@ -216,10 +216,10 @@ def build_base_query(
         vector_search_method: The vector search method to use. Options are {KNN, RANGE}. Defaults to None.
         num_results: The number of nearest neighbors to return, required if `vector_search_method` is "KNN".
         knn_ef_runtime: The exploration factor for HNSW when `vector_search_method` is "KNN".
-            Defaults to None, which omits EF_RUNTIME and uses the server default.
+            Defaults to None, which omits EF_RUNTIME and uses the index's configured value.
         range_radius: The search radius, required if `vector_search_method` is "RANGE". Zero is valid.
         range_epsilon: The search accuracy parameter for HNSW and SVS-VAMANA when
-            `vector_search_method` is "RANGE". Defaults to None, which omits EPSILON and uses the server default.
+            `vector_search_method` is "RANGE". Defaults to None, which omits EPSILON and uses the index's configured value.
         yield_vsim_score_as: The name of the field to yield the vector similarity score as.
         filter_expression: The filter expression to use for the vector similarity search. Defaults to None.
 
