@@ -40,6 +40,8 @@ from redisvl.redis.utils import (
     cluster_search,
     convert_bytes,
     make_dict,
+    normalize_resp3_result,
+    value,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
 from redisvl.utils.utils import deprecated_argument, sync_wrapper
@@ -51,8 +53,13 @@ if TYPE_CHECKING:
     from redisvl.query.query import BaseQuery
 
 from redis.client import NEVER_DECODE
-from redis.commands.search.aggregation import AggregateRequest, Cursor
+from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Cursor
 from redis.commands.search.index_definition import IndexDefinition
+
+try:
+    from redis.commands.search.hybrid_result import HybridResult
+except ImportError:
+    HybridResult = None  # type: ignore[misc, assignment]
 
 # Need Result outside TYPE_CHECKING for cast
 from redis.commands.search.result import Result
@@ -115,9 +122,6 @@ def _parse_batch_search_result(
 
     # redis-py 6.x returns the raw RESP3 map from _parse_results. Convert it to
     # the RESP2 shape expected by its private _parse_search callback.
-    def value(mapping: dict[Any, Any], key: str, default: Any = None) -> Any:
-        return mapping.get(key, mapping.get(key.encode(), default))
-
     response: list[Any] = [value(parsed_result, "total_results", 0)]
     for document in value(parsed_result, "results", []):
         response.append(value(document, "id", ""))
@@ -1842,7 +1846,9 @@ class SearchIndex(BaseSearchIndex):
         cid = 0
         seen: set[str] = set()
         try:
-            result = ft.aggregate(request)
+            result = normalize_resp3_result(
+                ft.aggregate(request), target_type=AggregateResult
+            )
             while True:
                 # Capture the cursor id BEFORE parsing rows, so the finally
                 # block can release the cursor even if row parsing raises.
@@ -1853,7 +1859,9 @@ class SearchIndex(BaseSearchIndex):
                     yield keys
                 if not cid:
                     break
-                result = ft.aggregate(Cursor(cid))
+                result = normalize_resp3_result(
+                    ft.aggregate(Cursor(cid)), target_type=AggregateResult
+                )
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Error while iterating documents by filter: {str(e)}"
@@ -2024,9 +2032,10 @@ class SearchIndex(BaseSearchIndex):
             Result: Raw Redis aggregation results.
         """
         try:
-            return self._redis_client.ft(self.schema.index.name).aggregate(
+            raw = self._redis_client.ft(self.schema.index.name).aggregate(
                 *args, **kwargs
             )
+            return normalize_resp3_result(raw, target_type=AggregateResult)
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(
@@ -2184,7 +2193,8 @@ class SearchIndex(BaseSearchIndex):
             params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
-        return _convert_and_drop_empty_rows(results.results, "hybrid")  # type: ignore[union-attr]
+        normalized = normalize_resp3_result(results, target_type=HybridResult)
+        return _convert_and_drop_empty_rows(normalized.results, "hybrid")  # type: ignore[union-attr]
 
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10
@@ -3157,7 +3167,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         cid = 0
         seen: set[str] = set()
         try:
-            result = await ft.aggregate(request)  # type: ignore[arg-type]
+            result = normalize_resp3_result(
+                await ft.aggregate(request), target_type=AggregateResult  # type: ignore[arg-type]
+            )
             while True:
                 # Capture the cursor id BEFORE parsing rows, so the finally
                 # block can release the cursor even if row parsing raises.
@@ -3168,7 +3180,9 @@ class AsyncSearchIndex(BaseSearchIndex):
                     yield keys
                 if not cid:
                     break
-                result = await ft.aggregate(Cursor(cid))
+                result = normalize_resp3_result(
+                    await ft.aggregate(Cursor(cid)), target_type=AggregateResult
+                )
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Error while iterating documents by filter: {str(e)}"
@@ -3328,7 +3342,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         client = await self._get_client()
         try:
-            return await client.ft(self.schema.index.name).aggregate(*args, **kwargs)
+            raw = await client.ft(self.schema.index.name).aggregate(*args, **kwargs)
+            return normalize_resp3_result(raw, target_type=AggregateResult)
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(
@@ -3494,7 +3509,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
-        return _convert_and_drop_empty_rows(results.results, "hybrid")  # type: ignore[union-attr]
+        normalized = normalize_resp3_result(results, target_type=HybridResult)
+        return _convert_and_drop_empty_rows(normalized.results, "hybrid")  # type: ignore[union-attr]
 
     async def batch_query(
         self, queries: list[BaseQuery], batch_size: int = 10
