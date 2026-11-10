@@ -2090,8 +2090,8 @@ class SearchIndex(BaseSearchIndex):
         """Perform a search against the index.
 
         Wrapper around the search API that adds the index name
-        to the query and passes along the rest of the arguments
-        to the redis-py ft().search() method.
+        to the query and passes the query and its parameters to
+        redis-py's ``ft().search()``.
 
         Args:
             query (str | Query): The query string or redis-py ``Query`` to run.
@@ -2109,11 +2109,10 @@ class SearchIndex(BaseSearchIndex):
                 return cluster_search(search, query, query_params)  # type: ignore
             st = time.monotonic()
             results = search.search(query, query_params)  # type: ignore
+            duration = (time.monotonic() - st) * 1000.0
             if isinstance(results, dict):  # RESP3 clients get a dict back
                 _, built_query = search._mk_query_args(query, query_params)
-                results = to_search_result(
-                    search, results, built_query, (time.monotonic() - st) * 1000.0
-                )
+                results = to_search_result(search, results, built_query, duration)
             return results
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
@@ -3411,8 +3410,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         """Perform an async search against the index.
 
         Wrapper around the search API that adds the index name
-        to the query and passes along the rest of the arguments
-        to the redis-py ft().search() method.
+        to the query and passes the query and its parameters to
+        redis-py's ``ft().search()``.
 
         Args:
             query (str | Query): The query string or redis-py ``Query`` to run.
@@ -3431,11 +3430,10 @@ class AsyncSearchIndex(BaseSearchIndex):
                 return await async_cluster_search(search, query, query_params)  # type: ignore
             st = time.monotonic()
             results = await search.search(query, query_params)  # type: ignore
+            duration = (time.monotonic() - st) * 1000.0
             if isinstance(results, dict):  # RESP3 clients get a dict back
                 _, built_query = search._mk_query_args(query, query_params)
-                results = to_search_result(
-                    search, results, built_query, (time.monotonic() - st) * 1000.0
-                )
+                results = to_search_result(search, results, built_query, duration)
             return results
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
