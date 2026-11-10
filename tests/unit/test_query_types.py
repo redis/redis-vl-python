@@ -276,6 +276,61 @@ def test_text_query():
     assert text_query.filter == filter_expression
 
 
+@pytest.mark.parametrize(
+    "text, stopwords",
+    [("the a an", "english"), ("only", {"only"}), (", “ ”", None)],
+)
+def test_text_query_rejects_empty_tokenized_text(text, stopwords):
+    with pytest.raises(
+        ValueError, match="text string cannot be empty after removing stopwords"
+    ):
+        TextQuery(text=text, text_field_name="body", stopwords=stopwords)
+
+
+def test_text_query_keeps_stopwords_when_disabled():
+    query = TextQuery("the a an", text_field_name="body", stopwords=None)
+    assert "@body:(the | a | an)" in str(query)
+
+
+@pytest.mark.parametrize("text", ["", "  "])
+def test_text_query_rejects_empty_text_without_stopwords(text):
+    with pytest.raises(ValueError, match="^text string cannot be empty$"):
+        TextQuery(text, "body", stopwords=None)
+
+
+def test_text_query_validates_filter_before_stopword_content():
+    with pytest.raises(TypeError):
+        TextQuery("the", "body", filter_expression=123)
+
+
+def test_text_query_does_not_revalidate_mutated_weights_on_rebuild():
+    query = TextQuery("hello", "body")
+    query.text_weights["unrelated words"] = 2.0
+    query.set_field_weights("other")
+    assert "@other:(hello)" in str(query)
+
+
+def test_text_query_tokenizes_once_until_weights_change(monkeypatch):
+    from redisvl.utils.full_text_query_helper import FullTextQueryHelper
+
+    calls = []
+    tokenize = FullTextQueryHelper._tokenize_and_escape_query
+
+    def counted_tokenize(self, text):
+        calls.append(text)
+        return tokenize(self, text)
+
+    monkeypatch.setattr(
+        FullTextQueryHelper, "_tokenize_and_escape_query", counted_tokenize
+    )
+    query = TextQuery("hello world", "body")
+    assert "@body:(hello | world)" in str(query)
+    assert calls == ["hello world"]
+    query.set_text_weights({"hello": 2.0})
+    assert "hello=>{$weight:2.0}" in str(query)
+    assert calls == ["hello world", "hello world"]
+
+
 def test_text_query_with_string_filter():
     """Test that TextQuery correctly includes string filter expressions in query string.
 

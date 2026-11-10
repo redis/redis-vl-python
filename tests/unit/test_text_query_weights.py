@@ -122,23 +122,7 @@ def test_set_field_weights_method():
     assert "$weight: 2.0" in query_string or "$weight:2.0" in query_string
 
 
-@pytest.mark.parametrize(
-    "text, stopwords",
-    [("the a an", "english"), ("only", {"only"}), ("  ", None), (", “ ”", None)],
-)
-def test_text_query_rejects_empty_tokenized_text(text, stopwords):
-    with pytest.raises(
-        ValueError, match="text string cannot be empty after removing stopwords"
-    ):
-        TextQuery(text=text, text_field_name="body", stopwords=stopwords)
-
-
-def test_text_query_keeps_stopwords_when_disabled():
-    query = TextQuery("the a an", text_field_name="body", stopwords=None)
-    assert "@body:(the | a | an)" in str(query)
-
-
-def test_text_query_preserves_escaping_and_updated_weights():
+def test_set_text_weights_resets_cached_query_string():
     query = TextQuery(
         "the HELLO, redis-vl", text_field_name="body", text_weights={"hello": 2.0}
     )

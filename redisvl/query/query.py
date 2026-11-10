@@ -7,7 +7,6 @@ from redisvl.query.filter import FilterExpression, intersect_with_filter, render
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
 from redisvl.utils.log import get_logger
-from redisvl.utils.stopwords import get_stopwords
 from redisvl.utils.utils import denorm_cosine_distance
 
 logger = get_logger(__name__)
@@ -1356,20 +1355,22 @@ class TextQuery(BaseQuery):
         """
         self._text = text
         self._field_weights = self._parse_field_weights(text_field_name)
-        self._text_weights = self._parse_text_weights(text_weights)
+        self._ft_helper = FullTextQueryHelper(
+            stopwords=stopwords, text_weights=text_weights
+        )
         self._num_results = num_results
 
-        self._set_stopwords(stopwords)
-        # Reject empty text before the query reaches Redis.
-        self._tokenize_and_escape_query(self._text)
         self.set_filter(filter_expression)
+        if not text.strip():
+            raise ValueError("text string cannot be empty")
 
         if params:
             self._params = params
 
         # Initialize the base query
         super().__init__("*")
-        self._built_query_string = None
+        # Validate once and retain the result for the first query build.
+        self._built_query_string = self._build_query_string()
 
         # handle query settings
         self.scorer(text_scorer)
@@ -1389,29 +1390,7 @@ class TextQuery(BaseQuery):
 
     @property
     def stopwords(self):
-        return self._stopwords
-
-    def _set_stopwords(self, stopwords: str | set[str] | None = "english"):
-        """Set the stopwords to use in the query.
-        Args:
-            stopwords (Optional[Union[str, Set[str]]]): The stopwords to use. If a string
-                such as "english" "german" is provided then a default set of stopwords for that
-                language will be used. if a list, set, or tuple of strings is provided then those
-                will be used as stopwords. Defaults to "english". if set to "None" then no stopwords
-                will be removed.
-        Raises:
-            TypeError: If the stopwords are not a set, list, or tuple of strings.
-        """
-        if not stopwords:
-            self._stopwords = set()
-        elif isinstance(stopwords, str):
-            self._stopwords = get_stopwords(stopwords)
-        elif isinstance(stopwords, (set, list, tuple)) and all(
-            isinstance(word, str) for word in stopwords
-        ):
-            self._stopwords = set(stopwords)
-        else:
-            raise TypeError("stopwords must be a set, list, or tuple of strings")
+        return self._ft_helper.stopwords
 
     def _tokenize_and_escape_query(self, user_query: str) -> str:
         """Convert a raw user query to a redis full text query joined by ORs
@@ -1423,10 +1402,7 @@ class TextQuery(BaseQuery):
         Raises:
             ValueError: If the text string becomes empty after stopwords are removed.
         """
-        helper = FullTextQueryHelper(
-            stopwords=self._stopwords, text_weights=self._text_weights
-        )
-        return helper._tokenize_and_escape_query(user_query)
+        return self._ft_helper._tokenize_and_escape_query(user_query)
 
     def _parse_field_weights(
         self, field_spec: str | dict[str, float]
@@ -1493,33 +1469,13 @@ class TextQuery(BaseQuery):
                 return field
         return self._field_weights.copy()
 
-    def _parse_text_weights(self, weights: dict[str, float] | None) -> dict[str, float]:
-        parsed_weights: dict[str, float] = {}
-        if not weights:
-            return parsed_weights
-        for word, weight in weights.items():
-            word = word.strip().lower()
-            if not word or " " in word:
-                raise ValueError(
-                    f"Only individual words may be weighted. Got {{ {word}:{weight} }}"
-                )
-            if (
-                not (isinstance(weight, float) or isinstance(weight, int))
-                or weight < 0.0
-            ):
-                raise ValueError(
-                    f"Weights must be positive number. Got {{ {word}:{weight} }}"
-                )
-            parsed_weights[word] = weight
-        return parsed_weights
-
     def set_text_weights(self, weights: dict[str, float]):
         """Set or update the text weights for the query.
 
         Args:
             text_weights: Dictionary of word:weight mappings
         """
-        self._text_weights = self._parse_text_weights(weights)
+        self._ft_helper.set_text_weights(weights)
         self._built_query_string = None
 
     @property
@@ -1529,7 +1485,7 @@ class TextQuery(BaseQuery):
         Returns:
             Dictionary of word:weight mappings.
         """
-        return self._text_weights
+        return self._ft_helper.text_weights
 
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
