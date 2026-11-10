@@ -24,14 +24,41 @@ class TokenEscaper:
     # literal that matches nothing. The wildcard path is likewise unaffected,
     # because the `%` operator documents `|` as a union between patterns -- see
     # `Tag.__mod__`.
-    TAG_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~|\/ \?]"
+    TAG_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~|\/ \?`\t\n\r\x0b\x0c]"
+    # The tag set for the wildcard (`%`) path: `*` and `?` stay live as wildcards
+    # and `|` as a union between patterns, as in ESCAPED_CHARS_NO_WILDCARD.
+    #
+    # Both tag sets also escape the backtick and ASCII whitespace other than the
+    # space (tab, newline, carriage return, vertical tab, form feed). Left raw,
+    # a tag query containing one of them never matches the stored value, so
+    # `@f:{a`b}` finds nothing even when a document is tagged `a`b`.
+    TAG_ESCAPED_CHARS_NO_WILDCARD = (
+        r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ `\t\n\r\x0b\x0c]"
+    )
 
-    def __init__(self, escape_chars_re: Pattern | None = None):
+    def __init__(
+        self,
+        escape_chars_re: Pattern | None = None,
+        escape_chars_no_wildcard_re: Pattern | None = None,
+    ):
+        """Create an escaper.
+
+        Args:
+            escape_chars_re: Characters to escape by default. Defaults to
+                ``DEFAULT_ESCAPED_CHARS``.
+            escape_chars_no_wildcard_re: Characters to escape when wildcards
+                are preserved. Defaults to ``ESCAPED_CHARS_NO_WILDCARD``.
+        """
         if escape_chars_re:
             self.escaped_chars_re = escape_chars_re
         else:
             self.escaped_chars_re = re.compile(self.DEFAULT_ESCAPED_CHARS)
-        self.escaped_chars_no_wildcard_re = re.compile(self.ESCAPED_CHARS_NO_WILDCARD)
+        if escape_chars_no_wildcard_re:
+            self.escaped_chars_no_wildcard_re = escape_chars_no_wildcard_re
+        else:
+            self.escaped_chars_no_wildcard_re = re.compile(
+                self.ESCAPED_CHARS_NO_WILDCARD
+            )
 
     def escape(self, value: str, preserve_wildcards: bool = False) -> str:
         """Escape special characters in a string for use in Redis queries.

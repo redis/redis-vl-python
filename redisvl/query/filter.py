@@ -138,7 +138,10 @@ class Tag(FilterField):
     # union deliberately still works. Only the non-wildcard path uses this: the
     # `%` operator keeps `|` live as a union between patterns.
     escaper: TokenEscaper = TokenEscaper(
-        escape_chars_re=re.compile(TokenEscaper.TAG_ESCAPED_CHARS)
+        escape_chars_re=re.compile(TokenEscaper.TAG_ESCAPED_CHARS),
+        escape_chars_no_wildcard_re=re.compile(
+            TokenEscaper.TAG_ESCAPED_CHARS_NO_WILDCARD
+        ),
     )
 
     def _set_tag_value(

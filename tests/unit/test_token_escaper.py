@@ -146,6 +146,25 @@ def test_tag_escaper_escapes_pipe(tag_escaper, test_input, expected):
     assert tag_escaper.escape(test_input) == expected
 
 
+@pytest.mark.parametrize(
+    ("test_input,expected"),
+    [
+        ("back`tick", "back\\`tick"),
+        ("tab\tsep", "tab\\\tsep"),
+        ("new\nline", "new\\\nline"),
+        ("cr\rx", "cr\\\rx"),
+        ("vt\x0bx", "vt\\\x0bx"),
+        ("ff\x0cx", "ff\\\x0cx"),
+    ],
+    ids=["backtick", "tab", "newline", "carriage-return", "vertical-tab", "form-feed"],
+)
+def test_tag_escaper_escapes_backtick_and_ascii_whitespace(
+    tag_escaper, test_input, expected
+):
+    # Left raw, any of these inside a tag value makes the query miss the stored tag.
+    assert tag_escaper.escape(test_input) == expected
+
+
 def test_default_escaper_leaves_pipe_live(escaper):
     # A text query string joins its own terms with `|`, so escaping it on the
     # default path would turn a documented union into a literal matching
