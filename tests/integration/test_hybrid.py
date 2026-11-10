@@ -522,3 +522,87 @@ def test_hybrid_query_not_available(index):
             vector=[0.1, 0.1, 0.5],
             vector_field_name="user_embedding",
         )
+
+
+@pytest.fixture(params=["flat", "hnsw", "svs-vamana"])
+def vector_algorithm_index(request, client, redis_url, redis_test_name):
+    skip_if_redis_version_below(client, "8.4.0")
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": redis_test_name("hybrid_vector_method"),
+                "prefix": redis_test_name("hybrid_vector_method"),
+            },
+            "fields": [
+                {"name": "body", "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 2,
+                        "distance_metric": "cosine",
+                        "algorithm": request.param,
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+    index.create(overwrite=True, drop=True)
+    try:
+        index.load(
+            [{"body": "fox", "embedding": array_to_buffer([1.0, 0.0], "float32")}]
+        )
+        yield index
+    finally:
+        index.delete(drop=True)
+        index.disconnect()
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+@pytest.mark.parametrize(
+    "method, radius",
+    [("KNN", None), ("RANGE", 0.5), ("RANGE", 0)],
+    ids=["knn", "range", "zero-radius"],
+)
+def test_hybrid_query_vector_algorithm_defaults(vector_algorithm_index, method, radius):
+    query = HybridQuery(
+        text="fox",
+        text_field_name="body",
+        vector=[1.0, 0.0],
+        vector_field_name="embedding",
+        vector_search_method=method,
+        range_radius=radius,
+        return_fields=["body"],
+    )
+
+    results = vector_algorithm_index.query(query)
+
+    assert [result["body"] for result in results] == ["fox"]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+@pytest.mark.parametrize("vector_algorithm_index", ["hnsw"], indirect=True)
+@pytest.mark.parametrize(
+    "method, option, error",
+    [
+        ("KNN", "knn_ef_runtime", "Invalid EF_RUNTIME value"),
+        ("RANGE", "range_epsilon", "Invalid EPSILON value"),
+    ],
+)
+def test_hybrid_query_zero_vector_tuning_reaches_server(
+    vector_algorithm_index, method, option, error
+):
+    query = HybridQuery(
+        text="fox",
+        text_field_name="body",
+        vector=[1.0, 0.0],
+        vector_field_name="embedding",
+        vector_search_method=method,
+        range_radius=0.5,
+        **{option: 0},
+    )
+
+    with pytest.raises(ResponseError, match=error):
+        vector_algorithm_index.query(query)
