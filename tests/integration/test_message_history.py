@@ -923,3 +923,110 @@ def test_create_index_false_clear_works_under_a_read_write_acl(
         assert len(owner.get_recent(top_k=10)) == 1
     finally:
         owner.delete()
+
+
+async def test_async_message_history_matches_sync(standard_history, monkeypatch):
+    # Expected results come from the sync path before it is blocked.
+    standard_history.add_messages(_numbered_messages(6))
+    standard_history.add_message(
+        {"role": "tool", "content": "lookup", "tool_call_id": "t1"}
+    )
+    expected = {
+        "recent": standard_history.get_recent(top_k=4),
+        "text": standard_history.get_recent(top_k=3, as_text=True),
+        "raw_ids": [m[ID_FIELD_NAME] for m in standard_history.get_recent(raw=True)],
+        "roles": standard_history.get_recent(top_k=10, role=["user", "tool"]),
+        "count": standard_history.count(),
+    }
+    other_tag = "other_session"
+
+    def blocking(*args, **kwargs):
+        raise AssertionError("the async path made a blocking call")
+
+    # Every sync round trip goes through execute_command or a pipeline, so
+    # blocking both on the sync client catches any sync call the async
+    # methods make.
+    sync_client = standard_history._index._redis_client
+    monkeypatch.setattr(sync_client, "execute_command", blocking)
+    monkeypatch.setattr(sync_client, "pipeline", blocking)
+    aindex = None
+    try:
+        actual = {
+            "recent": await standard_history.aget_recent(top_k=4),
+            "text": await standard_history.aget_recent(top_k=3, as_text=True),
+            "raw_ids": [
+                m[ID_FIELD_NAME] for m in await standard_history.aget_recent(raw=True)
+            ],
+            "roles": await standard_history.aget_recent(
+                top_k=10, role=["user", "tool"]
+            ),
+            "count": await standard_history.acount(),
+        }
+        assert actual == expected
+        aindex = standard_history.aindex
+        assert aindex is not None
+
+        # astore must tag its entries with the session it is given.
+        await standard_history.astore("q", "a", session_tag=other_tag)
+        assert await standard_history.acount(session_tag=other_tag) == 2
+
+        # Writes land where the sync reader would find them, and an async
+        # write keeps tool_call_id and metadata.
+        await standard_history.astore("async prompt", "async response")
+        tool_message = {
+            "role": "tool",
+            "content": "async lookup",
+            "tool_call_id": "t2",
+            "metadata": {"params": "abc 789"},
+        }
+        await standard_history.aadd_message(tool_message)
+        assert await standard_history.aget_recent(top_k=1) == [tool_message]
+        await standard_history.aadd_message({"role": "user", "content": "last"})
+        assert await standard_history.acount() == expected["count"] + 4
+
+        # adrop with no id removes the latest entry ...
+        await standard_history.adrop()
+        assert await standard_history.aget_recent(top_k=1) == [tool_message]
+        # ... and adrop(id) removes that entry, not the latest.
+        prompt_id = next(
+            m[ID_FIELD_NAME]
+            for m in await standard_history.aget_recent(top_k=3, raw=True)
+            if m["content"] == "async prompt"
+        )
+        await standard_history.adrop(prompt_id)
+        assert await standard_history.aget_recent(top_k=2) == [
+            {"role": "llm", "content": "async response"},
+            tool_message,
+        ]
+        with pytest.raises(ValueError):
+            await standard_history.aget_recent(top_k=-1)
+
+        await standard_history.aclear()
+        assert await standard_history.acount() == 0
+        assert await standard_history.acount(session_tag=other_tag) == 0
+
+        # One async index serves every call.
+        assert standard_history.aindex is aindex
+    finally:
+        pool = aindex._redis_client.connection_pool if aindex else None
+        await standard_history.adisconnect()
+    assert standard_history.aindex is None
+    # adisconnect closed the converted client's connections.
+    assert pool is not None
+    connections = pool._available_connections + list(pool._in_use_connections)
+    assert connections and not any(c.is_connected for c in connections)
+
+
+async def test_async_message_history_with_redis_url(app_name, redis_url):
+    history = MessageHistory(name=app_name, redis_url=redis_url)
+    try:
+        await history.astore("hello", "hi")
+        assert await history.aget_recent(top_k=2) == [
+            {"role": "user", "content": "hello"},
+            {"role": "llm", "content": "hi"},
+        ]
+        # Built from the URL the sync index owns, not converted from its client.
+        assert history.aindex._redis_url == redis_url
+    finally:
+        await history.adisconnect()
+        history.clear()
