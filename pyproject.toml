@@ -4,7 +4,7 @@ name = "redisvl"
 version = "0.31.0"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
-requires-python = ">=3.10,<3.16"
+requires-python = ">=3.11,<3.16"
 readme = "README.md"
 license = "MIT"
 keywords = [
@@ -15,7 +15,6 @@ keywords = [
     "vector-search",
 ]
 classifiers = [
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -169,7 +168,7 @@ default-groups = [
 ]
 
 [tool.black]
-target-version = ['py310', 'py311', 'py312', 'py313', 'py314', 'py315']
+target-version = ['py311', 'py312', 'py313', 'py314', 'py315']
 exclude = '''
 (
   | \.egg
