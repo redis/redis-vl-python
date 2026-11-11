@@ -132,17 +132,11 @@ class Tag(FilterField):
     }
     SUPPORTED_VAL_TYPES = (list, set, tuple, str, type(None))
 
-    # A tag clause holds its alternatives in braces, so an unescaped `|` inside
-    # one value reads as a union rather than as part of the value. Values are
-    # escaped individually before being joined, so the list form that renders a
-    # union deliberately still works. Only the non-wildcard path uses this: the
-    # `%` operator keeps `|` live as a union between patterns.
-    escaper: TokenEscaper = TokenEscaper(
-        escape_chars_re=re.compile(TokenEscaper.TAG_ESCAPED_CHARS),
-        escape_chars_no_wildcard_re=re.compile(
-            TokenEscaper.TAG_ESCAPED_CHARS_NO_WILDCARD
-        ),
-    )
+    # `==` and `!=` escape each value with `TAG_VALUE_ESCAPED_CHARS`, so a `|`
+    # inside one value is literal. Values are escaped individually before being
+    # joined, so the list form that renders a union deliberately still works.
+    # `%` uses `TAG_PATTERN_ESCAPED_CHARS`, which keeps `*`, `?` and `|` live.
+    escaper: TokenEscaper = TokenEscaper.for_tags()
 
     def _set_tag_value(
         self, other: list[str] | set[str] | str, operator: FilterOperator

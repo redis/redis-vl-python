@@ -2,6 +2,25 @@ import re
 from typing import Pattern
 
 
+def _char_class(chars: str) -> str:
+    return "[" + "".join(re.escape(char) for char in chars) + "]"
+
+
+# Building blocks for the tag sets in `TokenEscaper`.
+_QUERY_SYNTAX = ",.<>{}[]\\\"':;!@#$%^&()-+=~/ "
+_WILDCARDS = "*?"
+# The query parser reads these as a term break inside a tag value unless they
+# are escaped: on an unescaped query `@f:{a`b}` matches a document tagged `a b`,
+# `!=` excludes it, and the pattern `a`*` is a syntax error. The other C0
+# controls and DEL (0x01-0x08, 0x0E-0x1F, 0x7F) break the term even when
+# escaped, so adding them here wouldn't make such values match.
+_TAG_SEPARATORS = "`\t\n\r\x0b\x0c"
+# Redis trims whitespace from both ends of a tag value when it indexes it. These
+# stay unescaped at the ends of a query value so the query drops them the same
+# way and still matches the trimmed tag.
+_TAG_EDGE_WHITESPACE = "\t\n\r\x0b\x0c"
+
+
 class TokenEscaper:
     """Escape punctuation within an input string.
 
@@ -15,58 +34,58 @@ class TokenEscaper:
     # Same as above but excludes * and ? to allow wildcard patterns
     ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ ]"
 
-    # The default set plus `|`, for tag equality values only. A tag clause holds
-    # its alternatives directly in braces -- `@f:{a|b}` -- so an unescaped `|`
-    # inside a single value silently turns an equality match into a union.
+    # Tag equality (`==`, `!=`): every character is literal, including `|`. A tag
+    # clause holds its alternatives directly in braces -- `@f:{a|b}` -- so an
+    # unescaped `|` inside a single value silently turns an equality match into
+    # a union.
     #
-    # Deliberately not added to the default set: a text query string joins its
+    # `|` is deliberately not in the default set: a text query string joins its
     # own terms with `|`, so escaping it there turns a documented union into a
-    # literal that matches nothing. The wildcard path is likewise unaffected,
-    # because the `%` operator documents `|` as a union between patterns -- see
-    # `Tag.__mod__`.
-    TAG_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~|\/ \?`\t\n\r\x0b\x0c]"
-    # The tag set for the wildcard (`%`) path: `*` and `?` stay live as wildcards
-    # and `|` as a union between patterns, as in ESCAPED_CHARS_NO_WILDCARD.
-    #
-    # Both tag sets also escape the backtick and ASCII whitespace other than the
-    # space (tab, newline, carriage return, vertical tab, form feed). Left raw,
-    # a tag query containing one of them never matches the stored value, so
-    # `@f:{a`b}` finds nothing even when a document is tagged `a`b`.
-    TAG_ESCAPED_CHARS_NO_WILDCARD = (
-        r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ `\t\n\r\x0b\x0c]"
+    # literal that matches nothing.
+    TAG_VALUE_ESCAPED_CHARS = _char_class(
+        _QUERY_SYNTAX + _WILDCARDS + "|" + _TAG_SEPARATORS
     )
 
-    def __init__(
-        self,
-        escape_chars_re: Pattern | None = None,
-        escape_chars_no_wildcard_re: Pattern | None = None,
-    ):
-        """Create an escaper.
+    # Tag patterns (`%`): `*`, `?` and `|` stay live, because `Tag.__mod__`
+    # documents `|` as a union between patterns.
+    TAG_PATTERN_ESCAPED_CHARS = _char_class(_QUERY_SYNTAX + _TAG_SEPARATORS)
 
-        Args:
-            escape_chars_re: Characters to escape by default. Defaults to
-                ``DEFAULT_ESCAPED_CHARS``.
-            escape_chars_no_wildcard_re: Characters to escape when wildcards
-                are preserved. Defaults to ``ESCAPED_CHARS_NO_WILDCARD``.
-        """
-        if escape_chars_re:
+    # The tag equality set under its earlier name.
+    TAG_ESCAPED_CHARS = TAG_VALUE_ESCAPED_CHARS
+
+    # Whitespace left unescaped at the ends of a value; only `for_tags()` sets it.
+    _raw_edge_chars: str = ""
+
+    def __init__(self, escape_chars_re: Pattern | None = None):
+        if escape_chars_re is not None:
             self.escaped_chars_re = escape_chars_re
         else:
             self.escaped_chars_re = re.compile(self.DEFAULT_ESCAPED_CHARS)
-        if escape_chars_no_wildcard_re:
-            self.escaped_chars_no_wildcard_re = escape_chars_no_wildcard_re
-        else:
-            self.escaped_chars_no_wildcard_re = re.compile(
-                self.ESCAPED_CHARS_NO_WILDCARD
-            )
+        self.escaped_chars_no_wildcard_re = re.compile(self.ESCAPED_CHARS_NO_WILDCARD)
+
+    @classmethod
+    def for_tags(cls) -> "TokenEscaper":
+        """Return the escaper for tag values and tag patterns.
+
+        ``escape()`` uses ``TAG_VALUE_ESCAPED_CHARS``, or
+        ``TAG_PATTERN_ESCAPED_CHARS`` when ``preserve_wildcards`` is True. Tabs,
+        newlines and the other ASCII whitespace except the space are left
+        unescaped at either end of the value, because Redis trims them from tag
+        values when it indexes them.
+        """
+        escaper = cls(re.compile(cls.TAG_VALUE_ESCAPED_CHARS))
+        escaper.escaped_chars_no_wildcard_re = re.compile(cls.TAG_PATTERN_ESCAPED_CHARS)
+        escaper._raw_edge_chars = _TAG_EDGE_WHITESPACE
+        return escaper
 
     def escape(self, value: str, preserve_wildcards: bool = False) -> str:
         """Escape special characters in a string for use in Redis queries.
 
         Args:
             value: The string value to escape.
-            preserve_wildcards: If True, preserves * characters for wildcard
-                matching. Defaults to False.
+            preserve_wildcards: If True, leaves ``*`` and ``?`` unescaped for
+                wildcard matching, and for the tag escaper also ``|`` as a
+                union between patterns. Defaults to False.
 
         Returns:
             The escaped string.
@@ -83,6 +102,17 @@ class TokenEscaper:
             value = match.group(0)
             return f"\\{value}"
 
-        if preserve_wildcards:
-            return self.escaped_chars_no_wildcard_re.sub(escape_symbol, value)
-        return self.escaped_chars_re.sub(escape_symbol, value)
+        pattern = (
+            self.escaped_chars_no_wildcard_re
+            if preserve_wildcards
+            else self.escaped_chars_re
+        )
+        if not self._raw_edge_chars:
+            return pattern.sub(escape_symbol, value)
+
+        core = value.strip(self._raw_edge_chars)
+        if not core:
+            return value
+        start = len(value) - len(value.lstrip(self._raw_edge_chars))
+        end = start + len(core)
+        return value[:start] + pattern.sub(escape_symbol, core) + value[end:]

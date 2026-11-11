@@ -1,5 +1,3 @@
-import re
-
 import pytest
 
 from redisvl.utils.token_escaper import TokenEscaper
@@ -127,7 +125,7 @@ def test_escape_long_string(escaper):
 
 @pytest.fixture
 def tag_escaper():
-    return TokenEscaper(escape_chars_re=re.compile(TokenEscaper.TAG_ESCAPED_CHARS))
+    return TokenEscaper.for_tags()
 
 
 @pytest.mark.parametrize(
@@ -146,6 +144,7 @@ def test_tag_escaper_escapes_pipe(tag_escaper, test_input, expected):
     assert tag_escaper.escape(test_input) == expected
 
 
+@pytest.mark.parametrize("preserve_wildcards", [False, True], ids=["value", "pattern"])
 @pytest.mark.parametrize(
     ("test_input,expected"),
     [
@@ -159,10 +158,40 @@ def test_tag_escaper_escapes_pipe(tag_escaper, test_input, expected):
     ids=["backtick", "tab", "newline", "carriage-return", "vertical-tab", "form-feed"],
 )
 def test_tag_escaper_escapes_backtick_and_ascii_whitespace(
-    tag_escaper, test_input, expected
+    tag_escaper, test_input, expected, preserve_wildcards
 ):
-    # Left raw, any of these inside a tag value makes the query miss the stored tag.
-    assert tag_escaper.escape(test_input) == expected
+    # Left raw inside a tag value, the query parser reads each of these as a
+    # term break.
+    assert tag_escaper.escape(test_input, preserve_wildcards) == expected
+
+
+@pytest.mark.parametrize("preserve_wildcards", [False, True], ids=["value", "pattern"])
+@pytest.mark.parametrize(
+    ("test_input,expected"),
+    [
+        ("ab\n", "ab\n"),
+        ("\tlead", "\tlead"),
+        ("\ta\tb\n", "\ta\\\tb\n"),
+        ("\t\n", "\t\n"),
+        ("`a`", "\\`a\\`"),
+        (" a ", "\\ a\\ "),
+    ],
+    ids=[
+        "trailing",
+        "leading",
+        "inner-and-edges",
+        "only-whitespace",
+        "edge-backtick",
+        "edge-space",
+    ],
+)
+def test_tag_escaper_leaves_edge_whitespace_unescaped(
+    tag_escaper, test_input, expected, preserve_wildcards
+):
+    # Redis trims whitespace from both ends of a tag value when indexing it, so
+    # the query has to drop it the same way. Backticks and spaces are escaped
+    # at the edges as before.
+    assert tag_escaper.escape(test_input, preserve_wildcards) == expected
 
 
 def test_default_escaper_leaves_pipe_live(escaper):

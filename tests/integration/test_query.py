@@ -1547,13 +1547,13 @@ def test_vector_range_query_with_raw_string_union_filter(index):
 
 @pytest.mark.parametrize(
     "value",
-    ["back`tick", "tab\tseparated", "line\nbreak"],
-    ids=["backtick", "tab", "newline"],
+    ["back`tick", "tab\tsep", "line\nbreak", "cr\rx", "vt\x0bx", "ff\x0cx"],
+    ids=["backtick", "tab", "newline", "carriage-return", "vertical-tab", "form-feed"],
 )
 def test_tag_filter_matches_values_with_backtick_or_ascii_whitespace(
     client, redis_test_name, value
 ):
-    """Tag values containing a backtick or ASCII whitespace other than a space round-trip."""
+    """Tag values with a backtick or ASCII whitespace inside them match with `==`, `!=` and `%`."""
     index = SearchIndex.from_dict(
         {
             "index": {
@@ -1578,5 +1578,37 @@ def test_tag_filter_matches_values_with_backtick_or_ascii_whitespace(
         assert ids(Tag("tag") == value) == ["1"]
         assert ids(Tag("tag") != value) == ["2"]
         assert ids(Tag("tag") % (value[:-1] + "*")) == ["1"]
+    finally:
+        index.delete(drop=True)
+
+
+@pytest.mark.parametrize("value", ["ab\n", "\tlead"], ids=["trailing", "leading"])
+def test_tag_filter_matches_hash_values_with_edge_whitespace(
+    client, redis_test_name, value
+):
+    """A HASH index trims whitespace at the ends of a tag value, and the filter still matches it."""
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": redis_test_name("tag_edge"),
+                "prefix": redis_test_name("tag_edge_doc"),
+                "storage_type": "hash",
+            },
+            "fields": [{"name": "tag", "type": "tag"}],
+        },
+        redis_client=client,
+    )
+    index.create(overwrite=True)
+    try:
+        index.load(
+            [{"id": "1", "tag": value}, {"id": "2", "tag": "other"}], id_field="id"
+        )
+
+        def ids(expression):
+            query = FilterQuery(filter_expression=expression, return_fields=["id"])
+            return sorted(doc["id"].split(":")[-1] for doc in index.query(query))
+
+        assert ids(Tag("tag") == value) == ["1"]
+        assert ids(Tag("tag") != value) == ["2"]
     finally:
         index.delete(drop=True)
