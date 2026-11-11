@@ -68,9 +68,10 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-service
+          name: coverage-data-service
           path: .coverage.service
           include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
           retention-days: 7
 
   test:
@@ -161,9 +162,10 @@ jobs:
         if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ env.COVERAGE_LEG }}
+          name: coverage-data-${{ env.COVERAGE_LEG }}
           path: .coverage.${{ env.COVERAGE_LEG }}
           include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
           retention-days: 7
 
   coverage:
@@ -203,7 +205,7 @@ jobs:
       - name: Download coverage data
         uses: actions/download-artifact@v8
         with:
-          pattern: coverage-*
+          pattern: coverage-data-*   # not coverage-html from an earlier attempt
           path: coverage-data
           merge-multiple: true
 
@@ -265,6 +267,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html
+          overwrite: true   # a re-run attempt replaces its earlier upload
           path: htmlcov
           retention-days: 14
 
@@ -385,9 +388,10 @@ jobs:
         if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ env.COVERAGE_LEG }}
+          name: coverage-data-${{ env.COVERAGE_LEG }}
           path: .coverage.${{ env.COVERAGE_LEG }}
           include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
           retention-days: 7
 
   notebooks:
