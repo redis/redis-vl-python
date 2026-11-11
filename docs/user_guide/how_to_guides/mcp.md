@@ -15,7 +15,7 @@ For the higher-level design, see {doc}`/concepts/mcp`.
 
 RedisVL MCP assumes all of the following are already true:
 
-- you have Python 3.10 or newer
+- you have Python 3.11 or newer
 - you have Redis with Search capabilities available
 - the Redis index already exists
 - you know which text field and vector field the server should use
@@ -26,6 +26,8 @@ Install the MCP extra:
 ```bash
 pip install redisvl[mcp]
 ```
+
+The extra installs FastMCP 2.13.0 or later, below 4. If you pin FastMCP yourself, stay within that range, because the server does not work with older releases.
 
 If your vectorizer needs a provider extra, install that too:
 
