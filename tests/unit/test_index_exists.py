@@ -5,10 +5,11 @@ the Redis response.
 exists() runs FT.INFO and has to distinguish three outcomes from a single
 command: the index is there, the index is absent, or the check itself failed.
 Redis Search offers no structured "not found" signal and phrases the error
-differently across versions, so these tests pin all three branches. They drive
-the real _info() helper rather than stubbing it, because _info() rewrites the
-message into "Error while fetching <name> index info: ..." and the not-found
-match has to survive that wrapping.
+differently across versions, so exists() classifies the reply by exception
+type and error code rather than wording, and these tests pin all three
+branches. They drive the real _info() helper rather than stubbing it, because
+_info() rewraps the error as "Error while fetching <name> index info: ..." and
+the original exception has to survive that wrapping as __cause__.
 """
 
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -18,7 +19,13 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
-from redis.exceptions import ConnectionError, ResponseError
+from redis.exceptions import (
+    ClusterDownError,
+    ConnectionError,
+    NoPermissionError,
+    ReadOnlyError,
+    ResponseError,
+)
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex, SearchIndex
@@ -26,23 +33,41 @@ from redisvl.schema import IndexSchema
 
 INDEX_NAME = "my_index"
 
-# Every wording Redis Search has used for an absent index. 8.8 replaced the
-# older prose with an error code, so a match on any single one of these would
-# break exists() on some supported server.
+# Every wording Redis Search has used for an absent index, plus one no version
+# uses. exists() reads the exception type, not the text, so a wording it has
+# never seen must classify the same way as the known ones (#773).
 MISSING_INDEX_MESSAGES = [
     "Unknown index name",
     f"{INDEX_NAME}: no such index",
     f"SEARCH_INDEX_NOT_FOUND Index not found: {INDEX_NAME}",
     "Index not found",
+    "a wording no Redis Search version uses",
 ]
 
 # Failures that must never be read as "the index is absent": reporting False
 # here would send callers on to create an index that already exists, and would
-# skip the schema-compatibility check the extensions perform first. The two
-# exception types matter -- _info() catches bare Exception, so narrowing it to
-# ResponseError would let the connection case escape unwrapped.
+# skip the schema-compatibility check the extensions perform first. redis-py
+# raises most of these as ResponseError subclasses (NOPERM, READONLY,
+# CLUSTERDOWN) or outside ResponseError entirely (connection); BUSY and
+# ERRCLUSTER it leaves unmapped, so exists() excludes them by error code, and
+# "unknown command" (Redis Search not loaded at all) it also leaves unmapped,
+# so exists() excludes that by substring instead, since it isn't a leading code.
+# _info() catches bare Exception, so narrowing it to ResponseError would let the
+# connection case escape unwrapped.
 NON_MISSING_INDEX_ERRORS = [
-    ResponseError("User acl_user has no permissions to run the 'FT.INFO' command"),
+    NoPermissionError("User acl_user has no permissions to run the 'FT.INFO' command"),
+    ReadOnlyError("You can't write against a read only replica."),
+    ClusterDownError("The cluster is down"),
+    # redis-py does not map BUSY or ERRCLUSTER, so they arrive as a bare
+    # ResponseError.
+    ResponseError(
+        "BUSY Redis is busy running a script. You can only call SCRIPT KILL or "
+        "SHUTDOWN NOSAVE."
+    ),
+    ResponseError("ERRCLUSTER Uninitialized cluster state, could not perform command"),
+    # A server with Redis Search not loaded rejects FT.INFO itself, before it
+    # can say anything about a specific index (#818 CI failure).
+    ResponseError("ERR unknown command 'FT.INFO', with args beginning with: "),
     ConnectionError("Error 111 connecting to localhost:6379. Connection refused."),
 ]
 
@@ -90,21 +115,6 @@ class TestExistsClassifiesRedisResponse:
         with pytest.raises(RedisSearchError):
             index.exists()
 
-    def test_failure_on_index_named_after_a_wording_is_still_raised(self):
-        # _info() interpolates the index name into its message, so an index
-        # named after one of the wordings makes the *wrapper* look like an
-        # absence report. Classification therefore reads the original Redis
-        # error via __cause__; reading the wrapper would turn this permission
-        # error into exists() == False.
-        index, _ = _sync_index(
-            name="search_index_not_found",
-            info_error=ResponseError(
-                "User acl_user has no permissions to run the 'FT.INFO' command"
-            ),
-        )
-        with pytest.raises(RedisSearchError):
-            index.exists()
-
     def test_index_name_resolving_elsewhere_returns_false(self):
         # FT.INFO accepts an alias and answers for its target, so a successful
         # reply naming a different index means this name is an alias, not an
@@ -115,11 +125,11 @@ class TestExistsClassifiesRedisResponse:
 
     # The async twin is a hand-maintained copy, so it needs its own witness for
     # each branch -- but the branch logic itself is shared, so one wording is
-    # enough. Live servers cover the current wording via the integration suite;
-    # the newest one is only reachable here.
+    # enough. It uses the wording no Redis version sends, since that is the case
+    # the type-based check exists for.
     @pytest.mark.asyncio
     async def test_async_missing_index_wording_returns_false(self):
-        index, _ = _async_index(info_error=ResponseError(MISSING_INDEX_MESSAGES[2]))
+        index, _ = _async_index(info_error=ResponseError(MISSING_INDEX_MESSAGES[-1]))
         assert await index.exists() is False
 
     @pytest.mark.asyncio

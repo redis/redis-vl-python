@@ -20,7 +20,9 @@ jobs:
   service-tests:
     name: Service Tests
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Needs API-key secrets. Fork PRs and Dependabot-triggered runs get none, so
+    # they skip here; a maintainer runs them via test-fork-pr.yml instead.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -145,9 +147,9 @@ jobs:
     runs-on: ubuntu-latest
     # Ordered after the HF cache is primed, not gated on it; see the `test` job.
     needs: service-tests
-    # Needs API-key secrets, unavailable to fork PRs. Keep in sync with
-    # service-tests.
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    # Needs API-key secrets, unavailable to fork PRs and Dependabot. Keep in
+    # sync with service-tests.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:

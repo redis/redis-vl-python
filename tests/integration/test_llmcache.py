@@ -430,6 +430,52 @@ async def test_check_refreshes_ttl_of_every_hit(
     assert all(0 < client.ttl(key) <= 2 for key in keys)
 
 
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize(
+    "refresh_ttl_on_hit, refresh_ttl, refreshed",
+    [
+        (True, None, True),
+        (True, False, False),
+        (False, None, False),
+        (False, True, True),
+    ],
+)
+async def test_check_refresh_ttl_controls(
+    cache_with_ttl,
+    vectorizer,
+    client,
+    redis_url,
+    use_async,
+    refresh_ttl_on_hit,
+    refresh_ttl,
+    refreshed,
+):
+    """refresh_ttl overrides refresh_ttl_on_hit; a refresh resets the TTL to the default."""
+    # A second instance over the fixture's index, so the fixture still cleans up.
+    cache = SemanticCache(
+        name=cache_with_ttl.index.name,
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        ttl=2,
+        redis_url=redis_url,
+        refresh_ttl_on_hit=refresh_ttl_on_hit,
+    )
+    vector = vectorizer.embed("This is a test prompt.")
+    key = cache.store("prompt", "response", vector=vector, ttl=100)
+
+    if use_async:
+        async with cache:
+            hits = await cache.acheck(vector=vector, refresh_ttl=refresh_ttl)
+    else:
+        hits = cache.check(vector=vector, refresh_ttl=refresh_ttl)
+
+    assert [hit["key"] for hit in hits] == [key]
+    if refreshed:
+        assert 0 < client.ttl(key) <= 2
+    else:
+        assert client.ttl(key) > 2
+
+
 # Test manual expiration of single document
 def test_drop_document(cache, vectorizer):
     prompt = "This is a test prompt."
@@ -624,12 +670,50 @@ async def test_acheck_with_zero_distance_threshold(cache):
     assert (await cache.acheck("what's the capital of france?")) != []
 
 
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_check_threshold_is_inclusive(cache, vectorizer, use_async):
+    """A candidate at the threshold, as Redis reports its distance, hits; one
+    just beyond it does not."""
+    prompts = [
+        "what is the capital of france?",
+        "what's the capital of france?",
+        "how do I bake sourdough bread?",
+    ]
+    for prompt in prompts:
+        cache.store(prompt, "response", vector=vectorizer.embed(prompt))
+    query = vectorizer.embed(prompts[0])
+
+    async def check(distance_threshold):
+        kwargs = dict(
+            vector=query, num_results=3, distance_threshold=distance_threshold
+        )
+        return await cache.acheck(**kwargs) if use_async else cache.check(**kwargs)
+
+    everything = await check(2)
+    distances = [hit["vector_distance"] for hit in everything]
+    assert len(distances) == 3 and distances == sorted(distances)
+
+    at_threshold = await check(distances[1])
+    assert [hit["key"] for hit in at_threshold] == [
+        hit["key"] for hit in everything[:2]
+    ]
+
+    beyond_threshold = await check(distances[1] - 1e-6)
+    assert [hit["key"] for hit in beyond_threshold] == [everything[0]["key"]]
+
+
 def test_check_invalid_input(cache):
     with pytest.raises(ValueError):
         cache.check()
 
     with pytest.raises(TypeError):
         cache.check(prompt="test", return_fields="bad value")
+
+    with pytest.raises(ValueError):
+        cache.check(prompt="test", distance_threshold=-0.1)
+
+    with pytest.raises(TypeError):
+        cache.check(prompt="test", distance_threshold="0.1")
 
 
 @pytest.mark.asyncio
@@ -639,6 +723,12 @@ async def test_async_check_invalid_input(cache):
 
     with pytest.raises(TypeError):
         await cache.acheck(prompt="test", return_fields="bad value")
+
+    with pytest.raises(ValueError):
+        await cache.acheck(prompt="test", distance_threshold=-0.1)
+
+    with pytest.raises(TypeError):
+        await cache.acheck(prompt="test", distance_threshold="0.1")
 
 
 def test_bad_connection_info(vectorizer, worker_id):

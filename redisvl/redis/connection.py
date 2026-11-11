@@ -1,3 +1,4 @@
+import inspect
 import os
 from collections.abc import Mapping
 from typing import Any, TypeVar, overload
@@ -11,10 +12,15 @@ from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.connection import AbstractConnection as AsyncAbstractConnection
 from redis.asyncio.connection import Connection as AsyncConnection
 from redis.asyncio.connection import SSLConnection as AsyncSSLConnection
+from redis.asyncio.connection import (
+    UnixDomainSocketConnection as AsyncUnixDomainSocketConnection,
+)
+from redis.asyncio.retry import Retry as AsyncRetry
 from redis.asyncio.sentinel import Sentinel as AsyncSentinel
-from redis.connection import SSLConnection
+from redis.connection import SSLConnection, UnixDomainSocketConnection
 from redis.exceptions import ResponseError
-from redis.sentinel import Sentinel
+from redis.retry import Retry
+from redis.sentinel import Sentinel, SentinelConnectionPool
 
 from redisvl import __version__
 from redisvl.redis.constants import (
@@ -302,6 +308,121 @@ async def _aidentify_client(
         logger.debug(f"CLIENT SETINFO was not applied, continuing without it: {e}")
 
 
+def _init_parameters(cls: type) -> dict[str, inspect.Parameter]:
+    """Return the keyword parameters ``cls(...)`` accepts, walking its MRO.
+
+    redis-py's connection classes each declare their own keywords and pass the
+    rest up with ``**kwargs``, so the full set is the union of every
+    ``__init__`` in the chain up to the first one without ``**kwargs``. That
+    stop is deliberate: a subclass whose ``__init__`` takes no ``**kwargs``
+    can't be given its parents' keywords, so they aren't accepted either.
+    """
+    params: dict[str, inspect.Parameter] = {}
+    for klass in cls.__mro__:
+        init = klass.__dict__.get("__init__")
+        if init is None:
+            continue
+        signature = inspect.signature(init).parameters
+        for name, param in signature.items():
+            if name == "self" or name in params:
+                continue
+            if param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY):
+                params[name] = param
+        if not any(p.kind is p.VAR_KEYWORD for p in signature.values()):
+            break
+    return params
+
+
+# Keywords the sync pool computes for its own connections (redis-py >= 7.4
+# fills them in for maintenance notifications). They describe the sync pool,
+# not the user's settings, and the async pool computes its own, so they are
+# never carried over.
+_SYNC_POOL_PLUMBING = frozenset(
+    {
+        "maint_notifications_pool_handler",
+        "orig_host_address",
+        "orig_socket_timeout",
+        "orig_socket_connect_timeout",
+    }
+)
+
+
+def _is_unset(
+    name: str, value: Any, sync_defaults: dict[str, inspect.Parameter]
+) -> bool:
+    """Whether ``value`` is what the sync connection class would have used anyway.
+
+    The comparison is against the sync class's own declared default, not
+    against ``None``/``False``, so ``0`` is a setting and a keyword whose
+    default is ``True`` is unset only when it is still ``True``.
+    """
+    if name == "maint_notifications_config":
+        # The sync pool injects a config in "auto" mode on its own; only a
+        # user who turned notifications on explicitly would lose anything.
+        return getattr(value, "enabled", None) is not True
+    param = sync_defaults.get(name)
+    if param is None or param.default is param.empty:
+        return value is None
+    default = param.default
+    return value is default or (type(value) is type(default) and value == default)
+
+
+def _async_retry(retry: Retry) -> AsyncRetry:
+    """Rebuild a sync ``Retry`` as ``redis.asyncio.retry.Retry``, same policy.
+
+    The async connection awaits ``retry.call_with_retry``; a sync ``Retry``
+    there returns the coroutine unawaited, so the policy silently never runs.
+    Backoff classes are shared between the sync and async APIs, so the backoff
+    is carried over as is. ``_backoff`` and ``_supported_errors`` have no
+    public getter in redis-py 6.3 through 8.1.
+    """
+    # The sync default error set includes socket.timeout, which is not a
+    # RedisError; the async except clause takes any exception type, and
+    # redis-py itself adds asyncio.TimeoutError to it for retry_on_timeout.
+    return AsyncRetry(
+        backoff=retry._backoff,
+        retries=retry.get_retries(),
+        supported_errors=retry._supported_errors,  # type: ignore[arg-type]
+    )
+
+
+def _async_connection_kwargs(
+    connection_kwargs: Mapping[str, Any],
+    connection_class: type[AsyncAbstractConnection],
+    sync_connection_class: type,
+) -> dict[str, Any]:
+    """Translate a sync pool's ``connection_kwargs`` for an async connection class.
+
+    Keywords the async class does not accept are dropped when they are unset,
+    meaning they still hold the sync class's own default, or when they are
+    pool plumbing the async pool computes for itself. One that the user set,
+    such as ``ssl_validate_ocsp=True``, is a setting the async client cannot
+    honour, so it raises instead of being silently lost. A sync ``Retry`` is
+    rebuilt as the async ``Retry`` with the same backoff, count and errors.
+    """
+    accepted = _init_parameters(connection_class)
+    sync_defaults = _init_parameters(sync_connection_class)
+    kwargs: dict[str, Any] = {}
+    lost: list[str] = []
+    for name, value in connection_kwargs.items():
+        if name in _SYNC_POOL_PLUMBING:
+            continue
+        if name in accepted:
+            kwargs[name] = value
+        elif not _is_unset(name, value, sync_defaults):
+            lost.append(name)
+    if lost:
+        raise ValueError(
+            "Cannot convert this Redis client to async: the async "
+            f"{connection_class.__name__} does not support "
+            f"{', '.join(sorted(lost))}. Pass redis_url and connection_kwargs "
+            "instead so the async client is built directly."
+        )
+    if isinstance(kwargs.get("retry"), Retry):
+        kwargs["retry"] = _async_retry(kwargs["retry"])
+    return kwargs
+
+
 def _normalize_index_info_mapping(value: Any) -> dict[str, Any]:
     """Normalize a mapping-shaped or alternating-list FT.INFO section."""
     if isinstance(value, dict):
@@ -405,6 +526,7 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             # params in "flags" as key/value pairs, possibly followed by
             # valueless modifiers: ["algorithm", "FLAT", "dim", 4, "INDEXMISSING"]
             flags = attrs.get("flags") or []
+            index_missing = "INDEXMISSING" in flags
             i = 0
             while i < len(flags):
                 key = str(flags[i]).lower()
@@ -414,6 +536,10 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                 vector_attrs.setdefault(key, flags[i + 1])
                 i += 2
         else:
+            # INDEXMISSING is a valueless modifier after the key/value pairs
+            index_missing = "INDEXMISSING" in attrs[6:]
+            attrs = attrs[:6] + [a for a in attrs[6:] if a != "INDEXMISSING"]
+
             # Check if we have any attributes beyond the type declaration
             if len(attrs) <= 6:
                 # Redis 6.2.6-v9 or similar: no vector params in FT.INFO
@@ -512,8 +638,9 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
 
         # Handle SVS-VAMANA specific parameters
         # Compression - Redis uses different internal names, so we need to map them
-        if "compression" in vector_attrs:
-            compression_value = vector_attrs["compression"]
+        # NO_COMPRESSION represents an omitted compression setting.
+        compression_value = vector_attrs.get("compression")
+        if compression_value not in (None, "NO_COMPRESSION"):
             # Map Redis internal names to our enum values
             compression_mapping = {
                 "GlobalSQ8": "LVQ4x4",  # Default mapping
@@ -560,6 +687,9 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
                 normalized["epsilon"] = float(vector_attrs["epsilon"])
             except (ValueError, TypeError):
                 pass
+
+        if index_missing:
+            normalized["index_missing"] = True
 
         # Validate that we have required dims
         if "dims" not in normalized:
@@ -875,7 +1005,22 @@ class RedisConnectionFactory:
     def sync_to_async_redis(
         redis_client: SyncRedisClient,
     ) -> AsyncRedisClient:
-        """Convert a synchronous Redis client to an asynchronous one."""
+        """Convert a synchronous Redis client to an asynchronous one.
+
+        The async client is built from the sync client's connection settings:
+        TLS and unix-socket connections map to redis-py's stock async
+        connection classes, so the behaviour of a custom ``SSLConnection``
+        subclass is not carried over. The retry policy is rebuilt as an async
+        ``Retry`` with the same backoff, retry count and error set. Keywords
+        that only the sync classes accept are dropped when unset.
+
+        Raises:
+            ValueError: For a ``RedisCluster`` client, a Sentinel-managed
+                client (from ``Sentinel.master_for`` or ``slave_for``), or a
+                client with a sync-only setting the async client cannot honour
+                (such as OCSP validation). Build the async client from a URL
+                in those cases.
+        """
         if isinstance(redis_client, RedisCluster):
             raise ValueError(
                 "RedisCluster is not supported for sync-to-async conversion."
@@ -884,17 +1029,29 @@ class RedisConnectionFactory:
         # At this point, redis_client is guaranteed to be Redis type
         assert isinstance(redis_client, Redis)  # Type narrowing for MyPy
 
+        pool = redis_client.connection_pool
+        if isinstance(pool, SentinelConnectionPool):
+            raise ValueError(
+                "Sentinel-managed clients are not supported for sync-to-async "
+                "conversion. Build the async client from the sentinel URL instead."
+            )
+
         # pick the right connection class
-        connection_class: type[AsyncAbstractConnection] = (
-            AsyncSSLConnection
-            if redis_client.connection_pool.connection_class == SSLConnection
-            else AsyncConnection
-        )
+        connection_class: type[AsyncAbstractConnection]
+        if issubclass(pool.connection_class, SSLConnection):
+            connection_class = AsyncSSLConnection
+        elif issubclass(pool.connection_class, UnixDomainSocketConnection):
+            connection_class = AsyncUnixDomainSocketConnection
+        else:
+            connection_class = AsyncConnection
+
         # make async client
         return AsyncRedis.from_pool(
             AsyncConnectionPool(
                 connection_class=connection_class,
-                **redis_client.connection_pool.connection_kwargs,
+                **_async_connection_kwargs(
+                    pool.connection_kwargs, connection_class, pool.connection_class
+                ),
             )
         )
 

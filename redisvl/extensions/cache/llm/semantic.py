@@ -3,6 +3,7 @@ from typing import Any
 from pydantic import ValidationError
 from redis import Redis
 
+from redisvl.extensions.cache.llm import _telemetry
 from redisvl.extensions.cache.llm.base import BaseLLMCache
 from redisvl.extensions.cache.llm.schema import (
     CacheEntry,
@@ -22,7 +23,7 @@ from redisvl.extensions.constants import (
     UPDATED_AT_FIELD_NAME,
 )
 from redisvl.index import AsyncSearchIndex, SearchIndex
-from redisvl.query import VectorRangeQuery
+from redisvl.query import VectorQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import hashify
 from redisvl.utils.log import get_logger
@@ -69,6 +70,7 @@ class SemanticCache(BaseLLMCache):
         connection_kwargs: dict[str, Any] | None = None,
         overwrite: bool = False,
         create_index: bool = True,
+        refresh_ttl_on_hit: bool = True,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -103,6 +105,8 @@ class SemanticCache(BaseLLMCache):
                 externally, or when the credential cannot run ``FT.INFO``. See
                 :doc:`/user_guide/installation` for the ACL details. Defaults to
                 true.
+            refresh_ttl_on_hit (bool): Whether cache hits refresh matched
+                entries' TTL by default. Defaults to True.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
@@ -138,6 +142,8 @@ class SemanticCache(BaseLLMCache):
             redis_url=redis_url,
             connection_kwargs=connection_kwargs,
         )
+
+        self.refresh_ttl_on_hit = refresh_ttl_on_hit
 
         # Handle the deprecated dtype parameter
         dtype = kwargs.pop("dtype", None)
@@ -350,6 +356,7 @@ class SemanticCache(BaseLLMCache):
         """
         await super().aclear()
 
+    @_telemetry.operation("drop")
     def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
         """Drop specific entries from the cache by ID or Redis key.
 
@@ -374,6 +381,7 @@ class SemanticCache(BaseLLMCache):
         if keys is not None:
             self._index.drop_keys(keys)
 
+    @_telemetry.operation("drop")
     async def adrop(
         self, ids: list[str] | None = None, keys: list[str] | None = None
     ) -> None:
@@ -428,6 +436,7 @@ class SemanticCache(BaseLLMCache):
         ].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
+    @_telemetry.operation("check", lookup=True)
     def check(
         self,
         prompt: str | None = None,
@@ -436,6 +445,8 @@ class SemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
@@ -460,6 +471,9 @@ class SemanticCache(BaseLLMCache):
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
                 vector distance.
+            refresh_ttl (Optional[bool]): Whether this cache hit should refresh
+                matched entries' TTL. If None, uses the cache-level
+                refresh_ttl_on_hit setting.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -485,6 +499,8 @@ class SemanticCache(BaseLLMCache):
         # (exact match only), so only fall back on None.
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
+        else:
+            self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -496,30 +512,25 @@ class SemanticCache(BaseLLMCache):
         else:
             raise ValueError("Failed to generate a valid vector for the query.")
 
-        # Create the vector search query
-        query = VectorRangeQuery(
-            vector=vector,
-            vector_field_name=CACHE_VECTOR_FIELD_NAME,
-            return_fields=self.return_fields,
-            distance_threshold=distance_threshold,
-            num_results=num_results,
-            return_score=True,
-            filter_expression=filter_expression,
-            dtype=self._vectorizer.dtype,
-        )
-
         # Search the cache!
-        cache_search_results = self._index.query(query)
-        redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results,
-            return_fields,  # type: ignore
-        )
+        query = self._build_check_query(vector, num_results, filter_expression)
+        with _telemetry.retrieval(
+            self._index.name, num_results, distance_threshold
+        ) as span:
+            candidates = self._index.query(query)
+            redis_keys, cache_hits = self._process_cache_results(
+                self._within_threshold(candidates, distance_threshold),
+                return_fields,
+            )
+            _telemetry.record_lookup(span, candidates, prompt)
 
-        # Refresh TTL on all found keys
-        self._expire_many(redis_keys)
+        if self._should_refresh_ttl(refresh_ttl):
+            self._expire_many(redis_keys)
+        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
 
         return cache_hits
 
+    @_telemetry.operation("check", lookup=True)
     async def acheck(
         self,
         prompt: str | None = None,
@@ -528,6 +539,8 @@ class SemanticCache(BaseLLMCache):
         return_fields: list[str] | None = None,
         filter_expression: FilterExpression | None = None,
         distance_threshold: float | None = None,
+        *,
+        refresh_ttl: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Async check the semantic cache for results similar to the specified prompt
         or vector.
@@ -552,6 +565,9 @@ class SemanticCache(BaseLLMCache):
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
                 vector distance.
+            refresh_ttl (Optional[bool]): Whether this cache hit should refresh
+                matched entries' TTL. If None, uses the cache-level
+                refresh_ttl_on_hit setting.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -579,6 +595,8 @@ class SemanticCache(BaseLLMCache):
         # (exact match only), so only fall back on None.
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
+        else:
+            self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -590,29 +608,79 @@ class SemanticCache(BaseLLMCache):
         else:
             raise ValueError("Failed to generate a valid vector for the query.")
 
-        # Create the vector search query
-        query = VectorRangeQuery(
+        # Search the cache!
+        query = self._build_check_query(vector, num_results, filter_expression)
+        with _telemetry.retrieval(
+            self._index.name, num_results, distance_threshold
+        ) as span:
+            candidates = await aindex.query(query)
+            redis_keys, cache_hits = self._process_cache_results(
+                self._within_threshold(candidates, distance_threshold),
+                return_fields,
+            )
+            _telemetry.record_lookup(span, candidates, prompt)
+
+        if self._should_refresh_ttl(refresh_ttl):
+            await self._aexpire_many(redis_keys)
+        _telemetry.record_nearest_distance(self.name, candidates, cache_hits)
+
+        return cache_hits
+
+    def _build_check_query(
+        self,
+        vector: list[float],
+        num_results: int,
+        filter_expression: FilterExpression | None,
+    ) -> VectorQuery:
+        """Build the KNN lookup shared by :meth:`check` and :meth:`acheck`.
+
+        :meth:`_within_threshold` then applies the distance threshold, so the
+        nearest distance is known even on a miss.
+        """
+        return VectorQuery(
             vector=vector,
             vector_field_name=CACHE_VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
-            distance_threshold=distance_threshold,
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
             dtype=self._vectorizer.dtype,
         )
 
-        # Search the cache!
-        cache_search_results = await aindex.query(query)
-        redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results,
-            return_fields,  # type: ignore
-        )
+    def _should_refresh_ttl(self, refresh_ttl: bool | None) -> bool:
+        """Resolve a per-call ``refresh_ttl`` against ``refresh_ttl_on_hit``."""
+        return self.refresh_ttl_on_hit if refresh_ttl is None else refresh_ttl
 
-        # Refresh TTL on all found keys
-        await self._aexpire_many(redis_keys)
+    @staticmethod
+    def _within_threshold(
+        candidates: list[dict[str, Any]], distance_threshold: float
+    ) -> list[dict[str, Any]]:
+        """Keep the candidates whose distance is at most the threshold.
 
-        return cache_hits
+        Inclusive, as a range query's radius is, at the precision of the
+        distance Redis returns (12 significant digits). A candidate with no distance
+        (an id-only row from the Redis 8.8+ expiry race) is kept so that
+        :meth:`_process_cache_results` skips it with its usual warning.
+        """
+        return [
+            candidate
+            for candidate in candidates
+            if (distance := candidate.get(VectorQuery.DISTANCE_ID)) is None
+            or float(distance) <= distance_threshold
+        ]
+
+    @staticmethod
+    def _validate_distance_threshold(distance_threshold: float) -> None:
+        """Validate a per-call ``distance_threshold`` override.
+
+        Raises:
+            TypeError: If the threshold is not a float or int.
+            ValueError: If the threshold is negative.
+        """
+        if not isinstance(distance_threshold, (float, int)):
+            raise TypeError("distance_threshold must be of type float or int")
+        if distance_threshold < 0:
+            raise ValueError("distance_threshold must be non-negative")
 
     def _process_cache_results(
         self,
@@ -662,6 +730,7 @@ class SemanticCache(BaseLLMCache):
 
         return redis_keys, cache_hits
 
+    @_telemetry.operation("store")
     def store(
         self,
         prompt: str,
@@ -730,6 +799,7 @@ class SemanticCache(BaseLLMCache):
         # Return the key where the entry was stored
         return keys[0]
 
+    @_telemetry.operation("store")
     async def astore(
         self,
         prompt: str,
@@ -800,6 +870,7 @@ class SemanticCache(BaseLLMCache):
         # Return the key where the entry was stored
         return keys[0]
 
+    @_telemetry.operation("update")
     def update(self, key: str, **kwargs) -> None:
         """Update specific fields within an existing cache entry. If no fields
         are passed, then only the document TTL is refreshed.
@@ -841,6 +912,7 @@ class SemanticCache(BaseLLMCache):
         # Refresh TTL regardless of whether fields were updated
         self.expire(key)
 
+    @_telemetry.operation("update")
     async def aupdate(self, key: str, **kwargs) -> None:
         """Async update specific fields within an existing cache entry. If no fields
         are passed, then only the document TTL is refreshed.

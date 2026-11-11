@@ -96,6 +96,15 @@ class CompressionType(StrEnum):
     LeanVec4x8 = "LeanVec4x8"
     LeanVec8x8 = "LeanVec8x8"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            lowered = value.lower()
+            for member in cls:
+                if member.value.lower() == lowered:
+                    return member
+        return None  # falls through to the normal ValueError
+
 
 ### Helper Functions ###
 
@@ -229,8 +238,6 @@ class BaseVectorFieldAttributes(BaseModel):
         }
         if self.initial_cap is not None:  # Only include it if it's set
             field_data["INITIAL_CAP"] = self.initial_cap
-        if self.index_missing:  # Only include it if it's set
-            field_data["INDEXMISSING"] = True
         return field_data
 
 
@@ -557,7 +564,13 @@ class FlatVectorField(BaseField):
         field_data = self.attrs.field_data
         if self.attrs.block_size is not None:
             field_data["BLOCK_SIZE"] = self.attrs.block_size
-        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+        return RedisVectorField(
+            name,
+            self.attrs.algorithm,
+            field_data,
+            as_name=as_name,
+            index_missing=self.attrs.index_missing,
+        )
 
 
 class HNSWVectorField(BaseField):
@@ -578,7 +591,13 @@ class HNSWVectorField(BaseField):
                 "EPSILON": self.attrs.epsilon,
             }
         )
-        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+        return RedisVectorField(
+            name,
+            self.attrs.algorithm,
+            field_data,
+            as_name=as_name,
+            index_missing=self.attrs.index_missing,
+        )
 
 
 class SVSVectorField(BaseField):
@@ -605,7 +624,13 @@ class SVSVectorField(BaseField):
             field_data["REDUCE"] = self.attrs.reduce
         if self.attrs.training_threshold is not None:
             field_data["TRAINING_THRESHOLD"] = self.attrs.training_threshold
-        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+        return RedisVectorField(
+            name,
+            self.attrs.algorithm,
+            field_data,
+            as_name=as_name,
+            index_missing=self.attrs.index_missing,
+        )
 
 
 FIELD_TYPE_MAP = {

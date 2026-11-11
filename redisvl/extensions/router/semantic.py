@@ -723,8 +723,8 @@ class SemanticRouter(BaseModel):
         it returns the same match as ``router(statement)``.
 
         Pass ``redis_url`` rather than a client to the router if you need
-        async routing over SSL, a unix socket, Sentinel or Redis Cluster: those
-        clients cannot be converted to their async form. With a vectorizer that
+        async routing over Sentinel or Redis Cluster: those clients cannot be
+        converted to their async form. With a vectorizer that
         has no native ``aembed``, such as the default ``HFTextVectorizer``,
         embedding still blocks the loop; only the Redis call is non-blocking.
         The async client is bound to the event loop that made the first call,
