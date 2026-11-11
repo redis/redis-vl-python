@@ -1,0 +1,57 @@
+# A local stack for exploring RedisVL's SemanticCache telemetry: Redis, an
+# OpenTelemetry Collector, Prometheus for metrics, Jaeger for traces, and
+# Grafana with the starter dashboard. For local use only: every port listens on
+# 127.0.0.1, and Grafana lets anyone who reaches it edit and save dashboards.
+#
+#   docker compose up -d
+#   docker compose down -v    # stop, and delete the stored metrics and traces
+#
+# Applications send OTLP to the Collector on localhost:4318 (HTTP) or 4317
+# (gRPC). Grafana is on http://localhost:3000, Jaeger on
+# http://localhost:16686 and Prometheus on http://localhost:9090.
+
+services:
+  redis:
+    image: redis:8.8.0
+    ports:
+      # Set REDIS_PORT if something else already listens on 6379.
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.160.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    depends_on:
+      - jaeger
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports:
+      - "127.0.0.1:16686:16686"
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/semantic-cache.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/semantic-cache.json:/var/lib/grafana/dashboards/semantic-cache.json:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
