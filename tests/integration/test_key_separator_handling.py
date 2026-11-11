@@ -84,6 +84,7 @@ class TestKeySeparatorHandling:
         # Should return just the ID without prefix or separator
         assert key == "789", f"Expected '789' but got '{key}'"
 
+    @pytest.mark.requires_hf
     def test_semantic_router_uses_index_separator(self, redis_url):
         """Test that SemanticRouter uses the index's key_separator."""
         # Create a route
@@ -188,6 +189,7 @@ class TestKeySeparatorHandling:
             ), f"For prefix='{prefix}', sep='{separator}', id='{id_val}': expected '{expected}' but got '{key}'"
 
 
+@pytest.mark.requires_hf
 class TestSemanticRouterKeyConstruction:
     """Test SemanticRouter's key construction with separators."""
 

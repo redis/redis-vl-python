@@ -11,7 +11,11 @@ from redis.asyncio.connection import SSLConnection as AsyncSSLConnection
 from redis.asyncio.connection import (
     UnixDomainSocketConnection as AsyncUnixDomainSocketConnection,
 )
+from redis.asyncio.retry import Retry as AsyncRetry
+from redis.backoff import ExponentialBackoff
 from redis.connection import ConnectionPool, SSLConnection
+from redis.exceptions import ConnectionError
+from redis.retry import Retry
 from redis.sentinel import Sentinel
 
 from redisvl.redis.connection import (
@@ -115,3 +119,27 @@ def test_explicitly_enabled_maintenance_notifications_are_not_dropped():
     else:
         with pytest.raises(ValueError, match="maint_notifications_config"):
             RedisConnectionFactory.sync_to_async_redis(client)
+
+
+def test_sync_retry_is_rebuilt_as_the_async_retry():
+    # The async connection awaits call_with_retry, so a sync Retry would hand
+    # it an unawaited coroutine and the policy would never run. A plain
+    # Redis() carries a sync Retry too (redis-py 6+), so this is the default
+    # path, not an opt-in one. 5 is not redis-py's default retry count.
+    client = Redis(
+        host="h",
+        retry=Retry(ExponentialBackoff(cap=2, base=0.1), 5, (ConnectionError, OSError)),
+    )
+    pool = RedisConnectionFactory.sync_to_async_redis(client).connection_pool
+
+    retry = pool.make_connection().retry
+    assert type(retry) is AsyncRetry
+    assert retry == AsyncRetry(
+        ExponentialBackoff(cap=2, base=0.1), 5, (ConnectionError, OSError)
+    )
+
+
+def test_missing_retry_is_left_alone():
+    client = Redis(host="h", retry=None)
+    pool = RedisConnectionFactory.sync_to_async_redis(client).connection_pool
+    assert pool.connection_kwargs["retry"] is None

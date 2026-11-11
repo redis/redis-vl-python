@@ -554,7 +554,8 @@ def test_hybrid_query_vector_search_method_knn():
 
     # KNN with params should be in args
     args = get_query_pieces(hybrid_query)
-    assert args[7:13] == ["KNN", 4, "K", 10, "EF_RUNTIME", 10]
+    assert args[7:11] == ["KNN", 2, "K", 10]
+    assert "EF_RUNTIME" not in args
 
     # With optional EF_RUNTIME param
     hybrid_query = HybridQuery(
@@ -596,7 +597,8 @@ def test_hybrid_query_vector_search_method_range():
 
     # RANGE with params should be in args
     args = get_query_pieces(hybrid_query)
-    assert args[7:13] == ["RANGE", 4, "RADIUS", 10, "EPSILON", 0.01]
+    assert args[7:11] == ["RANGE", 2, "RADIUS", 10]
+    assert "EPSILON" not in args
 
     # With optional EPSILON param
     hybrid_query = HybridQuery(
@@ -632,6 +634,44 @@ def test_hybrid_query_vector_search_method_none():
     # When None, should not have KNN or RANGE explicitly
     assert "KNN" not in args
     assert "RANGE" not in args
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+@pytest.mark.parametrize("value", [0])
+@pytest.mark.parametrize(
+    "method, option, token, required",
+    [
+        ("KNN", "knn_ef_runtime", "EF_RUNTIME", ["K", 10]),
+        ("RANGE", "range_epsilon", "EPSILON", ["RADIUS", 0.5]),
+    ],
+)
+def test_hybrid_query_optional_vector_tuning(method, option, token, required, value):
+    query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_search_method=method,
+        range_radius=0.5,
+        **{option: value},
+    )
+
+    expected = [method, 4, *required, token, value]
+    assert query.query.get_args()[7:] == expected
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_zero_range_radius():
+    query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_search_method="RANGE",
+        range_radius=0,
+    )
+
+    assert query.query.get_args()[7:] == ["RANGE", 2, "RADIUS", 0]
 
 
 # Edge cases
@@ -729,12 +769,10 @@ def test_hybrid_query_with_vector_filter_and_method():
 
     # Verify KNN params and filter are both in args
     args = get_query_pieces(hybrid_query)
-    assert args[7:15] == [
+    assert args[7:13] == [
         "KNN",
-        4,
+        2,
         "K",
-        10,
-        "EF_RUNTIME",
         10,
         "FILTER",
         "@genre:{comedy}",
@@ -799,6 +837,31 @@ def test_hybrid_query_combination_method_rrf_with_constant():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_combination_method_rrf_zero_params():
+    """Test that RRF params of 0 are sent rather than treated as unset."""
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        combination_method="RRF",
+        rrf_window=0,
+        rrf_constant=0,
+    )
+
+    assert hybrid_query.combination_method is not None
+    assert hybrid_query.combination_method.get_args() == [
+        "COMBINE",
+        "RRF",
+        4,
+        "WINDOW",
+        0,
+        "CONSTANT",
+        0,
+    ]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_combination_method_rrf_with_both_params():
     """Test HybridQuery with RRF combination method with both window and constant."""
     hybrid_query = HybridQuery(
@@ -830,7 +893,7 @@ def test_hybrid_query_combination_method_rrf_with_both_params():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
-@pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
+@pytest.mark.parametrize("alpha", [0.0, 0.1, 0.5, 0.9])
 def test_hybrid_query_combination_method_linear(alpha: float):
     """Test HybridQuery with LINEAR combination method."""
     hybrid_query = HybridQuery(

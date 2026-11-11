@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, Self, cast
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -48,7 +48,7 @@ class MCPSettings(BaseSettings):
         read_only: bool | None = None,
         tool_search_description: str | None = None,
         tool_upsert_description: str | None = None,
-    ) -> "MCPSettings":
+    ) -> Self:
         """Build settings from explicit overrides plus `REDISVL_MCP_*` env vars."""
         overrides: dict[str, object] = {}
         if config is not None:

@@ -315,7 +315,7 @@ def norm_cosine_distance(value: float) -> float:
     """
     Normalize a cosine distance to a similarity score between 0 and 1.
     """
-    return max((2 - value) / 2, 0)
+    return min(max((2 - value) / 2, 0), 1)
 
 
 def denorm_cosine_distance(value: float) -> float:
