@@ -267,3 +267,19 @@ SQLQuery
    fusing a text and a vector query server-side. This is the SQL front-end to
    :class:`HybridQuery` and requires ``sql-redis >= 0.7.0``, Redis 8.4+, and
    redis-py >= 7.1.0.
+
+.. note::
+   For filtered vector queries, pass ``hybrid_policy="ADHOC_BF"`` or
+   ``hybrid_policy="BATCHES"`` to ``SQLQuery``. The value is forwarded to
+   ``sql-redis`` for translation and for synchronous or asynchronous execution.
+   For ``FT.SEARCH``, the translator emits ``HYBRID_POLICY``; for ``FT.HYBRID``,
+   it emits ``FILTER ... POLICY``, mapping ``ADHOC_BF`` to ``ADHOC``.
+   Unfiltered queries are unaffected.
+
+   An explicit ``hybrid_policy`` takes precedence over the same key in
+   ``sql_redis_options``. Omitting it preserves the options dictionary, which
+   is copied rather than modified.
+
+   This requires a ``sql-redis`` version implementing the ``hybrid_policy``
+   executor option; ``sql-redis 0.7.1`` does not support it. The RedisVL
+   argument alone does not add policy translation to older sql-redis builds.

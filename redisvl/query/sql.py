@@ -52,6 +52,7 @@ class SQLQuery:
         sql: str,
         params: dict[str, Any] | None = None,
         *,
+        hybrid_policy: str | None = None,
         sql_redis_options: dict[str, Any] | None = None,
     ):
         """Initialize a SQLQuery.
@@ -60,6 +61,15 @@ class SQLQuery:
             sql: The SQL SELECT statement to execute.
             params: Optional dictionary of parameters for parameterized queries.
                    Useful for passing vector data for similarity searches.
+            hybrid_policy: Optional execution policy for filtered vector queries.
+                Use ``"BATCHES"`` or ``"ADHOC_BF"`` to emit ``HYBRID_POLICY``
+                for FT.SEARCH or ``FILTER ... POLICY`` for FT.HYBRID.
+                FT.HYBRID maps ``"ADHOC_BF"`` to ``"ADHOC"``. Requires a
+                sql-redis version supporting the ``hybrid_policy`` executor
+                option (not available in sql-redis 0.7.1). An explicit value
+                overrides ``sql_redis_options["hybrid_policy"]``. With None,
+                the options dictionary is used unchanged. Queries without a
+                pre-filter are unchanged by the policy.
             sql_redis_options: Optional passthrough options forwarded to
                 ``sql-redis`` executor creation. Use this to tune how SQL
                 query translation loads and caches index schema metadata.
@@ -78,6 +88,8 @@ class SQLQuery:
         self.sql = sql
         self.params = params or {}
         self.sql_redis_options = dict(sql_redis_options or {})
+        if hybrid_policy is not None:
+            self.sql_redis_options["hybrid_policy"] = hybrid_policy
 
     def _substitute_params(self, sql: str, params: dict[str, Any]) -> str:
         """Substitute parameter placeholders in SQL with actual values.
