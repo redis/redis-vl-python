@@ -45,7 +45,7 @@ Perfect for building **RAG pipelines** with real-time retrieval, **AI agents** w
 
 ## Installation
 
-Install `redisvl` into your Python (>=3.10) environment using `pip`:
+Install `redisvl` into your Python (>=3.11) environment using `pip`:
 
 ```bash
 pip install redisvl

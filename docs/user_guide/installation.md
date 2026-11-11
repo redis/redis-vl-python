@@ -11,7 +11,7 @@ There are a few ways to install RedisVL. The easiest way is to use pip.
 
 ## Install RedisVL with Pip
 
-Install `redisvl` into your Python (>=3.10) environment using `pip`:
+Install `redisvl` into your Python (>=3.11) environment using `pip`:
 
 ```bash
 $ pip install -U redisvl
@@ -32,7 +32,7 @@ $ pip install redisvl[vertexai]            # Google Vertex AI embeddings (legacy
 $ pip install redisvl[bedrock]             # AWS Bedrock embeddings
 
 # Other optional features
-$ pip install redisvl[mcp]                 # RedisVL MCP server support (Python 3.10+)
+$ pip install redisvl[mcp]                 # RedisVL MCP server support (Python 3.11+)
 $ pip install redisvl[langcache]           # LangCache managed service integration
 $ pip install redisvl[sql-redis]           # SQL query support
 $ pip install redisvl[otel]                # OpenTelemetry traces and metrics (API only)

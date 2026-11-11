@@ -15,7 +15,7 @@ For the higher-level design, see {doc}`/concepts/mcp`.
 
 RedisVL MCP assumes all of the following are already true:
 
-- you have Python 3.10 or newer
+- you have Python 3.11 or newer
 - you have Redis with Search capabilities available
 - the Redis index already exists
 - you know which text field and vector field the server should use
