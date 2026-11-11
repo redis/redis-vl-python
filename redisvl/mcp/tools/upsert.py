@@ -355,7 +355,7 @@ async def upsert_records(
             # and run_guarded's own errors mean load never ran. Any other load
             # failure, or a timeout, may have left records behind.
             if mapped.code is MCPErrorCode.INVALID_REQUEST or not isinstance(
-                exc, (RedisVLError, TimeoutError, asyncio.TimeoutError)
+                exc, (RedisVLError, TimeoutError)
             ):
                 raise mapped from exc
             warning = "some records may already have been written"

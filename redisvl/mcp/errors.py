@@ -74,7 +74,7 @@ def map_exception(exc: Exception) -> RedisVLMCPError:
     # fail the same way again, so they stay non-retryable.
     if isinstance(exc, RedisVLError) and isinstance(
         exc.__cause__,
-        (RedisConnectionError, RedisTimeoutError, TimeoutError, asyncio.TimeoutError),
+        (RedisConnectionError, RedisTimeoutError, TimeoutError),
     ):
         return RedisVLMCPError(
             str(exc),
