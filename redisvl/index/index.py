@@ -1941,7 +1941,8 @@ class SearchIndex(BaseSearchIndex):
                 document indexed in Redis.
 
         Returns:
-            Dict[str, Any]: The fetched object.
+            Optional[Dict[str, Any]]: The fetched object, or None if no
+                object exists under that id.
         """
         obj = self._storage.get(self._redis_client, [self.key(id)])
         if obj:
@@ -3273,7 +3274,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             raise RedisVLError(f"Failed to load data: {str(exc)}") from exc
 
     async def fetch(self, id: str) -> dict[str, Any] | None:
-        """Asynchronously etch an object from Redis by id. The id is typically
+        """Asynchronously fetch an object from Redis by id. The id is typically
         either a unique identifier, or derived from some domain-specific
         metadata combination (like a document id or chunk id).
 
@@ -3282,7 +3283,8 @@ class AsyncSearchIndex(BaseSearchIndex):
                 document indexed in Redis.
 
         Returns:
-            Dict[str, Any]: The fetched object.
+            Optional[Dict[str, Any]]: The fetched object, or None if no
+                object exists under that id.
         """
         client = await self._get_client()
         obj = await self._storage.aget(client, [self.key(id)])
