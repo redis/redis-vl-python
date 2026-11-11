@@ -26,49 +26,44 @@ def _fake_module(name, **attrs):
     return module
 
 
-# (id, module, class, env var, config key, fake package)
+# (id, module, class, env var)
 CASES = [
     (
         "cohere-vec",
         "redisvl.utils.vectorize.text.cohere",
         "CohereTextVectorizer",
         "COHERE_API_KEY",
-        "api_key",
-        "cohere",
     ),
     (
         "mistral-vec",
         "redisvl.utils.vectorize.text.mistral",
         "MistralAITextVectorizer",
         "MISTRAL_API_KEY",
-        "api_key",
-        "mistralai",
     ),
     (
         "voyage-vec",
         "redisvl.utils.vectorize.voyageai",
         "VoyageAIVectorizer",
         "VOYAGE_API_KEY",
-        "api_key",
-        "voyageai",
     ),
     (
         "cohere-rerank",
         "redisvl.utils.rerank.cohere",
         "CohereReranker",
         "COHERE_API_KEY",
-        "api_key",
-        "cohere",
     ),
     (
         "voyage-rerank",
         "redisvl.utils.rerank.voyageai",
         "VoyageAIReranker",
         "VOYAGE_API_KEY",
-        "api_key",
-        "voyageai",
     ),
 ]
+
+
+SIBLINGS = pytest.mark.parametrize(
+    "module_name,class_name,env", [c[1:] for c in CASES], ids=[c[0] for c in CASES]
+)
 
 
 @pytest.fixture(autouse=True)
@@ -107,41 +102,25 @@ def _build(module_name, class_name, monkeypatch, **kwargs):
     return cls(**kwargs)
 
 
-@pytest.mark.parametrize(
-    "module_name,class_name,env,key,_pkg",
-    [c[1:] for c in CASES],
-    ids=[c[0] for c in CASES],
-)
+@SIBLINGS
 @pytest.mark.parametrize("api_config", [None, {}, {"unrelated": 1}, {"api_key": ""}])
 def test_missing_or_empty_api_key_falls_back_to_env(
-    monkeypatch, module_name, class_name, env, key, _pkg, api_config
+    monkeypatch, module_name, class_name, env, api_config
 ):
     monkeypatch.setenv(env, "env-key")
     _build(module_name, class_name, monkeypatch, api_config=api_config)
     assert CALLS and all(call["api_key"] == "env-key" for call in CALLS)
 
 
-@pytest.mark.parametrize(
-    "module_name,class_name,env,key,_pkg",
-    [c[1:] for c in CASES],
-    ids=[c[0] for c in CASES],
-)
-def test_api_config_key_wins_over_env(
-    monkeypatch, module_name, class_name, env, key, _pkg
-):
+@SIBLINGS
+def test_api_config_key_wins_over_env(monkeypatch, module_name, class_name, env):
     monkeypatch.setenv(env, "env-key")
-    _build(module_name, class_name, monkeypatch, api_config={key: "cfg-key"})
+    _build(module_name, class_name, monkeypatch, api_config={"api_key": "cfg-key"})
     assert CALLS and all(call["api_key"] == "cfg-key" for call in CALLS)
 
 
-@pytest.mark.parametrize(
-    "module_name,class_name,env,key,_pkg",
-    [c[1:] for c in CASES],
-    ids=[c[0] for c in CASES],
-)
-def test_no_key_anywhere_still_raises(
-    monkeypatch, module_name, class_name, env, key, _pkg
-):
+@SIBLINGS
+def test_no_key_anywhere_still_raises(monkeypatch, module_name, class_name, env):
     with pytest.raises(ValueError, match="API key is required"):
         _build(module_name, class_name, monkeypatch, api_config={"unrelated": 1})
 
