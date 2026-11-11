@@ -1,7 +1,7 @@
 # A local stack for exploring RedisVL's SemanticCache telemetry: Redis, an
 # OpenTelemetry Collector, Prometheus for metrics, Jaeger for traces, and
 # Grafana with the starter dashboard. For local use only: every port listens on
-# 127.0.0.1, and Grafana lets anyone who reaches it edit dashboards.
+# 127.0.0.1, and Grafana lets anyone who reaches it edit and save dashboards.
 #
 #   docker compose up -d
 #   docker compose down -v    # stop, and delete the stored metrics and traces
