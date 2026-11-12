@@ -57,11 +57,18 @@ class FakeAsyncClusterPipeline:
         self.queued.append(("hgetall", key))
         return self
 
+    def pttl(self, key):
+        self.queued.append(("pttl", key))
+        return self
+
     def _run(self):
         self.executed.append(list(self.queued))
+        replies = {
+            "hgetall": lambda key: self.store.get(key, {}),
+            "pttl": lambda key: -2,
+        }
         results = [
-            self.store.get(key, {}) if command == "hgetall" else 1
-            for command, key, *_ in self.queued
+            replies.get(command, lambda key: 1)(key) for command, key, *_ in self.queued
         ]
         self.queued.clear()
         return results
@@ -223,4 +230,36 @@ async def test_single_key_get_and_set_each_cost_one_pipeline(monkeypatch, use_as
     assert [pipeline.executed for pipeline in client.pipelines] == [
         [[("hgetall", "embedcache:a"), ("expire", "embedcache:a", 60)]],
         [[("hset", "embedcache:b"), ("expire", "embedcache:b", 5)]],
+    ]
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+@pytest.mark.asyncio
+async def test_content_lookup_reads_the_legacy_key_only_on_a_miss(
+    monkeypatch, use_async
+):
+    """A hit costs one pipeline; a miss adds one legacy read, and nothing else."""
+    monkeypatch.setattr(
+        EmbeddingsCache, "_make_entry_id", lambda self, content, model_name: content
+    )
+    monkeypatch.setattr(
+        EmbeddingsCache,
+        "_make_legacy_entry_id",
+        lambda self, content, model_name: "old-" + content,
+    )
+    store = {"embedcache:a": HIT.to_dict()}
+    if use_async:
+        client = FakeAsyncClusterClient(store)
+        cache = make_cache(client)
+        results = [await cache.aget("a", "m"), await cache.aget("b", "m")]
+    else:
+        client = FakeSyncClient(store)
+        cache = EmbeddingsCache(name="embedcache", redis_client=client)
+        results = [cache.get("a", "m"), cache.get("b", "m")]
+
+    assert results == [HIT.model_dump(exclude_none=True), None]
+    assert [pipeline.executed for pipeline in client.pipelines] == [
+        [[("hgetall", "embedcache:a")]],
+        [[("hgetall", "embedcache:b")]],
+        [[("hgetall", "embedcache:old-b"), ("pttl", "embedcache:old-b")]],
     ]

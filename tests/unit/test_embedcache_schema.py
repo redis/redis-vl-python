@@ -3,13 +3,13 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 from redisvl.extensions.cache.embeddings.schema import CacheEntry
-from redisvl.redis.utils import hashify
 
 
 def test_valid_cache_entry_creation():
     # Generate an entry_id first
-    entry_id = hashify(f"What is AI?:text-embedding-ada-002")
+    entry_id = EmbeddingsCache()._make_entry_id("What is AI?", "text-embedding-ada-002")
     entry = CacheEntry(
         entry_id=entry_id,
         content="What is AI?",
@@ -44,7 +44,7 @@ def test_cache_entry_with_invalid_metadata():
 
 
 def test_cache_entry_to_dict():
-    entry_id = hashify(f"What is AI?:text-embedding-ada-002")
+    entry_id = EmbeddingsCache()._make_entry_id("What is AI?", "text-embedding-ada-002")
     entry = CacheEntry(
         entry_id=entry_id,
         content="What is AI?",
