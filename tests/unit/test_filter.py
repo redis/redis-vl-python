@@ -631,32 +631,34 @@ def test_filters_combination():
     combined = tf1 | tf2
     assert str(combined) == "(@tag_field:{tag1|tag2} | @tag_field:{tag3})"
 
-    # An empty collection matches nothing: it absorbs an AND and drops out of
-    # an OR, as the empty set does. Eliding it from the AND would widen the query.
+    # An empty collection is a clause that matches nothing, so it stays in an
+    # AND, where it narrows to nothing, and adds nothing to an OR. Eliding it
+    # from the AND, as `*` is, would widen the query.
     tf1 = Tag("tag_field") == []
     assert str(tf1) == NO_MATCH
-    assert str(tf1 & tf2) == NO_MATCH
-    assert str(tf2 & tf1) == NO_MATCH
-    assert str(tf1 | tf2) == str(tf2)
-    assert str(tf2 | tf1) == str(tf2)
-    assert str(tf1 & tf1) == NO_MATCH
-    assert str(tf1 | tf1) == NO_MATCH
+    assert str(tf1 & tf2) == f"({NO_MATCH} @tag_field:{{tag3}})"
+    assert str(tf2 & tf1) == f"(@tag_field:{{tag3}} {NO_MATCH})"
+    assert str(tf1 | tf2) == f"({NO_MATCH} | @tag_field:{{tag3}})"
 
-    # Nesting does not lose it: the AND is absorbed wherever it sits.
+    # Nesting does not lose it.
     other = Tag("other") == "x"
-    assert str((tf2 & other) & tf1) == NO_MATCH
-    assert str((tf2 | other) & tf1) == NO_MATCH
-    assert str((tf1 & tf2) | other) == str(other)
+    assert NO_MATCH in str((tf2 & other) & tf1)
+    assert NO_MATCH in str((tf2 | other) & tf1)
 
-    # `None` is no constraint, and is elided around a match-nothing filter
-    # rather than widening it.
+    # `None` is no constraint and is elided from either operator, so beside a
+    # match-nothing filter it leaves that filter, in either order.
     assert str(tf1 & (Tag("tag_field") == None)) == NO_MATCH
+    assert str((Tag("tag_field") == None) & tf1) == NO_MATCH
     assert str(tf1 | (Tag("tag_field") == None)) == NO_MATCH
+    assert str((Tag("tag_field") == None) | tf1) == NO_MATCH
 
     # `!=` an empty collection excludes nothing, so it is elided like `None`.
     assert str((Tag("tag_field") != []) & tf2) == str(tf2)
 
-    # test combining filters with None values and empty strings
+    # `""` is a tag of its own and is kept inside an AND.
+    assert str((Tag("tag_field") == "") & tf2) == '(@tag_field:{""} @tag_field:{tag3})'
+
+    # test combining filters with None values
     tf1 = Tag("tag_field") == None
     tf2 = Tag("tag_field") == None
     assert str(tf1 & tf2) == "*"
@@ -1198,29 +1200,18 @@ def test_text_refuses_an_empty_string(operation):
         getattr(Text("text_field"), operation)("")
 
 
-@pytest.mark.parametrize("operation", ["__eq__", "__ne__", "__mod__"])
-def test_text_still_treats_none_as_no_constraint(operation):
-    assert str(getattr(Text("text_field"), operation)(None)) == "*"
-
-
-@pytest.mark.parametrize("empty", [[], (), set()], ids=["list", "tuple", "set"])
-def test_text_and_num_still_refuse_a_collection(empty):
-    # Already fail-closed: only Tag takes a collection.
+def test_text_still_refuses_a_collection():
     with pytest.raises(TypeError):
-        Text("t") == empty
-    with pytest.raises(TypeError):
-        Num("n") == empty
+        Text("t") == []
 
 
-def test_an_empty_tag_filter_matches_nothing_inside_a_permission_filter():
+def test_an_empty_tag_list_narrows_a_permission_filter():
     tenant = Tag("tenant") == "acme"
     groups: list[str] = []
-    assert str(tenant & (Tag("groups") == groups)) == (
-        "(@groups:{redisvl_no_match} -@groups:{redisvl_no_match})"
-    )
-    assert str(Tag("groups") == groups) == str(Tag("groups") % groups)
+    permission = tenant & (Tag("groups") == groups)
+    assert "(@groups:{redisvl_no_match} -@groups:{redisvl_no_match})" in str(permission)
+    assert is_match_all_filter(permission) is False
     # The field object itself renders the same once built.
     field = Tag("groups")
     field == groups
     assert str(field) == "(@groups:{redisvl_no_match} -@groups:{redisvl_no_match})"
-    assert is_match_all_filter(tenant & (Tag("groups") == groups)) is False

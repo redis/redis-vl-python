@@ -75,18 +75,6 @@ class FilterField:
         self._value = val
         self._operator = operator
 
-    def _matches_nothing(self) -> bool:
-        """Report whether this filter, as built, can match no document."""
-        return False
-
-    def _expression(self) -> "FilterExpression":
-        """Wrap this filter's rendering, remembering whether it matches nothing.
-
-        ``FilterExpression`` composes by rendering, so the fact has to travel
-        beside the string: see ``FilterExpression._render``.
-        """
-        return FilterExpression(str(self), _matches_nothing=self._matches_nothing())
-
     def is_missing(self) -> "FilterExpression":
         """Create a filter expression for documents missing this field.
 
@@ -131,14 +119,16 @@ class Tag(FilterField):
     """A Tag filter can be applied to Tag fields
 
     Note:
-        Empty values follow Redis, which has no empty tag set. ``None`` means
-        no constraint and renders ``*``. An empty collection (``[]``, ``()``,
-        ``set()``, or one holding only ``None``) selects no tag, so ``==`` and
-        ``%`` match no document, whatever it is combined with: an ``&`` with it
-        matches nothing, and a ``|`` ignores it. ``!=`` an empty collection
-        excludes nothing and renders ``*``. ``""`` is a tag of its own,
-        rendered ``@field:{""}``, which needs ``INDEXEMPTY`` on the field and
-        DIALECT 2 or later.
+        Empty values follow Redis, which has no syntax for an empty set of
+        tags. ``None`` means no constraint and renders ``*``. An empty
+        collection (``[]``, ``()``, ``set()``, or one holding only ``None``)
+        selects no tag, so ``==`` and ``%`` match no document: ``&`` with it
+        matches nothing, and ``|`` leaves the other side's matches unchanged.
+        ``!=`` an empty collection excludes nothing and renders ``*``. ``""`` is
+        a tag of its own, rendered ``@field:{""}``. That needs DIALECT 2 or
+        later and ``INDEXEMPTY`` on the field; without ``INDEXEMPTY`` the
+        server rejects it in some query positions and silently returns results
+        in others, so do not use it on such a field.
 
     .. code-block:: python
 
@@ -194,14 +184,6 @@ class Tag(FilterField):
 
         self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
-    def _matches_nothing(self) -> bool:
-        # `!=` an empty collection excludes nothing, so it keeps every document.
-        return (
-            self._value is not None
-            and not self._value
-            and self._operator != FilterOperator.NE
-        )
-
     @check_operator_misuse
     def __eq__(self, other: list[str] | str) -> "FilterExpression":
         """Create a Tag equality filter expression.
@@ -216,7 +198,7 @@ class Tag(FilterField):
             f = Tag("brand") == "nike"
         """
         self._set_tag_value(other, FilterOperator.EQ)
-        return self._expression()
+        return FilterExpression(str(self))
 
     @check_operator_misuse
     def __ne__(self, other: list[str] | str) -> "FilterExpression":
@@ -232,7 +214,7 @@ class Tag(FilterField):
 
         """
         self._set_tag_value(other, FilterOperator.NE)
-        return self._expression()
+        return FilterExpression(str(self))
 
     def __mod__(self, other: list[str] | str) -> "FilterExpression":
         """Create a Tag wildcard filter expression for pattern matching.
@@ -260,7 +242,7 @@ class Tag(FilterField):
 
         """
         self._set_tag_value(other, FilterOperator.LIKE)
-        return self._expression()
+        return FilterExpression(str(self))
 
     @property
     def _formatted_tag_value(self) -> str:
@@ -780,6 +762,8 @@ class Text(FilterField):
         therefore becomes an empty phrase, which ``==`` matches no document
         against. ``%`` is the pattern operator and interpolates its value
         untouched.
+
+        An empty string raises ``ValueError``; pass ``None`` for no constraint.
     """
 
     OPERATORS: dict[FilterOperator, str] = {
@@ -807,13 +791,13 @@ class Text(FilterField):
         operator: FilterOperator,
     ):
         if isinstance(val, str) and not val:
-            # `@f:("")` is how RediSearch asks for an empty string, but beside
-            # another clause the server reads it against that clause's field
-            # and rejects it for lacking `INDEXEMPTY` (measured on 8.4:
-            # `@t:{a} @x:("")` fails with `x` indexed empty, `@x:("") @t:{a}`
-            # does not). Rendering it would make a filter's meaning depend on
-            # operand order, so it is refused. `None` is how to ask for no
-            # constraint, and `is_missing()` finds an absent field.
+            # `@f:("")` is how RediSearch asks for an empty string, but after a
+            # TAG clause the server checks it against that tag field's
+            # `INDEXEMPTY` instead of this field's (measured on 8.4: `@t:{a}
+            # @x:("")` fails with `x` indexed empty, `@x:("") @t:{a}` does not).
+            # Rendering it would make a filter's meaning depend on operand
+            # order, so it is refused. `None` is how to ask for no constraint,
+            # and `is_missing()` finds an absent field.
             raise ValueError(
                 f"{self.__class__.__name__} value must be a non-empty string; "
                 "pass None for no constraint"
@@ -939,10 +923,11 @@ class FilterExpression:
         )
 
     Note:
-        A filter that can match no document, such as ``Tag("g") == []``, keeps
-        that meaning when combined: it absorbs an ``&`` and drops out of a
-        ``|``. ``*`` (from ``None``) is elided from both, and is the only
-        value that means "no constraint".
+        A filter that can match no document, such as ``Tag("g") == []``, is
+        rendered as a clause that matches nothing, so it narrows an ``&`` and
+        adds nothing to a ``|``. ``*`` (from ``None``, or ``!=`` an empty
+        collection) constrains nothing and is elided from both operators, which
+        means ``None | empty`` matches nothing.
 
     Note:
         Filter expressions are typically not called directly. Instead they are
@@ -956,10 +941,8 @@ class FilterExpression:
         operator: FilterOperator | None = None,
         left: "FilterExpression | None" = None,
         right: "FilterExpression | None" = None,
-        _matches_nothing: bool = False,
     ):
         self._filter = _filter
-        self._none = _matches_nothing
         self._operator = operator
         self._left = left
         self._right = right
@@ -981,16 +964,7 @@ class FilterExpression:
             return _left
         return f"({_left}{operator_str}{_right})"
 
-    def _render(self) -> tuple[str, bool]:
-        """Render this expression, and report whether it can match no document.
-
-        A filter that matches nothing has to survive composition as what it is.
-        ``*`` can be elided from either operator, since it constrains nothing.
-        An empty filter cannot: elided from an ``&`` it would widen the query,
-        which is the failure this exists to prevent. So it absorbs an ``&`` and
-        drops out of a ``|``, as the empty set does, and ``*`` is still
-        elided around it.
-        """
+    def __str__(self) -> str:
         # top level check that allows recursive calls to __str__
         if not self._filter and not self._operator:
             raise ValueError("Improperly initialized FilterExpression")
@@ -1004,31 +978,13 @@ class FilterExpression:
                     "Improper combination of filters. Both left and right should be type FilterExpression"
                 )
 
-            left, left_none = self._left._render()
-            right, right_none = self._right._render()
-            if self._operator == FilterOperator.AND:
-                if left_none:
-                    return left, True
-                if right_none:
-                    return right, True
-            elif left_none and right_none:
-                return left, True
-            elif left_none:
-                # `*` is elided against anything, which leaves the empty side.
-                return (left, True) if right == "*" else (right, False)
-            elif right_none:
-                return (right, True) if left == "*" else (left, False)
-
             operator_str = " | " if self._operator == FilterOperator.OR else " "
-            return self.format_expression(left, right, operator_str), False
+            return self.format_expression(self._left, self._right, operator_str)
 
         # check that base case, the filter is set
         if not self._filter:
             raise ValueError("Improperly initialized FilterExpression")
-        return self._filter, self._none
-
-    def __str__(self) -> str:
-        return self._render()[0]
+        return self._filter
 
 
 def is_match_all_filter(filter_expression: str | FilterExpression | None) -> bool:
