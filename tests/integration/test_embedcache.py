@@ -3,6 +3,7 @@ import json
 import time
 
 import pytest
+from redis import Redis
 from redis.exceptions import ConnectionError
 
 from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
@@ -112,12 +113,6 @@ def test_make_entry_id():
         json.dumps(["str", content, model_name], separators=(",", ":"))
     )
     assert entry_id1 == expected_id
-
-    # Content and model name can no longer bleed into each other
-    assert cache._make_entry_id("a:b", "c") != cache._make_entry_id("a", "b:c")
-    assert cache._make_entry_id(b"a", model_name) != cache._make_entry_id(
-        "61", model_name
-    )
 
 
 def test_make_cache_key():
@@ -867,7 +862,7 @@ async def test_aclear_does_not_delete_caches_colliding_under_glob(colliding_cach
 
 
 def write_legacy_entry(cache, content, model_name, embedding, ttl=None):
-    """Store an entry the way RedisVL 0.32 did, under its legacy key."""
+    """Store an entry the way RedisVL 0.32.0 did, under its legacy key."""
     entry_id = cache._make_legacy_entry_id(content, model_name)
     key = cache._make_key(entry_id)
     entry = CacheEntry(
@@ -898,7 +893,7 @@ def test_get_migrates_a_legacy_entry(cache, content, caplog):
     client = cache._get_redis_client()
     assert not client.exists(legacy_key)
     assert cache.get_by_key(new_key)["embedding"] == [0.1, 0.2]
-    assert "RedisVL 0.32 and earlier" in caplog.text
+    assert "RedisVL 0.32.0 and earlier" in caplog.text
 
 
 def test_legacy_collision_is_not_returned(cache):
@@ -921,11 +916,12 @@ def test_mget_mixes_new_legacy_and_missing_entries(cache, caplog):
 
     with caplog.at_level("WARNING", logger="redisvl.extensions.cache.embeddings"):
         results = cache.mget(["new", "old-1", "missing", "old-2"], model_name)
-        # Already migrated, so a second read neither falls back nor logs again.
-        assert cache.mget(["old-1", "old-2"], model_name)[1]["embedding"] == [0.3]
+        # A later migration by the same cache does not log again.
+        write_legacy_entry(cache, "old-3", model_name, [0.4])
+        assert cache.get("old-3", model_name)["embedding"] == [0.4]
 
     assert [r and r["embedding"] for r in results] == [[0.1], [0.2], None, [0.3]]
-    assert caplog.text.count("RedisVL 0.32 and earlier") == 1
+    assert caplog.text.count("RedisVL 0.32.0 and earlier") == 1
 
 
 def test_exists_migrates_and_drop_removes_legacy_entries(cache):
@@ -943,6 +939,24 @@ def test_exists_migrates_and_drop_removes_legacy_entries(cache):
     assert not cache.exists("second", model_name)
 
 
+def test_drop_leaves_entries_that_only_share_a_legacy_key(cache):
+    """Dropping one input never removes another input's entry."""
+    client = cache._get_redis_client()
+    # ("a", "b:c") and ("a:b", "c") share a legacy key.
+    legacy_key = write_legacy_entry(cache, "a:b", "c", [0.1])
+    cache.drop("a", "b:c")
+    assert client.exists(legacy_key)
+
+    # This content's legacy key is the new key of ("a:b", "m").
+    cache.set("a:b", "m", [0.2])
+    crafted = '["str","a'
+    assert cache._make_legacy_cache_key(crafted, 'b","m"]') == cache._make_cache_key(
+        "a:b", "m"
+    )
+    cache.drop(crafted, 'b","m"]')
+    assert cache.get("a:b", "m")["embedding"] == [0.2]
+
+
 def test_migration_keeps_the_legacy_ttl_when_the_cache_has_none(cache):
     legacy_key = write_legacy_entry(cache, "content", "m", [0.1], ttl=300)
 
@@ -954,7 +968,8 @@ def test_migration_keeps_the_legacy_ttl_when_the_cache_has_none(cache):
 
 
 def test_migration_applies_the_cache_ttl(cache_with_ttl):
-    write_legacy_entry(cache_with_ttl, "content", "m", [0.1])
+    # The legacy key's longer remaining TTL must not win over the cache's.
+    write_legacy_entry(cache_with_ttl, "content", "m", [0.1], ttl=300)
 
     cache_with_ttl.get("content", "m")
 
@@ -983,3 +998,26 @@ async def test_async_reads_migrate_legacy_entries(cache):
         assert not client.exists(cache._make_legacy_cache_key(content, model_name))
     assert not client.exists(cache._make_legacy_cache_key("three", model_name))
     assert client.exists(cache._make_legacy_cache_key("a:b", "c"))
+
+
+def test_read_only_client_still_gets_legacy_hits(cache, redis_url, redis_test_name):
+    """A client that cannot write gets the legacy hit; the entry stays put."""
+    admin = cache._get_redis_client()
+    user = redis_test_name("embedcache_reader")
+    admin.acl_setuser(
+        user, enabled=True, passwords=["+reader-pass"], keys=["*"], commands=["+@read"]
+    )
+    try:
+        legacy_key = write_legacy_entry(cache, "content", "m", [0.1])
+        reader = EmbeddingsCache(
+            name=cache.name,
+            redis_client=Redis.from_url(
+                redis_url, username=user, password="reader-pass"
+            ),
+        )
+
+        assert reader.get("content", "m")["embedding"] == [0.1]
+        assert reader.exists("content", "m")
+        assert admin.exists(legacy_key)
+    finally:
+        admin.acl_deluser(user)

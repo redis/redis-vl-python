@@ -48,3 +48,13 @@ def test_legacy_entry_is_trusted_only_for_its_own_input(
     assert (
         EmbeddingsCache._legacy_entry_matches(stored, content, model_name) is expected
     )
+
+
+def test_legacy_key_that_expired_mid_lookup_is_not_migrated():
+    """HGETALL can return data for a key whose PTTL then reports it gone."""
+    data = {b"content": b"x", b"model_name": b"m"}
+    replies = [data, -2, data, 5000]
+
+    plan = CACHE._plan_legacy_migrations(["x", "x"], "m", [0, 1], replies)
+
+    assert [(index, pttl) for index, *_, pttl in plan] == [(1, 5000)]

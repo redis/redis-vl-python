@@ -14,7 +14,16 @@ logger = get_logger(__name__)
 
 
 class EmbeddingsCache(BaseCache):
-    """Embeddings Cache for storing embedding vectors with exact key matching."""
+    """Embeddings Cache for storing embedding vectors with exact key matching.
+
+    Note:
+        Entries written by RedisVL 0.32.0 and earlier use an older key format.
+        Content-based reads (``get``, ``mget``, ``exists``, ``mexists`` and
+        their async versions) still find them, and move each one to its new
+        key as they do. The ``*_by_key`` methods do not, so a key returned by
+        ``set`` or ``mset`` before the upgrade stops resolving once its entry
+        has moved; look such entries up, or drop them, by content instead.
+    """
 
     _warning_shown: bool = False  # Class-level flag to prevent warning spam
 
@@ -80,7 +89,7 @@ class EmbeddingsCache(BaseCache):
         return hashify(json.dumps(parts, separators=(",", ":")))
 
     def _make_legacy_entry_id(self, content: bytes | str, model_name: str) -> str:
-        """Generate the entry ID that RedisVL 0.32 and earlier used.
+        """Generate the entry ID that RedisVL 0.32.0 and earlier used.
 
         That format joined content and model name with ``:``, so distinct
         inputs could share an ID. It is kept only to find entries written
@@ -91,7 +100,7 @@ class EmbeddingsCache(BaseCache):
         return hashify(f"{content}:{model_name}")
 
     def _make_legacy_cache_key(self, content: bytes | str, model_name: str) -> str:
-        """Generate the full Redis key that RedisVL 0.32 and earlier used."""
+        """Generate the full Redis key that RedisVL 0.32.0 and earlier used."""
         return self._make_key(self._make_legacy_entry_id(content, model_name))
 
     @staticmethod
@@ -131,7 +140,10 @@ class EmbeddingsCache(BaseCache):
         migrations = []
         for i, data, pttl in zip(misses, replies[::2], replies[1::2]):
             content = contents[i]
-            if not data or not self._legacy_entry_matches(data, content, model_name):
+            # PTTL -2: the key expired after HGETALL read it, so treat it as gone.
+            if not data or pttl == -2:
+                continue
+            if not self._legacy_entry_matches(data, content, model_name):
                 continue
             entry_id = self._make_entry_id(content, model_name)
             entry_data = convert_bytes(dict(data))
@@ -154,6 +166,12 @@ class EmbeddingsCache(BaseCache):
 
         The new key gets this cache's TTL, or keeps the legacy key's remaining
         TTL when the cache has none.
+
+        Nothing ties these writes to the earlier read: a ``set`` of the same
+        content and model in between is overwritten with the legacy fields,
+        and a ``drop`` in between is undone. Both inputs embed the same
+        content with the same model, so this is accepted for a fallback that
+        will be removed.
         """
         _, legacy_key, new_key, entry_data, pttl = migration
         pipeline.hset(new_key, mapping=entry_data)
@@ -164,19 +182,28 @@ class EmbeddingsCache(BaseCache):
             pipeline.pexpire(new_key, pttl)
         pipeline.delete(legacy_key)
 
-    def _warn_legacy_migration(self, count: int) -> None:
-        """Log, once per cache instance, that legacy entries were migrated."""
+    def _warn_legacy_migration(self, replies: list[Any]) -> None:
+        """Log, once per cache instance, that legacy entries are being migrated.
+
+        Args:
+            replies: The replies of the migration write pipeline, which runs
+                with ``raise_on_error=False`` so that a client without write
+                access still gets its hit.
+        """
         if self._legacy_warning_shown:
             return
+        error = next((r for r in replies if isinstance(r, Exception)), None)
         logger.warning(
-            "EmbeddingsCache '%s' found %d entr%s stored under the key format "
-            "used by RedisVL 0.32 and earlier, and moved %s to the new format. "
-            "Entries are migrated as they are read; a future release will stop "
-            "reading the old format, and any entries left in it will then miss.",
+            "EmbeddingsCache '%s' is reading entries stored under the key "
+            "format used by RedisVL 0.32.0 and earlier, and moving each to the "
+            "new format as it is read. A future release will stop reading the "
+            "old format, and entries still in it will then miss.%s",
             self.name,
-            count,
-            "y" if count == 1 else "ies",
-            "it" if count == 1 else "them",
+            (
+                f" Moving some entries failed, so they stay under the old key: {error}"
+                if error
+                else ""
+            ),
         )
         self._legacy_warning_shown = True
 
@@ -209,8 +236,8 @@ class EmbeddingsCache(BaseCache):
         with client.pipeline(transaction=False) as pipeline:
             for migration in migrations:
                 self._queue_legacy_migration(pipeline, migration)
-            pipeline.execute()
-        self._warn_legacy_migration(len(migrations))
+            replies = pipeline.execute(raise_on_error=False)
+        self._warn_legacy_migration(replies)
         return {m[0]: self._process_cache_data(m[3]) for m in migrations}
 
     async def _amigrate_legacy_entries(
@@ -233,8 +260,8 @@ class EmbeddingsCache(BaseCache):
         async with client.pipeline(transaction=False) as pipeline:
             for migration in migrations:
                 self._queue_legacy_migration(pipeline, migration)
-            await pipeline.execute()
-        self._warn_legacy_migration(len(migrations))
+            replies = await pipeline.execute(raise_on_error=False)
+        self._warn_legacy_migration(replies)
         return {m[0]: self._process_cache_data(m[3]) for m in migrations}
 
     def _make_cache_key(self, content: bytes | str, model_name: str) -> str:
@@ -730,20 +757,25 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        # Drop the legacy key too; remove it in a future release.
-        keys = [
-            key
-            for content in contents
-            for key in (
-                self._make_cache_key(content, model_name),
-                self._make_legacy_cache_key(content, model_name),
-            )
-        ]
-
-        if not keys:
+        contents = list(contents)
+        if not contents:
             return
 
-        self.mdrop_by_keys(keys)
+        client = self._get_redis_client()
+        with client.pipeline(transaction=False) as pipeline:
+            for content in contents:
+                pipeline.delete(self._make_cache_key(content, model_name))
+                # Legacy key format fallback; remove in a future release.
+                pipeline.hgetall(self._make_legacy_cache_key(content, model_name))
+            replies = pipeline.execute()
+
+        # Legacy IDs can collide, so only drop legacy entries stored for this input.
+        legacy_keys = [
+            self._make_legacy_cache_key(content, model_name)
+            for content, data in zip(contents, replies[1::2])
+            if data and self._legacy_entry_matches(data, content, model_name)
+        ]
+        self.mdrop_by_keys(legacy_keys)
 
     async def aget(
         self,
@@ -1078,20 +1110,25 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        # Drop the legacy key too; remove it in a future release.
-        keys = [
-            key
-            for content in contents
-            for key in (
-                self._make_cache_key(content, model_name),
-                self._make_legacy_cache_key(content, model_name),
-            )
-        ]
-
-        if not keys:
+        contents = list(contents)
+        if not contents:
             return
 
-        await self.amdrop_by_keys(keys)
+        client = await self._get_async_redis_client()
+        async with client.pipeline(transaction=False) as pipeline:
+            for content in contents:
+                pipeline.delete(self._make_cache_key(content, model_name))
+                # Legacy key format fallback; remove in a future release.
+                pipeline.hgetall(self._make_legacy_cache_key(content, model_name))
+            replies = await pipeline.execute()
+
+        # Legacy IDs can collide, so only drop legacy entries stored for this input.
+        legacy_keys = [
+            self._make_legacy_cache_key(content, model_name)
+            for content, data in zip(contents, replies[1::2])
+            if data and self._legacy_entry_matches(data, content, model_name)
+        ]
+        await self.amdrop_by_keys(legacy_keys)
 
     async def aexists(self, content: bytes | str, model_name: str) -> bool:
         """Async check if an embedding exists.
