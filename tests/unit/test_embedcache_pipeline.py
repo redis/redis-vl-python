@@ -12,6 +12,7 @@ They need no Redis, so unlike the cluster tests in
 """
 
 import pytest
+from redis.exceptions import ResponseError
 
 from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 from redisvl.extensions.cache.embeddings.schema import CacheEntry
@@ -23,8 +24,9 @@ class FakeAsyncClusterPipeline:
     HGETALL replies come from ``store``; every other command replies 1.
     """
 
-    def __init__(self, store=None):
+    def __init__(self, store=None, failing=()):
         self.store = store or {}
+        self.failing = failing
         self.queued: list[tuple] = []
         self.executed: list[list[tuple]] = []
 
@@ -57,6 +59,14 @@ class FakeAsyncClusterPipeline:
         self.queued.append(("hgetall", key))
         return self
 
+    def pexpire(self, key, ttl):
+        self.queued.append(("pexpire", key, ttl))
+        return self
+
+    def delete(self, key):
+        self.queued.append(("delete", key))
+        return self
+
     def pttl(self, key):
         self.queued.append(("pttl", key))
         return self
@@ -65,15 +75,20 @@ class FakeAsyncClusterPipeline:
         self.executed.append(list(self.queued))
         replies = {
             "hgetall": lambda key: self.store.get(key, {}),
-            "pttl": lambda key: -2,
+            "pttl": lambda key: -1,
         }
         results = [
-            replies.get(command, lambda key: 1)(key) for command, key, *_ in self.queued
+            (
+                ResponseError("OOM command not allowed")
+                if command in self.failing
+                else replies.get(command, lambda key: 1)(key)
+            )
+            for command, key, *_ in self.queued
         ]
         self.queued.clear()
         return results
 
-    async def execute(self):
+    async def execute(self, raise_on_error=True):
         return self._run()
 
 
@@ -86,7 +101,7 @@ class FakeSyncPipeline(FakeAsyncClusterPipeline):
     def __exit__(self, *exc_info):
         return False
 
-    def execute(self):
+    def execute(self, raise_on_error=True):
         return self._run()
 
 
@@ -95,15 +110,16 @@ class FakeAsyncClusterClient:
 
     pipeline_class = FakeAsyncClusterPipeline
 
-    def __init__(self, store=None):
+    def __init__(self, store=None, failing=()):
         self.store = store
+        self.failing = failing
         self.pipelines: list[FakeAsyncClusterPipeline] = []
         self.transactions: list[bool] = []
 
     # redis-py's default, so a missing transaction=False is caught.
     def pipeline(self, transaction=True):
         self.transactions.append(transaction)
-        pipeline = self.pipeline_class(self.store)
+        pipeline = self.pipeline_class(self.store, self.failing)
         self.pipelines.append(pipeline)
         return pipeline
 
@@ -263,3 +279,30 @@ async def test_content_lookup_reads_the_legacy_key_only_on_a_miss(
         [[("hgetall", "embedcache:b")]],
         [[("hgetall", "embedcache:old-b"), ("pttl", "embedcache:old-b")]],
     ]
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+@pytest.mark.asyncio
+async def test_failed_migration_write_keeps_the_legacy_entry(monkeypatch, use_async):
+    """An HSET refused under noeviction must not be followed by the DEL."""
+    monkeypatch.setattr(
+        EmbeddingsCache, "_make_entry_id", lambda self, content, model_name: content
+    )
+    monkeypatch.setattr(
+        EmbeddingsCache,
+        "_make_legacy_entry_id",
+        lambda self, content, model_name: "old-" + content,
+    )
+    store = {"embedcache:old-a": HIT.to_dict()}
+    if use_async:
+        client = FakeAsyncClusterClient(store, failing={"hset"})
+        hit = await make_cache(client, ttl=60).aget("a", "m")
+    else:
+        client = FakeSyncClient(store, failing={"hset"})
+        cache = EmbeddingsCache(name="embedcache", ttl=60, redis_client=client)
+        hit = cache.get("a", "m")
+
+    assert hit["embedding"] == HIT.embedding
+    commands = [c for p in client.pipelines for batch in p.executed for c in batch]
+    assert ("hset", "embedcache:a") in commands
+    assert not [c for c in commands if c[0] == "delete"]

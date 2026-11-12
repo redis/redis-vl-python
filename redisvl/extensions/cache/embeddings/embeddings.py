@@ -159,10 +159,10 @@ class EmbeddingsCache(BaseCache):
             )
         return migrations
 
-    def _queue_legacy_migration(
+    def _queue_legacy_write(
         self, pipeline: Any, migration: tuple[int, str, str, dict[Any, Any], int]
-    ) -> None:
-        """Queue the commands that move one legacy entry to its new key.
+    ) -> int:
+        """Queue the commands that copy one legacy entry to its new key.
 
         The new key gets this cache's TTL, or keeps the legacy key's remaining
         TTL when the cache has none.
@@ -172,23 +172,47 @@ class EmbeddingsCache(BaseCache):
         and a ``drop`` in between is undone. Both inputs embed the same
         content with the same model, so this is accepted for a fallback that
         will be removed.
+
+        Returns:
+            The number of commands queued; the first is the HSET.
         """
-        _, legacy_key, new_key, entry_data, pttl = migration
+        _, _, new_key, entry_data, pttl = migration
         pipeline.hset(new_key, mapping=entry_data)
         _ttl = self._resolve_ttl()
         if _ttl:
             pipeline.expire(new_key, _ttl)
         elif pttl and pttl > 0:
             pipeline.pexpire(new_key, pttl)
-        pipeline.delete(legacy_key)
+        else:
+            return 1
+        return 2
+
+    @staticmethod
+    def _copied_legacy_keys(
+        migrations: list[tuple[int, str, str, dict[Any, Any], int]],
+        counts: list[int],
+        replies: list[Any],
+    ) -> list[str]:
+        """The legacy keys whose entry was written to its new key.
+
+        Only these may be deleted: under ``noeviction`` at ``maxmemory``, or
+        for a client without write access, the HSET fails, and deleting the
+        legacy key then would lose the entry.
+        """
+        copied, position = [], 0
+        for migration, count in zip(migrations, counts):
+            if not isinstance(replies[position], Exception):
+                copied.append(migration[1])
+            position += count
+        return copied
 
     def _warn_legacy_migration(self, replies: list[Any]) -> None:
         """Log, once per cache instance, that legacy entries are being migrated.
 
         Args:
             replies: The replies of the migration write pipeline, which runs
-                with ``raise_on_error=False`` so that a client without write
-                access still gets its hit.
+                with ``raise_on_error=False`` so that a failed write still
+                returns the hit.
         """
         if self._legacy_warning_shown:
             return
@@ -234,9 +258,13 @@ class EmbeddingsCache(BaseCache):
         if not migrations:
             return {}
         with client.pipeline(transaction=False) as pipeline:
-            for migration in migrations:
-                self._queue_legacy_migration(pipeline, migration)
+            counts = [
+                self._queue_legacy_write(pipeline, migration)
+                for migration in migrations
+            ]
             replies = pipeline.execute(raise_on_error=False)
+        # Delete a legacy key only once its entry is safely under the new key.
+        self.mdrop_by_keys(self._copied_legacy_keys(migrations, counts, replies))
         self._warn_legacy_migration(replies)
         return {m[0]: self._process_cache_data(m[3]) for m in migrations}
 
@@ -258,9 +286,13 @@ class EmbeddingsCache(BaseCache):
         if not migrations:
             return {}
         async with client.pipeline(transaction=False) as pipeline:
-            for migration in migrations:
-                self._queue_legacy_migration(pipeline, migration)
+            counts = [
+                self._queue_legacy_write(pipeline, migration)
+                for migration in migrations
+            ]
             replies = await pipeline.execute(raise_on_error=False)
+        # Delete a legacy key only once its entry is safely under the new key.
+        await self.amdrop_by_keys(self._copied_legacy_keys(migrations, counts, replies))
         self._warn_legacy_migration(replies)
         return {m[0]: self._process_cache_data(m[3]) for m in migrations}
 

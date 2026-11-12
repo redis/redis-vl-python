@@ -3,7 +3,6 @@ import json
 import time
 
 import pytest
-from redis import Redis
 from redis.exceptions import ConnectionError
 
 from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
@@ -1000,24 +999,12 @@ async def test_async_reads_migrate_legacy_entries(cache):
     assert client.exists(cache._make_legacy_cache_key("a:b", "c"))
 
 
-def test_read_only_client_still_gets_legacy_hits(cache, redis_url, redis_test_name):
+def test_read_only_client_still_gets_legacy_hits(cache, acl_user):
     """A client that cannot write gets the legacy hit; the entry stays put."""
-    admin = cache._get_redis_client()
-    user = redis_test_name("embedcache_reader")
-    admin.acl_setuser(
-        user, enabled=True, passwords=["+reader-pass"], keys=["*"], commands=["+@read"]
-    )
-    try:
-        legacy_key = write_legacy_entry(cache, "content", "m", [0.1])
-        reader = EmbeddingsCache(
-            name=cache.name,
-            redis_client=Redis.from_url(
-                redis_url, username=user, password="reader-pass"
-            ),
-        )
+    legacy_key = write_legacy_entry(cache, "content", "m", [0.1])
+    with acl_user("~*", "+@read", name="embedcache_reader") as user:
+        reader = EmbeddingsCache(name=cache.name, redis_client=user.connect())
 
         assert reader.get("content", "m")["embedding"] == [0.1]
         assert reader.exists("content", "m")
-        assert admin.exists(legacy_key)
-    finally:
-        admin.acl_deluser(user)
+    assert cache._get_redis_client().exists(legacy_key)
