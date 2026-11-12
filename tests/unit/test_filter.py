@@ -75,6 +75,9 @@ def test_tag_filter_varied(operation, tags, expected):
     assert str(tf) == expected
 
 
+NO_MATCH = "(@tag_field:{redisvl_no_match} -@tag_field:{redisvl_no_match})"
+
+
 @pytest.mark.parametrize(
     "pattern,expected",
     [
@@ -88,9 +91,10 @@ def test_tag_filter_varied(operation, tags, expected):
         ("hello w*", "@tag_field:{hello\\ w*}"),
         # Multiple wildcards in same pattern
         ("*test*", "@tag_field:{*test*}"),
-        # Empty pattern returns wildcard match-all
-        ("", "*"),
-        ([], "*"),
+        # `None` is no constraint; an empty collection selects no tag, so it
+        # matches nothing; `""` is the empty tag RediSearch stores.
+        ("", '@tag_field:{""}'),
+        ([], NO_MATCH),
         (None, "*"),
         # Pattern with special characters
         ("cat$*", "@tag_field:{cat\\$*}"),
@@ -175,22 +179,40 @@ def test_tag_wildcard_combined_with_exact_match():
     "operation, value, expected",
     [
         ("__eq__", None, "*"),
-        ("__eq__", [], "*"),
-        ("__eq__", "", "*"),
-        ("__eq__", [None], "*"),
+        ("__eq__", [], NO_MATCH),
+        ("__eq__", (), NO_MATCH),
+        ("__eq__", set(), NO_MATCH),
+        ("__eq__", "", '@tag_field:{""}'),
+        ("__eq__", [""], '@tag_field:{""}'),
+        ("__eq__", ["", "tag"], '@tag_field:{""|tag}'),
+        ("__eq__", [None], NO_MATCH),
+        ("__eq__", [0], "@tag_field:{0}"),
+        ("__mod__", [], NO_MATCH),
         ("__eq__", [None, "tag"], "@tag_field:{tag}"),
-        # Tag.__str__ short-circuits to "*" before consulting OPERATOR_MAP, so
-        # one falsy row covers every falsy value on the negated operator too.
+        # Not in the empty set is every document, so `!=` an empty collection
+        # constrains nothing, while `!= ""` excludes the empty tag.
         ("__ne__", None, "*"),
+        ("__ne__", [], "*"),
+        ("__ne__", [None], "*"),
+        ("__ne__", "", '(-@tag_field:{""})'),
         ("__ne__", [None, "tag"], "(-@tag_field:{tag})"),
     ],
     ids=[
         "none",
         "empty_list",
+        "empty_tuple",
+        "empty_set",
         "empty_string",
+        "list_with_empty_string",
+        "empty_string_and_tag",
         "list_with_none",
+        "list_with_zero",
+        "like_empty_list",
         "list_with_none_and_tag",
         "ne_none",
+        "ne_empty_list",
+        "ne_list_with_none",
+        "ne_empty_string",
         "ne_list_with_none_and_tag",
     ],
 )
@@ -300,14 +322,11 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
     [
         ("__eq__", "text", '@text_field:("text")'),
         ("__ne__", "text", '(-@text_field:"text")'),
-        ("__eq__", "", "*"),
-        ("__ne__", "", "*"),
         ("__eq__", None, "*"),
         ("__ne__", None, "*"),
         ("__mod__", "text", "@text_field:(text)"),
         ("__mod__", "tex*", "@text_field:(tex*)"),
         ("__mod__", "%text%", "@text_field:(%text%)"),
-        ("__mod__", "", "*"),
         ("__mod__", None, "*"),
         # The quote is the only character that can terminate a quoted value, so
         # it goes and everything it carried stays inside the phrase.
@@ -350,14 +369,11 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
     ids=[
         "eq",
         "ne",
-        "eq-empty",
-        "ne-empty",
         "eq-none",
         "ne-none",
         "like",
         "like_wildcard",
         "like_full",
-        "like_empty",
         "like_none",
         "eq_quote_neutralized",
         "ne_quote_neutralized",
@@ -615,14 +631,34 @@ def test_filters_combination():
     combined = tf1 | tf2
     assert str(combined) == "(@tag_field:{tag1|tag2} | @tag_field:{tag3})"
 
+    # An empty collection matches nothing: it absorbs an AND and drops out of
+    # an OR, as the empty set does. Eliding it from the AND would widen the query.
     tf1 = Tag("tag_field") == []
-    assert str(tf1) == "*"
-    assert str(tf1 & tf2) == str(tf2)
+    assert str(tf1) == NO_MATCH
+    assert str(tf1 & tf2) == NO_MATCH
+    assert str(tf2 & tf1) == NO_MATCH
     assert str(tf1 | tf2) == str(tf2)
+    assert str(tf2 | tf1) == str(tf2)
+    assert str(tf1 & tf1) == NO_MATCH
+    assert str(tf1 | tf1) == NO_MATCH
+
+    # Nesting does not lose it: the AND is absorbed wherever it sits.
+    other = Tag("other") == "x"
+    assert str((tf2 & other) & tf1) == NO_MATCH
+    assert str((tf2 | other) & tf1) == NO_MATCH
+    assert str((tf1 & tf2) | other) == str(other)
+
+    # `None` is no constraint, and is elided around a match-nothing filter
+    # rather than widening it.
+    assert str(tf1 & (Tag("tag_field") == None)) == NO_MATCH
+    assert str(tf1 | (Tag("tag_field") == None)) == NO_MATCH
+
+    # `!=` an empty collection excludes nothing, so it is elided like `None`.
+    assert str((Tag("tag_field") != []) & tf2) == str(tf2)
 
     # test combining filters with None values and empty strings
     tf1 = Tag("tag_field") == None
-    tf2 = Tag("tag_field") == ""
+    tf2 = Tag("tag_field") == None
     assert str(tf1 & tf2) == "*"
 
     tf1 = Tag("tag_field") == None
@@ -637,7 +673,7 @@ def test_filters_combination():
     tf2 = Tag("tag_field") != None
     assert str(tf1 & tf2) == "*"
 
-    tf1 = Tag("tag_field") == ""
+    tf1 = Tag("tag_field") == None
     tf2 = Tag("tag_field") == "tag"
     tf3 = Tag("tag_field") == ["tag1", "tag2"]
     assert str(tf1 & tf2 & tf3) == str(tf2 & tf3)
@@ -1101,8 +1137,12 @@ def test_render_filter_with_filter_expression_inputs():
     """
     assert render_filter(Tag("category") == "tech") == "@category:{tech}"
 
-    # An empty filter renders as "*", which means "no filtering".
-    assert render_filter(Tag("category") == []) is None
+    # `None` renders as "*", which means "no filtering"; an empty collection
+    # is a filter that matches nothing, and is kept.
+    assert render_filter(Tag("category") == None) is None
+    assert render_filter(Tag("category") == []) == (
+        "(@category:{redisvl_no_match} -@category:{redisvl_no_match})"
+    )
 
     field = Tag("category")
     before = str(field)
@@ -1139,10 +1179,48 @@ def test_intersect_with_filter(filter_expression, expected):
         # The reason this helper exists rather than a bare `str(expr) != "*"` at
         # each call site: an un-initialized FilterExpression raises on render.
         pytest.param(FilterExpression(), True, id="uninitialized-raises"),
-        pytest.param(Tag("t") == "", True, id="empty-tag-renders-wildcard"),
+        pytest.param(Tag("t") == None, True, id="none-tag-renders-wildcard"),
+        pytest.param(Tag("t") == [], False, id="empty-list-is-not-match-all"),
         pytest.param(Tag("t") == "acme", False, id="tag-equality"),
         pytest.param("@t:{acme}", False, id="rendered-string"),
     ],
 )
 def test_is_match_all_filter(filter_expression, expected):
     assert is_match_all_filter(filter_expression) is expected
+
+
+@pytest.mark.parametrize("operation", ["__eq__", "__ne__", "__mod__"])
+def test_text_refuses_an_empty_string(operation):
+    # `@f:("")` beside another clause is read against that clause's field and
+    # rejected by the server, so an empty string would give a filter whose
+    # meaning depends on operand order. `None` is how to ask for no constraint.
+    with pytest.raises(ValueError, match="non-empty"):
+        getattr(Text("text_field"), operation)("")
+
+
+@pytest.mark.parametrize("operation", ["__eq__", "__ne__", "__mod__"])
+def test_text_still_treats_none_as_no_constraint(operation):
+    assert str(getattr(Text("text_field"), operation)(None)) == "*"
+
+
+@pytest.mark.parametrize("empty", [[], (), set()], ids=["list", "tuple", "set"])
+def test_text_and_num_still_refuse_a_collection(empty):
+    # Already fail-closed: only Tag takes a collection.
+    with pytest.raises(TypeError):
+        Text("t") == empty
+    with pytest.raises(TypeError):
+        Num("n") == empty
+
+
+def test_an_empty_tag_filter_matches_nothing_inside_a_permission_filter():
+    tenant = Tag("tenant") == "acme"
+    groups: list[str] = []
+    assert str(tenant & (Tag("groups") == groups)) == (
+        "(@groups:{redisvl_no_match} -@groups:{redisvl_no_match})"
+    )
+    assert str(Tag("groups") == groups) == str(Tag("groups") % groups)
+    # The field object itself renders the same once built.
+    field = Tag("groups")
+    field == groups
+    assert str(field) == "(@groups:{redisvl_no_match} -@groups:{redisvl_no_match})"
+    assert is_match_all_filter(tenant & (Tag("groups") == groups)) is False

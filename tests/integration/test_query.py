@@ -334,6 +334,57 @@ def test_count_query(index, sample_data):
     assert results == 4
 
 
+def test_empty_tag_list_matches_nothing_when_combined(index, sample_data):
+    """An empty list must narrow a query, however it is combined or queried."""
+    empty = Tag("credit_score") == []
+    high = Tag("credit_score") == "high"
+    adult = Num("age") >= 18
+    fields = ["user", "credit_score", "age"]
+
+    def users(expression):
+        return {
+            doc["user"]
+            for doc in index.query(
+                FilterQuery(filter_expression=expression, return_fields=fields)
+            )
+        }
+
+    assert users(empty) == set()
+    # The failing case: an empty list beside a real clause used to be dropped.
+    assert users(high & empty) == set()
+    assert users(adult & empty) == set()
+    assert users(empty & high & adult) == set()
+    assert users((high & adult) & empty) == set()
+    # OR keeps the other side, as the union with the empty set does.
+    assert users(high | empty) == users(high) != set()
+    assert users(empty | high) == users(high)
+    # Not in the empty set is every document.
+    assert users((Tag("credit_score") != []) & high) == users(high)
+    # `None` stays "no constraint".
+    assert users(high & (Tag("credit_score") == None)) == users(high)
+
+    assert index.query(CountQuery(high & empty)) == 0
+    assert index.query(CountQuery(empty)) == 0
+    assert index.query(CountQuery(high | empty)) == index.query(CountQuery(high))
+
+    for expression in (empty, high & empty):
+        vector_query = VectorQuery(
+            vector=[0.1, 0.1, 0.5],
+            vector_field_name="user_embedding",
+            return_fields=fields,
+            filter_expression=expression,
+        )
+        assert index.query(vector_query) == []
+        range_query = VectorRangeQuery(
+            vector=[0.1, 0.1, 0.5],
+            vector_field_name="user_embedding",
+            return_fields=fields,
+            distance_threshold=10,
+            filter_expression=expression,
+        )
+        assert index.query(range_query) == []
+
+
 def search(
     query,
     index,
@@ -416,8 +467,12 @@ def test_filters(index, query, sample_datetimes):
     t = Tag("credit_score") == ["high", "low"]
     search(query, index, t, 6)
 
-    # Empty tag filter
+    # Empty tag filter: an empty set of tags selects no document
     t = Tag("credit_score") == []
+    search(query, index, t, 0)
+
+    # `None` is the way to ask for no constraint
+    t = Tag("credit_score") == None
     search(query, index, t, 7)
 
     # Simple Numeric Filter
@@ -468,8 +523,8 @@ def test_filters(index, query, sample_datetimes):
     t = Text("description") != 'high stress,"'
     search(query, index, t, 6)
 
-    # Test empty filters
-    t = Text("job") % ""
+    # `None` is no constraint; an empty string is refused (see the unit tests)
+    t = Text("job") % None
     search(query, index, t, 7)
 
     # Timestamps
@@ -674,17 +729,17 @@ def test_no_content_query_returns_ids(index, sample_data):
 
 
 def test_sort_filter_query(index, sorted_filter_query):
-    t = Text("job") % ""
+    t = Text("job") % None
     search(sorted_filter_query, index, t, 7, sort=True)
 
 
 def test_sort_vector_query(index, sorted_vector_query):
-    t = Text("job") % ""
+    t = Text("job") % None
     search(sorted_vector_query, index, t, 7, sort=True)
 
 
 def test_sort_range_query(index, sorted_range_query):
-    t = Text("job") % ""
+    t = Text("job") % None
     search(sorted_range_query, index, t, 7, sort=True)
 
 
@@ -1171,6 +1226,23 @@ def missing_fields_index(worker_id, client):
     missing_index.delete(drop=True)
 
 
+def test_empty_string_tag_matches_the_empty_value_only(missing_fields_index):
+    """`""` is a tag value of its own, as `INDEXEMPTY` makes it on the server."""
+    missing_index, prefix = missing_fields_index
+
+    def ids(expression):
+        query = FilterQuery(filter_expression=expression, return_fields=["id"])
+        return {result["id"] for result in missing_index.query(query)}
+
+    assert ids(Tag("category") == "") == {f"{prefix}:empty_strings"}
+    assert ids(Tag("category") == [""]) == {f"{prefix}:empty_strings"}
+    assert f"{prefix}:empty_strings" not in ids(Tag("category") != "")
+    assert f"{prefix}:complete" in ids(Tag("category") != "")
+    assert ids((Tag("category") == "") & (Num("price") > 1000)) == set()
+    # An empty list still selects nothing, and is not the empty-string tag.
+    assert ids(Tag("category") == []) == set()
+
+
 def test_basic_missing_field_queries(missing_fields_index):
     """
     Test the fundamental is_missing() functionality across all supported field types.
@@ -1365,7 +1437,7 @@ def test_complex_missing_field_combinations(missing_fields_index):
 
     # Find documents complete enough for display (have both title AND category)
     display_ready_documents = FilterQuery(
-        filter_expression=(Text("title") != "") & (Tag("category") != ""),
+        filter_expression=Tag("category") != "",
         return_fields=["id", "title", "category"],
     )
     results = missing_index.query(display_ready_documents)
@@ -1408,7 +1480,7 @@ def test_data_quality_completeness_analysis(missing_fields_index):
 
     # Identify records ready for public display (quality threshold check)
     display_ready = FilterQuery(
-        filter_expression=Text("title") != "",
+        filter_expression=Tag("category") != "",
         return_fields=["id", "title", "description"],
     )
     results = missing_index.query(display_ready)

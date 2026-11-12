@@ -178,13 +178,13 @@ def test_no_entries_refuses_rather_than_matching_everything(monkeypatch):
 
 
 def test_an_injected_clause_cannot_be_elided_by_the_intersection(monkeypatch):
-    # `Tag(f) == ""` renders as the match-all `*`, and an intersection drops a
+    # `Tag(f) == None` renders as the match-all `*`, and an intersection drops a
     # `*` operand -- so `locked & injected` would render as `locked` alone with
     # the tenant clause silently gone. The guard therefore runs on the injected
     # clause by itself, before any combination.
     from redisvl.query.filter import Tag
 
-    injected = Tag("org_id") == ""
+    injected = Tag("org_id") == None
     locked = Tag("status") == "resolved"
     assert str(locked & injected) == str(locked)
 
@@ -204,7 +204,7 @@ def test_a_clause_that_renders_match_all_is_refused_even_so(monkeypatch):
     """
     monkeypatch.setattr(
         "redisvl.mcp.auth.resolve_injected_claim",
-        lambda claim, *, tool_name: "",
+        lambda claim, *, tool_name: None,
     )
     with pytest.raises(RedisVLMCPError) as exc:
         build_injected_filter([_Spec("org_id", "org_id")], tool_name="search_kb")

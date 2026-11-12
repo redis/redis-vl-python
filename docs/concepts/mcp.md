@@ -225,7 +225,7 @@ The claim must be a single, non-empty string. Anything else refuses the request 
 | Claim value | Why it is refused |
 |---|---|
 | Absent, or the request has no token | There is no tenant to scope to. |
-| `null` or `""` | An empty tag value would drop the tenant clause from the query entirely. |
+| `null` or `""` | An empty tag value is not a tenant to scope to. |
 | A list, such as `["acme", "victim"]` | It would render as a union, `@org_id:{acme\|victim}`, which spans both tenants. |
 | An object, number or boolean | It is not a tenant identifier. |
 | Padded with whitespace | It cannot be a real tenant identifier, and refusing is safer than guessing which tenant was meant. |
