@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from redis.cluster import RedisCluster
 
 from redisvl.cli.index import Index, _display_in_table, _index_info_for_json
 from redisvl.exceptions import RedisSearchError
@@ -169,6 +170,54 @@ def test_listall_json(monkeypatch, capsys, redis_url, cli_index):
     # The command reflects the real Redis index created by the test fixture.
     assert cli_index.schema.index.name in payload["indices"]
     # JSON success path is silent on stderr.
+    assert captured.err == ""
+
+
+def test_listall_cluster_targets_default_node(monkeypatch, capsys):
+    """On a Redis Cluster, keyless FT._LIST must target the default node."""
+    conn = MagicMock(spec=RedisCluster)
+    node = MagicMock()
+    conn.get_default_node.return_value = node
+    conn.execute_command.return_value = [b"idx"]
+    monkeypatch.setattr(
+        "redisvl.cli.index.RedisConnectionFactory.get_redis_connection",
+        MagicMock(return_value=conn),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["rvl", "index", "listall", "--json", "--url", "redis://localhost:6379"],
+    )
+
+    Index()
+    captured = capsys.readouterr()
+
+    conn.execute_command.assert_called_once_with("FT._LIST", target_nodes=node)
+    assert json.loads(captured.out.strip()) == {"indices": ["idx"]}
+    assert captured.err == ""
+
+
+def test_listall_standalone_keeps_plain_ft_list(monkeypatch, capsys):
+    """A standalone Redis client keeps the plain FT._LIST call."""
+    from redis import Redis
+
+    conn = MagicMock(spec=Redis)
+    conn.execute_command.return_value = [b"idx"]
+    monkeypatch.setattr(
+        "redisvl.cli.index.RedisConnectionFactory.get_redis_connection",
+        MagicMock(return_value=conn),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["rvl", "index", "listall", "--json", "--url", "redis://localhost:6379"],
+    )
+
+    Index()
+    captured = capsys.readouterr()
+
+    conn.execute_command.assert_called_once_with("FT._LIST")
+    assert json.loads(captured.out.strip()) == {"indices": ["idx"]}
     assert captured.err == ""
 
 

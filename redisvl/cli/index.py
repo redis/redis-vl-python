@@ -4,6 +4,7 @@ from argparse import Namespace
 
 import yaml
 from pydantic import ValidationError
+from redis.cluster import RedisCluster
 
 from redisvl.cli.utils import (
     add_index_parsing_options,
@@ -228,7 +229,13 @@ class Index:
         """
         redis_url = create_redis_url(args)
         conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
-        indices = convert_bytes(conn.execute_command("FT._LIST"))
+        if isinstance(conn, RedisCluster):
+            # FT._LIST is keyless; on a cluster it must target a node.
+            indices = convert_bytes(
+                conn.execute_command("FT._LIST", target_nodes=conn.get_default_node())
+            )
+        else:
+            indices = convert_bytes(conn.execute_command("FT._LIST"))
         if args.json:
             cli_print_json({"indices": indices})
         else:
