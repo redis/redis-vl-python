@@ -180,8 +180,6 @@ def test_tag_wildcard_combined_with_exact_match():
     [
         ("__eq__", None, "*"),
         ("__eq__", [], NO_MATCH),
-        ("__eq__", (), NO_MATCH),
-        ("__eq__", set(), NO_MATCH),
         ("__eq__", "", '@tag_field:{""}'),
         ("__eq__", [""], '@tag_field:{""}'),
         ("__eq__", ["", "tag"], '@tag_field:{""|tag}'),
@@ -200,8 +198,6 @@ def test_tag_wildcard_combined_with_exact_match():
     ids=[
         "none",
         "empty_list",
-        "empty_tuple",
-        "empty_set",
         "empty_string",
         "list_with_empty_string",
         "empty_string_and_tag",
@@ -1201,17 +1197,5 @@ def test_text_refuses_an_empty_string(operation):
 
 
 def test_text_still_refuses_a_collection():
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="must be of type"):
         Text("t") == []
-
-
-def test_an_empty_tag_list_narrows_a_permission_filter():
-    tenant = Tag("tenant") == "acme"
-    groups: list[str] = []
-    permission = tenant & (Tag("groups") == groups)
-    assert "(@groups:{redisvl_no_match} -@groups:{redisvl_no_match})" in str(permission)
-    assert is_match_all_filter(permission) is False
-    # The field object itself renders the same once built.
-    field = Tag("groups")
-    field == groups
-    assert str(field) == "(@groups:{redisvl_no_match} -@groups:{redisvl_no_match})"

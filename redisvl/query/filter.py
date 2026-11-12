@@ -128,7 +128,9 @@ class Tag(FilterField):
         a tag of its own, rendered ``@field:{""}``. That needs DIALECT 2 or
         later and ``INDEXEMPTY`` on the field; without ``INDEXEMPTY`` the
         server rejects it in some query positions and silently returns results
-        in others, so do not use it on such a field.
+        in others, so do not use it on such a field. ``Text`` refuses ``""``
+        because its server-side failure happens even on a correctly indexed
+        field; this one only on a field indexed without ``INDEXEMPTY``.
 
     .. code-block:: python
 
@@ -170,10 +172,6 @@ class Tag(FilterField):
     def _set_tag_value(
         self, other: list[str] | set[str] | str | None, operator: FilterOperator
     ):
-        # `None` alone means "no constraint". Anything else is a value: an empty
-        # collection selects no tag, and `""` is the tag RediSearch stores for
-        # an empty string, as `@f:{""}` (DIALECT 2+, and `INDEXEMPTY` on the
-        # field) matches it.
         if isinstance(other, (list, set, tuple)):
             try:
                 other = [str(val) for val in other if val is not None]
@@ -926,8 +924,7 @@ class FilterExpression:
         A filter that can match no document, such as ``Tag("g") == []``, is
         rendered as a clause that matches nothing, so it narrows an ``&`` and
         adds nothing to a ``|``. ``*`` (from ``None``, or ``!=`` an empty
-        collection) constrains nothing and is elided from both operators, which
-        means ``None | empty`` matches nothing.
+        collection) constrains nothing and is elided from both operators.
 
     Note:
         Filter expressions are typically not called directly. Instead they are
@@ -1015,7 +1012,7 @@ def is_match_all_filter(filter_expression: str | FilterExpression | None) -> boo
 def render_filter(filter_expression: str | FilterExpression | None) -> str | None:
     """Render a filter expression, or None when it selects every document.
 
-    A ``None``, empty, or wildcard (``*``) filter contributes no clause to a
+    A ``None``, empty-string, or wildcard (``*``) filter contributes no clause to a
     query: ``*`` is only valid as an entire query, never as one operand of an
     intersection.
 

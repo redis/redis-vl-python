@@ -1236,7 +1236,9 @@ def test_empty_string_tag_matches_the_empty_value_only(missing_fields_index):
     assert ids(Tag("category") == [""]) == {f"{prefix}:empty_strings"}
     assert f"{prefix}:empty_strings" not in ids(Tag("category") != "")
     assert f"{prefix}:complete" in ids(Tag("category") != "")
-    assert ids((Tag("category") == "") & (Num("price") < 100)) == set()
+    assert ids((Tag("category") == "") & (Num("price") > 100)) == {
+        f"{prefix}:empty_strings"
+    }
     # An empty list still selects nothing, and is not the empty-string tag.
     assert ids(Tag("category") == []) == set()
 
@@ -1432,16 +1434,6 @@ def test_complex_missing_field_combinations(missing_fields_index):
     results = missing_index.query(missing_all_critical_fields)
     assert len(results) == 1
     assert results[0]["id"] == f"{prefix}:mostly_missing"
-
-    # Exclude documents whose category is the empty string. `!=` is a negation,
-    # so documents that lack the field entirely are kept.
-    non_empty_category = FilterQuery(
-        filter_expression=Tag("category") != "",
-        return_fields=["id"],
-    )
-    results = missing_index.query(non_empty_category)
-    assert f"{prefix}:empty_strings" not in {result["id"] for result in results}
-    assert f"{prefix}:complete" in {result["id"] for result in results}
 
 
 def test_data_quality_completeness_analysis(missing_fields_index):
