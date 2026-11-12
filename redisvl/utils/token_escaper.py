@@ -6,7 +6,7 @@ def _char_class(chars: str) -> str:
     return "[" + "".join(re.escape(char) for char in chars) + "]"
 
 
-# Building blocks for the tag sets in `TokenEscaper`.
+# Building blocks for the escape sets in `TokenEscaper`.
 _QUERY_SYNTAX = ",.<>{}[]\\\"':;!@#$%^&()-+=~/ "
 _WILDCARDS = "*?"
 # The query parser reads these as a term break inside a tag value unless they
@@ -15,9 +15,13 @@ _WILDCARDS = "*?"
 # controls and DEL (0x01-0x08, 0x0E-0x1F, 0x7F) break the term even when
 # escaped, so adding them here wouldn't make such values match.
 _TAG_SEPARATORS = "`\t\n\r\x0b\x0c"
-# Redis trims whitespace from both ends of a tag value when it indexes it. These
-# stay unescaped at the ends of a query value so the query drops them the same
-# way and still matches the trimmed tag.
+# A HASH index trims whitespace from both ends of a tag value when it indexes
+# it, and a JSON index keeps it. The escaper can't tell which storage it is
+# querying, so these stay unescaped at the ends of a query value: the query
+# drops them the same way and matches the trimmed tag on HASH, while a JSON
+# value that starts or ends with one of them can't be matched. Spaces go the
+# other way: they stay escaped, so " sp " matches on JSON but not on HASH,
+# where it is indexed as "sp".
 _TAG_EDGE_WHITESPACE = "\t\n\r\x0b\x0c"
 
 
@@ -29,12 +33,13 @@ class TokenEscaper:
 
     # Characters that Redis Search requires us to escape during queries.
     # Source: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/escaping/
-    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ \?]"
+    DEFAULT_ESCAPED_CHARS = _char_class(_QUERY_SYNTAX + _WILDCARDS)
 
     # Same as above but excludes * and ? to allow wildcard patterns
-    ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ ]"
+    ESCAPED_CHARS_NO_WILDCARD = _char_class(_QUERY_SYNTAX)
 
-    # Tag equality (`==`, `!=`): every character is literal, including `|`. A tag
+    # Tag equality (`==`, `!=`): every character inside the value is literal,
+    # including `|` (see `_TAG_EDGE_WHITESPACE` for the ends of a value). A tag
     # clause holds its alternatives directly in braces -- `@f:{a|b}` -- so an
     # unescaped `|` inside a single value silently turns an equality match into
     # a union.
@@ -70,8 +75,9 @@ class TokenEscaper:
         ``escape()`` uses ``TAG_VALUE_ESCAPED_CHARS``, or
         ``TAG_PATTERN_ESCAPED_CHARS`` when ``preserve_wildcards`` is True. Tabs,
         newlines and the other ASCII whitespace except the space are left
-        unescaped at either end of the value, because Redis trims them from tag
-        values when it indexes them.
+        unescaped at either end of the value, because a HASH index trims them
+        from tag values when it indexes them. A JSON index keeps them, so a value
+        that starts or ends with one of them can't be matched there.
         """
         escaper = cls(re.compile(cls.TAG_VALUE_ESCAPED_CHARS))
         escaper.escaped_chars_no_wildcard_re = re.compile(cls.TAG_PATTERN_ESCAPED_CHARS)
