@@ -377,8 +377,8 @@ def test_search_index_drop_key(index):
     # test passing a single string key removes only that key
     dropped = index.drop_keys(keys[0])
     assert dropped == 1
-    assert not index.fetch(keys[0])
-    assert index.fetch(keys[1]) is not None  # still have all other entries
+    assert index.fetch("1") is None
+    assert index.fetch("2") is not None  # still have all other entries
 
 
 def test_search_index_drop_keys(index):
@@ -393,9 +393,9 @@ def test_search_index_drop_keys(index):
     # test passing a list of keys selectively removes only those keys
     dropped = index.drop_keys(keys[0:2])
     assert dropped == 2
-    assert not index.fetch(keys[0])
-    assert not index.fetch(keys[1])
-    assert index.fetch(keys[2]) is not None
+    assert index.fetch("1") is None
+    assert index.fetch("2") is None
+    assert index.fetch("3") is not None
 
     assert index.exists()
 
@@ -412,15 +412,15 @@ def test_search_index_drop_documents(index):
     # Test dropping a single document by ID
     dropped = index.drop_documents("1")
     assert dropped == 1
-    assert not index.fetch("1")
+    assert index.fetch("1") is None
     assert index.fetch("2") is not None
     assert index.fetch("3") is not None
 
     # Test dropping multiple documents by ID
     dropped = index.drop_documents(["2", "3"])
     assert dropped == 2
-    assert not index.fetch("2")
-    assert not index.fetch("3")
+    assert index.fetch("2") is None
+    assert index.fetch("3") is None
 
     # Test dropping with an empty list
     dropped = index.drop_documents([])
@@ -440,7 +440,7 @@ def test_search_index_load_and_fetch(index):
 
     index.delete(drop=True)
     assert not index.exists()
-    assert not index.fetch("1")
+    assert index.fetch("1") is None
 
 
 def test_search_index_load_preprocess(index):

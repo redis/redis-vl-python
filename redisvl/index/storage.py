@@ -500,7 +500,7 @@ class BaseStorage(BaseModel):
         redis_client: SyncRedisClient,
         keys: Collection[str],
         batch_size: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any] | None]:
         """Retrieve objects from Redis by keys.
 
         Args:
@@ -511,7 +511,8 @@ class BaseStorage(BaseModel):
                 default batch size.
 
         Returns:
-            List[Dict[str, Any]]: List of objects pulled from redis.
+            List[Optional[Dict[str, Any]]]: One entry per key, in order;
+                None where the key does not exist.
         """
         results: list[Any] = []
 
@@ -541,7 +542,7 @@ class BaseStorage(BaseModel):
         redis_client: AsyncRedisClient,
         keys: Collection[str],
         batch_size: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any] | None]:
         """Asynchronously retrieve objects from Redis by keys.
 
         Args:
@@ -552,8 +553,8 @@ class BaseStorage(BaseModel):
                 default batch size.
 
         Returns:
-            Dict[str, Any]: Dictionary with keys and their corresponding
-                objects.
+            List[Optional[Dict[str, Any]]]: One entry per key, in order;
+                None where the key does not exist.
         """
         results: list[Any] = []
 
@@ -659,6 +660,27 @@ class HashStorage(BaseStorage):
             return client.hgetall(key)  # type: ignore[return-value]
         else:
             return await client.hgetall(key)  # type: ignore[return-value, misc]
+
+    # HGETALL answers a missing key with an empty hash rather than nil, and
+    # Redis never keeps an empty hash, so an empty result always means the
+    # key is absent. Reporting it as None matches JSON storage.
+
+    def get(
+        self,
+        redis_client: SyncRedisClient,
+        keys: Collection[str],
+        batch_size: int | None = None,
+    ) -> list[dict[str, Any] | None]:
+        return [obj or None for obj in super().get(redis_client, keys, batch_size)]
+
+    async def aget(
+        self,
+        redis_client: AsyncRedisClient,
+        keys: Collection[str],
+        batch_size: int | None = None,
+    ) -> list[dict[str, Any] | None]:
+        objs = await super().aget(redis_client, keys, batch_size)
+        return [obj or None for obj in objs]
 
 
 class JsonStorage(BaseStorage):
