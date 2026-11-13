@@ -12,14 +12,24 @@ on:
 
   workflow_dispatch:
 
+# A new push to a PR cancels that PR's previous run. Every other event gets a
+# group of its own (the run ID), so pushes to main, the nightly schedule and
+# manual dispatches are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.13.1"
+  # The uv cache keys below hard-code the runner OS, so every job pins
+  # `runs-on: ubuntu-24.04` rather than following ubuntu-latest. Change both
+  # together.
 
 jobs:
   service-tests:
     name: Service Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Needs API-key secrets. Fork PRs and Dependabot-triggered runs get none, so
     # they skip here; a maintainer runs them via test-fork-pr.yml instead.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
@@ -27,11 +37,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      # The canary saves the Python 3.11 uv cache and, when its tests pass, the
+      # HuggingFace model cache. It finishes before the matrix starts, so the
+      # matrix legs restore both and the notebooks restore the uv cache, and
+      # none of them save these themselves. (The notebooks keep a model cache
+      # of their own.) When it is skipped (fork and Dependabot PRs) they
+      # restore from the base branch instead.
       - name: Run service tests
         uses: ./.github/actions/run-service-tests
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           uv-version: ${{ env.UV_VERSION }}
+          save-cache: "true"
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -64,7 +81,7 @@ jobs:
 
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # `needs` is here to order this job after the HF model cache is primed, not
     # to gate it on the service suite passing (it was `needs: prime-cache` when
     # it was introduced in #306). Without a status check function, `needs` also
@@ -89,6 +106,8 @@ jobs:
         redis-py-version: ["6.x", "7.x", "8.x"]
         # `redis:latest` floats, so a failure on it is not reproducible from a
         # SHA; it is advisory below. Pinned tags carry the blocking coverage.
+        # The uv cache saver below matches redis-py-version 8.x and
+        # redis:latest; update it if either value goes.
         redis-image: ["redis:8.2", "redis:8.4", "redis:latest"]
         include:
           - redis-image: "redis:latest"
@@ -97,32 +116,47 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Cache HuggingFace Models
-        uses: actions/cache@v4
+      # Restore-only: service-tests is the one job that saves this cache.
+      - name: Restore HuggingFace models
+        uses: actions/cache/restore@v5
         with:
           path: hf_cache
-          key: ${{ runner.os }}-hf-cache
+          key: ${{ runner.os }}-hf-cache-v2
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
+      # setup-uv's own cache has no restore-keys fallback, so any uv.lock change
+      # (the release bot's version bump included) would start every leg cold.
+      # The restore and save steps around the install do the caching instead.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
+          cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
           python-version: ${{ matrix.python-version }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+
+      # Key format is shared with lint.yml and the run-service-tests action;
+      # keep all three in sync.
+      - name: Restore uv cache
+        id: uv-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/uv
+          key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ matrix.python-version }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ matrix.python-version }}-pruned-
 
       - name: Install dependencies
         run: |
           set -euo pipefail
 
-          uv sync --all-extras --frozen
+          # The docs group (Sphinx and friends) is only for building docs;
+          # no test imports it.
+          uv sync --all-extras --no-group docs --frozen
 
           # Must cover every redis-py-version matrix value; unhandled values fail.
           case "$REDIS_PY_VERSION" in
@@ -138,14 +172,33 @@ jobs:
           uv pip install "$spec"
           uv run python -c 'import redis; print("redis-py:", redis.__version__)'
 
+      # One saver per Python version, so legs don't race to save the same key.
+      # service-tests saves 3.11; for the other versions the redis-py 8.x x
+      # redis:latest leg saves (`redis:latest` is the image value that never
+      # rotates; its continue-on-error doesn't matter because the save comes
+      # before the tests). Saving here rather than after the tests keeps the
+      # cache when a test fails. `prune --ci` keeps only wheels built from
+      # source; pre-built wheels download faster than they restore.
+      - name: Prune uv cache
+        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:latest' && steps.uv-cache.outputs.cache-hit != 'true' }}
+        run: uv cache prune --ci
+
+      - name: Save uv cache
+        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:latest' && steps.uv-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/uv
+          key: ${{ steps.uv-cache.outputs.cache-primary-key }}
+
       - name: Run tests
         run: |
           make test
 
   notebooks:
     name: Notebook Validation
-    runs-on: ubuntu-latest
-    # Ordered after the HF cache is primed, not gated on it; see the `test` job.
+    runs-on: ubuntu-24.04
+    # Ordered after service-tests so it restores the uv cache that job saves;
+    # not gated on it; see the `test` job.
     needs: service-tests
     # Needs API-key secrets, unavailable to fork PRs and Dependabot. Keep in
     # sync with service-tests.
@@ -156,14 +209,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Cache HuggingFace Models
-        uses: actions/cache@v4
+      # Separate from the HF cache the test jobs share. service-tests saves that
+      # one under a static key after its tests, so it holds only the models the
+      # tests load, and models only the notebooks use were downloaded inside
+      # nbval cells on every run. This job is the only one that saves this key,
+      # and the key changes whenever the model list does. There is deliberately
+      # no restore-keys fallback: an older entry would still hold models since
+      # removed from the list, and nbval would pass offline on them.
+      - name: Restore HuggingFace models
+        id: hf-cache
+        uses: actions/cache/restore@v5
         with:
           path: hf_cache
-          key: ${{ runner.os }}-hf-cache
+          key: ${{ runner.os }}-hf-notebooks-${{ hashFiles('.github/scripts/prefetch_notebook_models.py') }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -171,15 +232,36 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
+          cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
           python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+
+      - name: Restore uv cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/uv
+          key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-
 
       - name: Install dependencies
         run: |
           uv sync --all-extras --frozen
+
+      - name: Download HuggingFace models
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uv run --no-sync python .github/scripts/prefetch_notebook_models.py
+
+      # Saved here rather than in a post-job step, so a failing notebook does
+      # not stop the models from being cached.
+      - name: Save HuggingFace models
+        if: steps.hf-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: hf_cache
+          key: ${{ steps.hf-cache.outputs.cache-primary-key }}
 
       - name: Start Redis
         run: |
@@ -228,31 +310,33 @@ jobs:
           OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # Every model the notebooks load is downloaded above. A notebook that
+          # loads one not listed in .github/scripts/prefetch_notebook_models.py
+          # fails fast here rather than downloading against the cell timeout.
+          HF_HUB_OFFLINE: "1"
         run: |
           make test-notebooks
 
   docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # No cache: the docs install is small, and its cache used to claim the
+      # shared 3.11 key before the test jobs could save a useful one.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
-  
+
       - name: Install dependencies
         run: |
           uv sync --group docs --frozen
