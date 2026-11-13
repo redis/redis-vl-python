@@ -433,8 +433,8 @@ def test_base_cache_async_client_reconnects_on_a_second_event_loop():
     An ``asyncio.Lock`` records the loop that first contends it and rejects
     every other, so a lock held for the cache's lifetime turned the
     documented reconnect into a ``RuntimeError`` whenever it landed on a new
-    loop -- a second ``asyncio.run``, a fresh pytest-asyncio loop, a notebook
-    cell. Driven from a sync test because it needs two real loops.
+    loop -- a second ``asyncio.run`` or a fresh pytest-asyncio loop. Driven
+    from a sync test because it needs two real loops.
     """
     cache = EmbeddingsCache(redis_url="redis://localhost:6379")
     created = []
@@ -460,6 +460,56 @@ def test_base_cache_async_client_reconnects_on_a_second_event_loop():
     with patch(
         "redisvl.extensions.cache.base.RedisConnectionFactory._get_aredis_connection",
         new=factory,
+    ):
+        asyncio.run(connect_then_disconnect())
+        asyncio.run(race())
+
+    assert len(created) == 2, "each loop should get exactly one client"
+
+
+def test_async_search_index_reconnects_on_a_second_event_loop():
+    """Reconnecting after ``disconnect`` must work on a fresh event loop.
+
+    The locks guarding lazy client and SQL executor creation used to live for
+    the index's lifetime; an ``asyncio.Lock`` rejects any loop but the one
+    that first contended it. Two racing SQL queries per loop contend both
+    locks, since each query fetches the client first -- a single caller
+    passes either way.
+    """
+    index = AsyncSearchIndex(
+        IndexSchema.from_dict(_schema_dict("async-index")),
+        redis_url="redis://localhost:6379",
+    )
+    created = []
+
+    async def factory(*args, **kwargs):
+        await asyncio.sleep(0)  # the suspension the real factory introduces
+        client = AsyncMock(name=f"client{len(created)}")
+        created.append(client)
+        return client
+
+    async def create_async_executor(client, **kwargs):
+        await asyncio.sleep(0)  # suspends while holding the executor lock
+        executor = MagicMock()
+        executor.execute = AsyncMock(return_value=SimpleNamespace(rows=[]))
+        return executor
+
+    sql_redis = SimpleNamespace(create_async_executor=create_async_executor)
+    query = SQLQuery("SELECT * FROM idx")
+
+    async def race():
+        await asyncio.gather(index._sql_query(query), index._sql_query(query))
+
+    async def connect_then_disconnect():
+        await race()
+        await index.disconnect()
+
+    with (
+        patch.dict("sys.modules", {"sql_redis": sql_redis}),
+        patch(
+            "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+            new=factory,
+        ),
     ):
         asyncio.run(connect_then_disconnect())
         asyncio.run(race())
