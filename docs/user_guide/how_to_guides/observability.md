@@ -104,7 +104,7 @@ Names in the `gen_ai.*` namespace follow the OpenTelemetry GenAI conventions, wh
 
 ## LangCache
 
-`LangCacheSemanticCache` reports the operations it has: `check` and `acheck` carry `redisvl.cache.result`, `store` and `astore` record `store`, and the four `delete_by_*` methods record `drop`. `update` raises `NotImplementedError` for this backend, so no `update` point is recorded and the starter queries skip it; filter on `redisvl.cache.name` to separate the two caches.
+`LangCacheSemanticCache` reports the operations it has: `check` and `acheck` carry `redisvl.cache.result`, `store` and `astore` record `store`, and the four `delete_by_*` methods record `drop`. `update` raises `NotImplementedError` for this backend, so no `update` point is recorded; filter on `redisvl.cache.name` to separate the two caches.
 
 Two signals are missing, both because the managed service runs the search: there is no `retrieval` span, since LangCache is one HTTP call with no separate vector search to time, and no `redisvl.semantic_cache.distance` point, since a miss returns no candidates to take a distance from. The tuning below needs `SemanticCache`.
 
