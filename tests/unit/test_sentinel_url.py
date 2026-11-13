@@ -295,7 +295,9 @@ def test_build_async_redis_client_routes_sentinel_urls_without_warning():
 
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            client = RedisConnectionFactory.build_async_redis_client(sentinel_url)
+            client = RedisConnectionFactory.build_async_redis_client(
+                sentinel_url, cluster=False, lib_name="mylib_v1.0"
+            )
 
         mock_sync_sentinel.assert_not_called()
         call_args = mock_async_sentinel.call_args
@@ -308,4 +310,9 @@ def test_build_async_redis_client_routes_sentinel_urls_without_warning():
         assert master_for_args[0][0] == "mymaster"
         assert master_for_args[1]["db"] == "0"
         assert master_for_args[1]["protocol"] == 2
+        # Both would reach every pooled connection; 'cluster' makes the
+        # first command fail and 'lib_name' warns on redis-py 8.1+.
+        for passed in (call_args[1], master_for_args[1]):
+            assert "cluster" not in passed
+            assert "lib_name" not in passed
         assert client is mock_master

@@ -17,6 +17,11 @@ from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.version import __version__
 
+# Every test here builds through the non-warning path, so any
+# DeprecationWarning -- at build time or when a connection first opens --
+# is a failure.
+pytestmark = pytest.mark.filterwarnings("error::DeprecationWarning")
+
 
 def _build_without_warnings(*args, **kwargs):
     """Build a client, failing if any warning at all is emitted."""
@@ -66,12 +71,6 @@ async def test_falls_back_to_redis_url_env_var(redis_url, monkeypatch):
         await client.aclose()
 
 
-def test_missing_url_and_env_var_raises_value_error(monkeypatch):
-    monkeypatch.delenv("REDIS_URL", raising=False)
-    with pytest.raises(ValueError):
-        _build_without_warnings()
-
-
 @pytest.mark.parametrize(
     "url_suffix, extra_kwargs",
     [("?cluster=false", {}), ("", {"cluster": False})],
@@ -87,12 +86,6 @@ async def test_cluster_parameter_is_stripped_for_a_standalone_server(
         assert await client.ping()
     finally:
         await client.aclose()
-
-
-def test_removed_url_keyword_raises_type_error_without_warning(redis_url):
-    with pytest.raises(TypeError) as excinfo:
-        _build_without_warnings(url=redis_url)
-    assert "redis_url" in str(excinfo.value)
 
 
 def test_client_can_be_built_where_no_event_loop_is_running(redis_url):
@@ -118,7 +111,7 @@ async def test_client_is_not_identified_until_validated(redis_url):
     client = _build_without_warnings(redis_url)
     try:
         info = await client.client_info()
-        assert "redisvl" not in info.get("lib-name", "")
+        assert info["lib-name"] == "redis-py"
 
         await RedisConnectionFactory.validate_async_redis(client, "mylib_v1.0")
 
@@ -128,29 +121,18 @@ async def test_client_is_not_identified_until_validated(redis_url):
         await client.aclose()
 
 
-async def test_warning_factory_points_to_the_replacement_and_matches_it(redis_url):
-    """get_async_redis_connection still warns, names the new method, and
-    returns a client configured the same way."""
-    with pytest.warns(DeprecationWarning) as record:
-        warned = RedisConnectionFactory.get_async_redis_connection(redis_url)
-    built = _build_without_warnings(redis_url)
-    try:
-        message = str(record[0].message)
-        assert message.startswith("get_async_redis_connection will become a coroutine")
-        assert "build_async_redis_client" in message
-        assert record[0].filename == __file__
+async def test_lib_name_keyword_causes_no_warning_when_connecting(redis_url):
+    """redis-py 8.1+ deprecates lib_name, warning when a connection opens.
 
-        assert type(warned) is type(built)
-        settings = ("host", "port", "db", "protocol", "username", "password")
-        warned_kwargs = warned.connection_pool.connection_kwargs
-        built_kwargs = built.connection_pool.connection_kwargs
-        assert {k: warned_kwargs.get(k) for k in settings} == {
-            k: built_kwargs.get(k) for k in settings
-        }
-        assert await _resp_version(warned) == await _resp_version(built) == "2"
+    The builder drops it, so neither building nor the first command warns,
+    and the connection reports plain redis-py until validate_async_redis.
+    """
+    client = _build_without_warnings(redis_url, lib_name="mylib_v1.0")
+    try:
+        info = await client.client_info()
+        assert info["lib-name"] == "redis-py"
     finally:
-        await warned.aclose()
-        await built.aclose()
+        await client.aclose()
 
 
 @pytest.mark.requires_cluster

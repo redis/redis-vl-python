@@ -908,17 +908,20 @@ class RedisConnectionFactory:
 
         It reads the URL the same way as the other factory methods: a
         ``redis+sentinel://`` URL gives a client for the master that Sentinel
-        reports; a cluster URL (``cluster=true``, several hosts, or a
+        reports; a cluster URL (``cluster=true``, several hosts, or a truthy
         ``cluster`` keyword) gives an ``AsyncRedisCluster``; anything else
-        gives an ``AsyncRedis``. The ``cluster`` parameter is removed from the
-        URL and the keywords, because neither client accepts it. ``protocol``
-        defaults to 2 (RESP2).
+        gives an ``AsyncRedis``. A ``cluster`` keyword is removed before the
+        client is built, and so is a ``cluster`` URL parameter outside
+        Sentinel URLs, because none of the async clients accepts it.
+        ``protocol`` defaults to 2 (RESP2).
 
         The client makes no connection until its first command, so an
-        unreachable server is reported then, not here. It is not identified
-        to the server with ``CLIENT SETINFO``; to report RedisVL and your own
-        library name, await :meth:`validate_async_redis` on it once an event
-        loop is running.
+        unreachable server is reported then, not here. When it connects,
+        redis-py identifies it as plain ``redis-py``, not as RedisVL. To
+        report RedisVL and your own library name, await
+        ``validate_async_redis(client, lib_name)`` on it once an event loop
+        is running; a ``lib_name`` keyword passed here is ignored, because
+        redis-py would otherwise warn that it is deprecated.
 
         Args:
             redis_url (Optional[str]): The URL of the Redis server. If not
@@ -940,8 +943,15 @@ class RedisConnectionFactory:
         url = redis_url or get_address_from_env()
         # Keep sync and async clients on the same backward-compatible default.
         kwargs.setdefault("protocol", 2)
+        # lib_name names a library wrapping RedisVL, and only CLIENT SETINFO
+        # (which this function cannot await) reports it. Passed on, redis-py
+        # 8.1+ warns that it is deprecated when the first connection opens.
+        kwargs.pop("lib_name", None)
 
         if url.startswith("redis+sentinel"):
+            # The Sentinel pool hands its kwargs to every connection, and an
+            # async connection rejects 'cluster' at the first command.
+            kwargs.pop("cluster", None)
             return RedisConnectionFactory._redis_sentinel_client(
                 url, AsyncRedis, **kwargs
             )
@@ -966,9 +976,8 @@ class RedisConnectionFactory:
         client, does not warn, and will not change.
 
         Unlike the client the index builds for itself, the client returned
-        here has not been identified to the server with CLIENT SETINFO, so
-        it reports no library name and defers its first connection to the
-        first command. To avoid managing a client at all, pass ``redis_url``
+        here reports itself as plain redis-py rather than RedisVL, and
+        defers its first connection to the first command. To avoid managing a client at all, pass ``redis_url``
         to :class:`~redisvl.index.AsyncSearchIndex` and let it build one.
 
         Args:

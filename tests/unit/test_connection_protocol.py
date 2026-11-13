@@ -1,3 +1,4 @@
+import warnings
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -150,8 +151,12 @@ def test_factories_reject_the_removed_url_keyword(factory):
     A Redis URL routinely embeds a password, so this also pins that the
     message names the keyword without echoing the value.
     """
-    with pytest.raises(TypeError) as excinfo:
-        factory(url="redis://user:s3cr3t-do-not-log@x:6379")
+    with warnings.catch_warnings():
+        # Rejected before get_async_redis_connection's notice, so a stale
+        # keyword raises without also warning.
+        warnings.simplefilter("error")
+        with pytest.raises(TypeError) as excinfo:
+            factory(url="redis://user:s3cr3t-do-not-log@x:6379")
 
     message = str(excinfo.value)
     assert "url" in message and "redis_url" in message
@@ -186,15 +191,56 @@ def test_get_async_redis_connection_still_warns_about_becoming_async():
             )
 
 
-def test_build_async_redis_client_sends_multi_host_urls_to_the_cluster_client():
-    """A comma in the host list means a cluster; 'cluster' is still stripped."""
+@pytest.mark.parametrize(
+    "url, extra_kwargs, expected_url",
+    [
+        ("redis://h1:7001,h2:7002", {}, "redis://h1:7001,h2:7002"),
+        (
+            "redis://h1:7001?cluster=true&db=0",
+            {"cluster": True},
+            "redis://h1:7001?db=0",
+        ),
+    ],
+    ids=["comma-in-host-list", "cluster-flag-stripped-other-params-kept"],
+)
+def test_build_async_redis_client_routes_cluster_urls_to_the_cluster_client(
+    url, extra_kwargs, expected_url
+):
     with (
         patch("redisvl.redis.connection.AsyncRedisCluster.from_url") as cluster,
         patch("redisvl.redis.connection.AsyncRedis.from_url") as standalone,
+        warnings.catch_warnings(),
     ):
-        RedisConnectionFactory.build_async_redis_client(
-            "redis://h1:7001,h2:7002?cluster=true", cluster=True
-        )
+        warnings.simplefilter("error")
+        RedisConnectionFactory.build_async_redis_client(url, **extra_kwargs)
 
     standalone.assert_not_called()
-    cluster.assert_called_once_with("redis://h1:7001,h2:7002", protocol=2)
+    cluster.assert_called_once_with(expected_url, protocol=2)
+
+
+def test_build_async_redis_client_requires_a_url_or_env_var(monkeypatch):
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    with pytest.raises(ValueError):
+        RedisConnectionFactory.build_async_redis_client()
+
+
+def test_build_async_redis_client_does_not_forward_lib_name():
+    """redis-py 8.1+ deprecates lib_name; forwarding it warns on connect."""
+    with patch("redisvl.redis.connection.AsyncRedis.from_url") as from_url:
+        RedisConnectionFactory.build_async_redis_client(
+            "redis://localhost:6379", lib_name="mylib_v1.0"
+        )
+
+    from_url.assert_called_once_with("redis://localhost:6379", protocol=2)
+
+
+def test_get_async_redis_connection_warning_names_the_replacement():
+    """Attributed to the caller, and tells them how to stay synchronous."""
+    with (
+        patch("redisvl.redis.connection.AsyncRedis.from_url"),
+        pytest.warns(DeprecationWarning) as record,
+    ):
+        RedisConnectionFactory.get_async_redis_connection("redis://localhost:6379")
+
+    assert "RedisConnectionFactory.build_async_redis_client" in str(record[0].message)
+    assert record[0].filename == __file__
