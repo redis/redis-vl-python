@@ -37,6 +37,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from redisvl.extensions.cache.llm import SemanticCache
+from redisvl.utils.vectorize import HFTextVectorizer
 
 tracer_provider = TracerProvider()
 tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
@@ -46,7 +47,11 @@ metrics.set_meter_provider(
     MeterProvider(metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())])
 )
 
-cache = SemanticCache(name="llmcache", redis_url="redis://localhost:6379")
+cache = SemanticCache(
+    name="llmcache",
+    vectorizer=HFTextVectorizer(model="redis/langcache-embed-v2"),
+    redis_url="redis://localhost:6379",
+)
 cache.store(prompt="What is the capital of France?", response="Paris")
 cache.check(prompt="What's the capital of France?")
 ```
