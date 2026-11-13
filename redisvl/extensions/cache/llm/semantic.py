@@ -1,3 +1,4 @@
+import numbers
 from typing import Any
 
 from pydantic import ValidationError
@@ -111,7 +112,9 @@ class SemanticCache(BaseLLMCache):
         Raises:
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
-            ValueError: If the threshold is not between 0 and 2 (Redis COSINE distance).
+            TypeError: If the threshold is not a real number, or is a bool.
+            ValueError: If the threshold is not between 0 and 2 (Redis COSINE
+                distance), or is NaN.
             ValueError: If existing schema does not match new schema and overwrite is False.
             ValueError: If both create_index is False and overwrite is True.
 
@@ -305,13 +308,11 @@ class SemanticCache(BaseLLMCache):
                 the cache.
 
         Raises:
-            ValueError: If the threshold is not between 0 and 2 (Redis COSINE distance).
+            TypeError: If the threshold is not a real number, or is a bool.
+            ValueError: If the threshold is not between 0 and 2 (Redis COSINE
+                distance), or is NaN.
         """
-        if not 0 <= float(distance_threshold) <= 2:
-            raise ValueError(
-                f"Distance must be between 0 and 2, got {distance_threshold}"
-            )
-        self._distance_threshold = float(distance_threshold)
+        self._distance_threshold = self._validate_distance_threshold(distance_threshold)
 
     def delete(self) -> None:
         """Delete the cache and its index entirely.
@@ -470,7 +471,8 @@ class SemanticCache(BaseLLMCache):
                 that can be used to filter cache results. Defaults to None and
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
-                vector distance.
+                vector distance, in Redis COSINE units [0-2]. Defaults to None,
+                which uses the cache's threshold.
             refresh_ttl (Optional[bool]): Whether this cache hit should refresh
                 matched entries' TTL. If None, uses the cache-level
                 refresh_ttl_on_hit setting.
@@ -483,6 +485,8 @@ class SemanticCache(BaseLLMCache):
             ValueError: If neither a `prompt` nor a `vector` is specified.
             ValueError: if 'vector' has incorrect dimensions.
             TypeError: If `return_fields` is not a list when provided.
+            TypeError: If `distance_threshold` is not a real number, or is a bool.
+            ValueError: If `distance_threshold` is not between 0 and 2, or is NaN.
 
         .. code-block:: python
 
@@ -500,7 +504,7 @@ class SemanticCache(BaseLLMCache):
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
         else:
-            self._validate_distance_threshold(distance_threshold)
+            distance_threshold = self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -564,7 +568,8 @@ class SemanticCache(BaseLLMCache):
                 that can be used to filter cache results. Defaults to None and
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
-                vector distance.
+                vector distance, in Redis COSINE units [0-2]. Defaults to None,
+                which uses the cache's threshold.
             refresh_ttl (Optional[bool]): Whether this cache hit should refresh
                 matched entries' TTL. If None, uses the cache-level
                 refresh_ttl_on_hit setting.
@@ -577,6 +582,8 @@ class SemanticCache(BaseLLMCache):
             ValueError: If neither a `prompt` nor a `vector` is specified.
             ValueError: if 'vector' has incorrect dimensions.
             TypeError: If `return_fields` is not a list when provided.
+            TypeError: If `distance_threshold` is not a real number, or is a bool.
+            ValueError: If `distance_threshold` is not between 0 and 2, or is NaN.
 
         .. code-block:: python
 
@@ -596,7 +603,7 @@ class SemanticCache(BaseLLMCache):
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
         else:
-            self._validate_distance_threshold(distance_threshold)
+            distance_threshold = self._validate_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -670,17 +677,31 @@ class SemanticCache(BaseLLMCache):
         ]
 
     @staticmethod
-    def _validate_distance_threshold(distance_threshold: float) -> None:
-        """Validate a per-call ``distance_threshold`` override.
+    def _validate_distance_threshold(distance_threshold: float) -> float:
+        """Validate a distance threshold and return it as a float.
+
+        One rule for the cache-wide threshold and for a per-call override: a
+        real number from 0 to 2 inclusive, the range of the COSINE distance the
+        cache schema uses. A bool is refused even though it is an ``int``, and
+        NaN fails the range check, which it would otherwise pass silently by
+        matching nothing.
 
         Raises:
-            TypeError: If the threshold is not a float or int.
-            ValueError: If the threshold is negative.
+            TypeError: If the threshold is not a real number, or is a bool.
+            ValueError: If the threshold is not between 0 and 2, or is NaN.
         """
-        if not isinstance(distance_threshold, (float, int)):
-            raise TypeError("distance_threshold must be of type float or int")
-        if distance_threshold < 0:
-            raise ValueError("distance_threshold must be non-negative")
+        if isinstance(distance_threshold, bool) or not isinstance(
+            distance_threshold, numbers.Real
+        ):
+            raise TypeError(
+                "distance_threshold must be a real number, got "
+                f"{type(distance_threshold).__name__}"
+            )
+        if not 0 <= distance_threshold <= 2:
+            raise ValueError(
+                f"Distance must be between 0 and 2, got {distance_threshold}"
+            )
+        return float(distance_threshold)
 
     def _process_cache_results(
         self,
