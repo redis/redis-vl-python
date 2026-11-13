@@ -130,7 +130,20 @@ redisvl/
 - Includes API reference and user guides
 - Example notebooks in documentation `docs/user_guide/...`
 
+## Before you write code
+
+Most review rounds on this project are spent on things that were decided before the first line was written. Settle them first.
+
+- **Read the issue and every maintainer comment on it.** If a maintainer has declined an approach or narrowed the scope, that is the scope. If the issue proposes a fix, start from it, and build something larger only when you can say why the proposed fix fails.
+- **Search open PRs for the same files and symbols** (`gh pr list --search "<path or symbol>"`). If one already covers the work, tell the author instead of opening a second.
+- **Find every site that has the problem,** not only the one the issue names. Grep `redisvl/` for the same expression, and plan to fix them together.
+- **Look for what already exists** before adding a helper, a stored copy of state or a new test file: a function that already does most of the job, a fixture, a test you can add a parameter to.
+- **Measure Redis and redis-py behaviour the change depends on** against a running Redis 8, on hash and JSON storage, instead of assuming it. `references/redis.md` in the pre-PR review skill lists what to measure.
+- **Write the fewest tests that fail without the change.** One test per behaviour, at the lowest level that reaches the changed lines. `references/tests.md` in the skill has the rules reviewers apply.
+
 ## Before you mark a PR ready
+
+Tick the AI-assisted box in the PR template's AI Assistance section and name yourself and your model there. Every AI-assisted PR needs a Reviewer Brief; only an author who used no AI assistance may leave it out, and that choice is theirs to declare, not yours.
 
 Run the pre-PR review and put its Reviewer Brief in the PR description. A human approves every merge to `main`. The review catches problems before they reach that person, and the brief gives them a head start: where to begin reading, where the change could still fail, and what nobody has checked. Settle any open questions with the author before the PR is opened or marked ready, so the PR reaches the reviewer with none.
 
@@ -138,12 +151,13 @@ The procedure lives in `.agents/skills/pre-pr-review/SKILL.md`, in the Agent Ski
 
 In short, the review:
 
-1. Reads the full diff against `main`, plus the callers of anything public that changed.
+1. Rebases on `main`, then reads the full diff, the callers of anything public that changed, and every other site with the same pattern, and runs the new tests against the base code to find any that pass without the change.
 2. Runs six review lenses (correctness, security, design, tests, docs and Redis behaviour), each starting fresh from the diff. Authors who want to save tokens can run fewer; correctness always runs.
-3. Runs a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure.
+3. Runs a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure or cost.
 4. Fixes the surviving findings, in scope, and re-runs the checks those fixes touched.
-5. Settles anything it couldn't resolve with the author, so the PR has no open questions.
-6. Writes the Reviewer Brief into the PR description. `scripts/update_brief.py` replaces just that section.
+5. Lists every input that now behaves differently from `main`, and checks the Release Notes and description against that list.
+6. Settles anything it couldn't resolve with the author, so the PR has no open questions.
+7. Writes the Reviewer Brief into the PR description. `scripts/update_brief.py` replaces just that section.
 
 Write the brief for a reviewer who sees the change as it is now and has never seen your review. Point them at the current code, not at problems you've already fixed. Re-run the review after any substantive push, because the brief names the commit it reviewed.
 

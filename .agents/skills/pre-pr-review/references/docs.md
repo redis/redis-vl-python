@@ -9,7 +9,10 @@ Check that docstrings, comments, guides and notebooks say what the code actually
 - **Bloat:** comments that restate the code, docstrings longer than the function they describe, and the same explanation repeated in several places when one should link to the other. A comment should explain why, or warn about something non-obvious.
 - **Missing docs for new public API:** a new public class, function or parameter with no docstring, or with a docstring that doesn't state its defaults and what it raises.
 - **Sphinx breakage:** wrong `currentmodule` or cross-reference targets, and new modules missing from `docs/api/`.
-- **The PR description:** check that it names the change's most consequential behaviour change. If public behaviour changes, check that the description has a Release Notes line a user could act on.
+- **Text the change makes untrue.** Grep the docstrings, comments, guides and notebooks for the names the diff touches. Common leftovers: a return description written for the old return type, a comment explaining a caller that no longer exists, a notebook note about a workaround the fix removes, a caveat that a PR merged since has lifted.
+- **Public options documented where nobody reads them.** The API reference renders the class and `__init__` docstrings, so a public keyword argument described only on a private method is undocumented.
+- **The PR description.** Treat every sentence in it as a claim about the code and check it, in particular what the code did before the change. Check that it leads with the most consequential behaviour change, including one the author found on the way and didn't set out to make.
+- **Release Notes.** Every difference from step 6 of `SKILL.md` that a user could notice needs a line: what used to happen, what happens now, and what to do about it. Check each line against a run, not against the intent. Notes that claim more than the change delivers are a finding, and so is a note about a change users never had.
 
 ## How to report
 
