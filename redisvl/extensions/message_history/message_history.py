@@ -17,7 +17,6 @@ from redisvl.extensions.message_history.schema import ChatMessage, MessageHistor
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import CountQuery, FilterQuery
 from redisvl.query.filter import Tag
-from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import serialize
 
@@ -418,22 +417,7 @@ class MessageHistory(BaseMessageHistory):
     def _get_async_index(self) -> AsyncSearchIndex:
         """Lazily construct the async search index over the same Redis index."""
         if self._aindex is None:
-            index = self._index
-            if index._owns_redis_client and index._redis_url:
-                self._aindex = AsyncSearchIndex(
-                    schema=index.schema,
-                    redis_url=index._redis_url,
-                    connection_kwargs=index._connection_kwargs or None,
-                    lib_name=index._lib_name,
-                )
-            else:
-                self._aindex = AsyncSearchIndex(
-                    schema=index.schema,
-                    redis_client=RedisConnectionFactory.sync_to_async_redis(
-                        index._redis_client  # type: ignore[arg-type]
-                    ),
-                    owns_client=True,
-                )
+            self._aindex = self._index._to_async()
         return self._aindex
 
     @property

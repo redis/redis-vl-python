@@ -280,6 +280,25 @@ def test_search_index_client(client, index_schema):
     assert index.client == client
 
 
+@pytest.mark.parametrize("from_url", [True, False], ids=["url", "client"])
+async def test_to_async_builds_an_owned_async_index(
+    from_url, redis_url, client, index_schema
+):
+    source = {"redis_url": redis_url} if from_url else {"redis_client": client}
+    index = SearchIndex(schema=index_schema, validate_on_load=True, **source)
+    index.create(overwrite=True)
+    aindex = index._to_async()
+    try:
+        assert aindex._redis_url == (redis_url if from_url else None)
+        assert aindex._owns_redis_client and aindex._validate_on_load
+        assert await aindex.exists()
+    finally:
+        await aindex.disconnect()
+        index.delete()
+    # Closing the async copy leaves a caller's sync client open.
+    assert client.ping()
+
+
 def test_search_index_create(index):
     index.create(overwrite=True, drop=True)
     assert index.exists()
