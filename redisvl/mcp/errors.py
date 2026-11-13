@@ -3,9 +3,11 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import ValidationError
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisSearchError, RedisVLError, SchemaValidationError
 
 
 class MCPErrorCode(StrEnum):
@@ -41,7 +43,9 @@ def map_exception(exc: Exception) -> RedisVLMCPError:
     if isinstance(exc, RedisVLMCPError):
         return exc
 
-    if isinstance(exc, (ValidationError, ValueError, FileNotFoundError)):
+    if isinstance(
+        exc, (ValidationError, SchemaValidationError, ValueError, FileNotFoundError)
+    ):
         return RedisVLMCPError(
             str(exc),
             code=MCPErrorCode.INVALID_REQUEST,
@@ -64,8 +68,36 @@ def map_exception(exc: Exception) -> RedisVLMCPError:
             retryable=True,
         )
 
+    # Index methods such as ``load`` wrap whatever went wrong in a plain
+    # ``RedisVLError``. A lost connection or a timeout under that wrapper is still
+    # worth retrying. Other wrapped Redis errors, such as WRONGTYPE or OOM, would
+    # fail the same way again, so they stay non-retryable.
+    if isinstance(exc, RedisVLError) and isinstance(
+        exc.__cause__,
+        (RedisConnectionError, RedisTimeoutError, TimeoutError),
+    ):
+        return RedisVLMCPError(
+            str(exc),
+            code=MCPErrorCode.BACKEND_UNAVAILABLE,
+            retryable=True,
+        )
+
     return RedisVLMCPError(
         str(exc),
         code=MCPErrorCode.INTERNAL_ERROR,
         retryable=False,
+    )
+
+
+def with_partial_write_warning(error: RedisVLMCPError, warning: str) -> RedisVLMCPError:
+    """Return ``error`` with a warning that a failed write may be partial.
+
+    FastMCP sends a client the message alone, not ``code``, ``retryable`` or
+    ``metadata``, so the warning goes in the message.
+    """
+    return RedisVLMCPError(
+        f"{error}; {warning}",
+        code=error.code,
+        retryable=error.retryable,
+        metadata={**error.metadata, "partial_write_possible": True},
     )

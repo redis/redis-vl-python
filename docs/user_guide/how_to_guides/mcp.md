@@ -466,7 +466,7 @@ Rules worth knowing:
 - **A code tool reaches Redis only through `ctx.index`.** It has the read methods, plus a handful of bounded writes for a tool registered with `writes=True`. Records are addressed by document id, never by full Redis key, so a tool stays under its index's key prefix. That does not separate indexes whose prefixes overlap, and a prefix that is empty or made only of separator characters covers every key. On an index with several prefixes, ids address the first prefix only. `load` returns document ids, and `ctx.index.document_id(hit["id"])` turns a search result's key into one. On JSON storage, give a `FilterQuery` `return_fields`, or a document's own `id` field replaces the key in its results. There is no Redis client and no way to create, drop or clear the index.
 - **Writing tools need a cast for type checkers.** `ctx.index` is typed as `IndexHandle`. In a tool registered with `writes=True`, `cast(WritableIndexHandle, ctx.index)` gives a type checker the write methods, as `delete-spam-ticket` shows. Both types are exported from `redisvl.mcp`.
 - **Every call is bounded.** Each `ctx.index` call takes a slot under the concurrency cap and the binding's `request_timeout_seconds`, and the whole tool call is bounded by the same timeout.
-- **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself.
+- **Raise to report a problem.** A `ValueError` reaches the client as `invalid_request`; raise `RedisVLMCPError` to choose the error code yourself. The server adds no partial-write warning to an error you raise this way, so if the tool may already have written records, say so in your message.
 - **Register before starting.** Tools register once, at the first startup, so a tool registered afterwards is refused.
 
 A code tool bound to an index that a profile scopes with `lock.inject` refuses to start, because nothing shows that it applies the tenant scope. For the full contract, read the code tools section in {doc}`/concepts/mcp`.
@@ -672,6 +672,7 @@ Notes:
 - when server-side embedding is configured, records that need embedding must contain `runtime.default_embed_text_field`
 - when `skip_embedding_if_present` is `true`, records that already contain the configured vector field can skip re-embedding
 - when a vector field is configured but server-side embedding is disabled, callers must supply vectors explicitly
+- a write that fails part-way, for example on a lost connection, may already have stored some records, and the error message says so. Pass `id_field` so a retry overwrites those records instead of storing them again under new keys
 
 ## Search Examples
 
