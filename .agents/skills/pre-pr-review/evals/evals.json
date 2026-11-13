@@ -37,6 +37,30 @@
         "Points that are already resolved on the PR are not re-litigated.",
         "Nothing is posted to the PR."
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "Check out the first commit of PR 790 (handle uncompressed SVS-VAMANA indexes) and run the pre-PR review on it as if you were about to open the PR. Fix what you find locally and show me the brief. Don't push or touch the PR.",
+      "expected_output": "The review cuts the test matrix down to the cases that fail without the fix.",
+      "expectations": [
+        "The agent runs the new tests against the merge base's library code, in a separate worktree, and reports which new tests pass there.",
+        "The cases that pass on the base are deleted or folded, leaving a small number of tests that each fail without the fix.",
+        "The challenger keeps the redundant-test findings instead of rejecting them as style.",
+        "\"Beyond CI\" states the result of the base run.",
+        "No test is kept that pins a compression mapping the change doesn't touch."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Check out the first commit of PR 829 (OPENAI_API_KEY fallback when api_config has no api_key) and run the pre-PR review on it before I open the PR. Don't push or touch the PR.",
+      "expected_output": "The review finds the sibling constructors and the undeclared behaviour change.",
+      "expectations": [
+        "The agent greps redisvl/ for the same credential-lookup expression and lists the other vectorizer and reranker constructors that have it.",
+        "Each sibling site is either fixed or put to the user as a scope question; none is silently left.",
+        "The review notes that an empty or None api_key in api_config now falls back to the environment where it used to raise, and asks for it in Release Notes and the docstring.",
+        "The review asks for a test of the default path, with no api_config at all.",
+        "Any question about widening the PR's scope is put to the user, not written into the brief."
+      ]
     }
   ]
 }

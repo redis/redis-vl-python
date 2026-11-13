@@ -14,6 +14,18 @@ Send it questions about Redis, not code from the diff, credentials or anything u
 
 If your agent can't use MCP, read the same pages on `https://redis.io/docs/latest/`. If you can reach neither, skip the lens and say so under "Not verified" in the Reviewer Brief.
 
+## Measure what the change depends on
+
+The documentation says what Redis accepts. It rarely says how a value is tokenised, trimmed or ordered in a reply, and those are the claims reviewers overturn most often by running the server. If the change, its tests, its comments or its Release Notes rest on one of the following, run it against a real server before you rely on it (`make redis-start`, then `redis-cli` or a ten-line script), and keep the command and the reply:
+
+- **What gets indexed.** How a stored value is split, trimmed or normalised: separators in text fields (`don't` is indexed as `don` and `t`), leading and trailing whitespace in tag values, coordinate limits on GEO fields. An escaped query term only matches if the indexed value kept the same characters.
+- **Hash and JSON separately.** They differ in exactly these details; for example, hash indexing trims whitespace from tag values and JSON indexing doesn't. A result measured on one storage type says nothing about the other.
+- **Reply shapes.** The same command on RESP2 and RESP3, and with `decode_responses` on and off: key types, value types (`'1'` against `1.0`), and what the leading element of a reply is.
+- **Error order and wording.** Which check the server runs first when two would fail, and whether an error arrives as a typed exception or a bare `ResponseError`. Don't build a test on an order the documentation doesn't promise.
+- **Whether a query changes results.** A clause that parses is not a clause that matches. If the change adds a weight, an escape or an operator, show a document it now matches, or a score it changes.
+
+State the Redis version next to each measurement. Use a Redis 8 release; RedisVL doesn't target Redis Stack. A claim you neither measured nor found in the documentation goes under "Not verified", and comes out of comments, docstrings and Release Notes.
+
 ## Run it when
 
 - The diff changes how commands are built or called: `FT.CREATE`, `FT.SEARCH`, `FT.AGGREGATE`, `FT.CURSOR`, `FT.INFO` arguments, query syntax, schema field attributes, vector index parameters, or `SCAN`, pipeline, expiry or eviction behaviour.
@@ -31,4 +43,4 @@ If your agent can't use MCP, read the same pages on `https://redis.io/docs/lates
 
 ## How to report
 
-Each finding cites the page it rests on: `... Per: <redis.io URL>`. A claim you couldn't confirm in the docs is not a finding. If it matters, list it under "Not verified" in the Reviewer Brief, so the reviewer knows it was raised but not settled. When a point in the brief rests on a docs page, link the page in that line.
+Each finding cites what it rests on: the page (`... Per: <redis.io URL>`), or the measurement (`... Measured on Redis 8.4, JSON: <command> -> <reply>`). A claim you could confirm neither way is not a finding. If it matters, list it under "Not verified" in the Reviewer Brief, so the reviewer knows it was raised but not settled. When a point in the brief rests on a docs page, link the page in that line.

@@ -18,6 +18,22 @@ For each finding:
 | 4–6 | Plausible but unproven: it depends on inputs or states you couldn't confirm can occur |
 | 1–3 | Wrong, already handled, out of scope, or a style preference |
 
+## Findings with a cost instead of a failure
+
+A finding that says a test should go, a helper already exists or a simpler design is available has no failing input, and scoring it on the scale above would reject it as a style preference. That is the wrong result: these are what human reviewers send most PRs back for. Score them on their evidence instead.
+
+| Finding | Scores 9–10 when | Scores 1–3 when |
+|---|---|---|
+| A test proves nothing | It passes against the base code (`references/tests.md`), or you broke the changed line and it still passed | It fails on the base at its own assertion |
+| A test is redundant | You can name the existing test, with file and line, that fails for every change this one would catch | The named test misses a branch this one reaches |
+| An axis adds no coverage | The changed code has no branch on it: cite the line where the variants meet | The variants reach different lines of the change |
+| An existing helper does the job | You can name the helper and show the call that replaces the new code | The helper needs changes that outweigh the saving |
+| A behaviour change is undeclared | You ran the input on the base and the branch and the results differ | The description or Release Notes already state it |
+
+The size of a finding is not a reason to reject it. A redundant test costs the reviewer a comment and the author a round trip.
+
+## What to keep
+
 Keep findings that score 7 or more and have a file, a line and a concrete failure or cost. Reject the rest, each with a one-line reason in your scratch notes. If you reject a finding a reasonable person might side with, raise it with the author rather than settling it silently.
 
 The challenger may also add a finding it noticed while checking. A finding it adds gets the same scoring, done in a fresh pass.

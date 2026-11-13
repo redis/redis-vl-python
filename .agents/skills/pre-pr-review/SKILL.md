@@ -12,9 +12,13 @@ The approver can only rely on the brief if it's accurate, so report only what yo
 
 ## 1. Scope the change
 
+- Check the starting point. Read the linked issue and every maintainer comment on it, and search open PRs that touch the same files (`gh pr list --search "<path or symbol>"`). If a maintainer has ruled an approach out, or an open PR already covers the work, stop and tell the author. If the issue proposes a fix, the change should either be that fix or say in Notes why it isn't. AGENTS.md asks for this before any code is written; do it now if it was skipped.
+- Rebase on the current `origin/main`. A review of a stale branch describes code the reviewer won't see.
 - Diff the work against its merge base with `main`: `git diff $(git merge-base origin/main HEAD)` covers commits and uncommitted changes, and `git status` shows untracked files to read as well.
 - Read each changed file in full, not just the hunks. Bugs often sit in the unchanged lines a hunk depends on.
 - For every changed public function, method or class, read its callers and its sync or async twin (`SearchIndex` and `AsyncSearchIndex`, and so on). Drift between twins is one of this project's most common defects.
+- Search for sibling sites. A bug in one expression usually has copies: grep `redisvl/` for the pattern the diff fixes (the same call, the same conditional, the same constant list) and list every match. Fix them all in this PR, or name the ones left out in Notes with the reason. A PR that fixes `api_config.get(...) if api_config else os.getenv(...)` in one vectorizer and leaves it in six others comes back from review.
+- Run the new and changed tests against the base code, as `references/tests.md` describes, and keep the output for the tests lens.
 - In a stack of PRs you may review the whole stack at once, but keep track of which PR introduced each line. Each PR gets its own brief.
 
 ## 2. Choose lenses
@@ -49,7 +53,7 @@ Skip formatting, import order and typing nits, which CI and `make lint` already 
 
 ## 4. Challenge the findings
 
-Run a separate challenger pass, as described in `references/challenger.md`. Review passes produce false positives, and every one that survives costs someone time. Keep findings that score 7 or more out of 10 and have a file, a line and a concrete failure or cost.
+Run a separate challenger pass, as described in `references/challenger.md`. Review passes produce false positives, and every one that survives costs someone time. Keep findings that score 7 or more out of 10 and have a file, a line and a concrete failure or cost. A test that proves nothing has a cost, not a failure, so the challenger judges those by the evidence rule in its file instead of looking for a failing input.
 
 Run a second challenge round only if the first round's fixes changed the code materially.
 
@@ -58,9 +62,19 @@ Run a second challenge round only if the first round's fixes changed the code ma
 - Fix the kept findings that are within the PR's scope, at the root cause. A real problem outside scope goes to the author as a question, not into the diff.
 - Add the narrowest regression test that fails without the fix, or note why none applies. A test you've seen fail without the fix is strong evidence for the brief's "Beyond CI" line.
 - Re-run whatever the fixes touched: `make format`, `make check-types`, and the affected tests (`make test ARGS="tests/unit/test_x.py"`, or `pytest` on the specific file).
+- Before the PR is opened or marked ready, run `make check` on the rebased branch and see it pass. CI on a fork PR skips the service tests, so a green fork run proves less than a local one.
 - Commit the fixes locally. The author pushes.
 
-## 6. Settle open questions with the author
+## 6. List what changes for users
+
+Reviewers find behaviour changes the description never mentions more often than they find bugs. Before writing anything for the reviewer, write the list yourself.
+
+- For each changed public function, name every input whose result, exception or exception order differs from `main`. Include the inputs the change wasn't aimed at: an empty string or `None` that used to raise and now falls back, a value that used to match and now doesn't, an argument error that now loses to a different check.
+- Run each one against the base and the branch, and keep the two outputs. A change you only reasoned about goes under "Not verified".
+- Each difference is then one of three things: intended, in which case it goes in Release Notes in words a user can act on; unintended, in which case fix it; or a trade-off, in which case take it to the author in step 7.
+- Re-read the PR description against the code. Every sentence that states what the code did before, what it does now or who calls it is a claim: check it, and correct or delete the ones that don't hold. Name the most consequential change first.
+
+## 7. Settle open questions with the author
 
 A PR should reach the reviewer with no open questions. Before the PR is opened or marked ready, and before each later rewrite of the brief, take everything the review couldn't settle to the author and get an answer: findings outside the PR's scope, rejections you're unsure about, and trade-offs. You work for the author, and the reviewer shouldn't have to answer questions the author never saw.
 
@@ -68,7 +82,9 @@ Once the author has decided, record a deliberate trade-off that a reviewer might
 
 If you can't reach the author, for example because you're running unattended, don't open the PR or mark it ready. Leave it as a draft, or unopened, and put the questions in your report to the author, never in the PR.
 
-## 7. Write the Reviewer Brief
+## 8. Write the Reviewer Brief
+
+Every PR written with AI assistance carries a brief, and so does every maintainer PR. The PR template's AI Assistance section is where the author declares which applies; tick the AI-assisted box and say which agent did what.
 
 Write the brief following `references/reviewer-brief.md`. The reviewer sees the change as it is now, so the brief points at the current code, not at the problems you fixed.
 
