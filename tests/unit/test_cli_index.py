@@ -459,3 +459,4 @@ def test_index_runtime_errors(
     assert exc_info.value.code == 1
     assert captured.out == ""
     assert captured.err != ""
+    assert "Traceback" not in captured.err
