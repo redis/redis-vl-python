@@ -134,10 +134,11 @@ async def test_aredis_connection_emits_no_warning_on_the_modern_spelling():
     [
         RedisConnectionFactory.get_redis_connection,
         RedisConnectionFactory.get_async_redis_connection,
+        RedisConnectionFactory.build_async_redis_client,
         RedisConnectionFactory.get_redis_cluster_connection,
         RedisConnectionFactory.get_async_redis_cluster_connection,
     ],
-    ids=["sync", "async", "sync-cluster", "async-cluster"],
+    ids=["sync", "async", "async-build", "sync-cluster", "async-cluster"],
 )
 def test_factories_reject_the_removed_url_keyword(factory):
     """url= now names its replacement instead of failing obscurely.
@@ -183,3 +184,17 @@ def test_get_async_redis_connection_still_warns_about_becoming_async():
             RedisConnectionFactory.get_async_redis_connection(
                 redis_url="redis://localhost:6379"
             )
+
+
+def test_build_async_redis_client_sends_multi_host_urls_to_the_cluster_client():
+    """A comma in the host list means a cluster; 'cluster' is still stripped."""
+    with (
+        patch("redisvl.redis.connection.AsyncRedisCluster.from_url") as cluster,
+        patch("redisvl.redis.connection.AsyncRedis.from_url") as standalone,
+    ):
+        RedisConnectionFactory.build_async_redis_client(
+            "redis://h1:7001,h2:7002?cluster=true", cluster=True
+        )
+
+    standalone.assert_not_called()
+    cluster.assert_called_once_with("redis://h1:7001,h2:7002", protocol=2)

@@ -278,3 +278,34 @@ class TestSentinelUrlParsingEdgeCases:
             }
             assert call_kwargs["password"] == unquoted_password
             assert call_kwargs["username"] == unquoted_username
+
+
+def test_build_async_redis_client_routes_sentinel_urls_without_warning():
+    """The non-warning async builder uses AsyncSentinel, like its twins."""
+    import warnings
+
+    sentinel_url = "redis+sentinel://user:pass@host1:26379,host2:26380/mymaster/0"
+
+    with (
+        patch("redisvl.redis.connection.AsyncSentinel") as mock_async_sentinel,
+        patch("redisvl.redis.connection.Sentinel") as mock_sync_sentinel,
+    ):
+        mock_master = MagicMock()
+        mock_async_sentinel.return_value.master_for.return_value = mock_master
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            client = RedisConnectionFactory.build_async_redis_client(sentinel_url)
+
+        mock_sync_sentinel.assert_not_called()
+        call_args = mock_async_sentinel.call_args
+        assert call_args[0][0] == [("host1", 26379), ("host2", 26380)]
+        assert call_args[1]["sentinel_kwargs"] == {
+            "username": "user",
+            "password": "pass",
+        }
+        master_for_args = mock_async_sentinel.return_value.master_for.call_args
+        assert master_for_args[0][0] == "mymaster"
+        assert master_for_args[1]["db"] == "0"
+        assert master_for_args[1]["protocol"] == 2
+        assert client is mock_master
