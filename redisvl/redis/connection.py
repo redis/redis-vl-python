@@ -688,6 +688,14 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, TypeError):
                 pass
 
+        if "training_threshold" in vector_attrs:
+            try:
+                normalized["training_threshold"] = int(
+                    vector_attrs["training_threshold"]
+                )
+            except (ValueError, TypeError):
+                pass
+
         if index_missing:
             normalized["index_missing"] = True
 

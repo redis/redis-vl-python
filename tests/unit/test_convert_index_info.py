@@ -41,6 +41,42 @@ def test_convert_index_info_svs_no_compression():
     assert IndexSchema.from_dict(result).fields["emb"].attrs.compression is None
 
 
+def test_convert_index_info_svs_training_threshold():
+    """FT.INFO reports TRAINING_THRESHOLD for SVS-VAMANA; keep it in the schema."""
+    index_info = {
+        "index_name": "svs",
+        "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
+        "attributes": [
+            [
+                "identifier",
+                "emb",
+                "attribute",
+                "emb",
+                "type",
+                "VECTOR",
+                "algorithm",
+                "SVS-VAMANA",
+                "data_type",
+                "FLOAT32",
+                "dim",
+                4,
+                "distance_metric",
+                "COSINE",
+                "compression",
+                "LVQ8",
+                "training_threshold",
+                2048,
+            ]
+        ],
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["fields"][0]["attrs"]["training_threshold"] == 2048
+    attrs = IndexSchema.from_dict(result).fields["emb"].attrs
+    assert attrs.training_threshold == 2048
+
+
 def test_convert_index_info_single_prefix():
     """Test converting index info with a single prefix.
 
