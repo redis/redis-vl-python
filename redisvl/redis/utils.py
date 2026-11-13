@@ -359,12 +359,46 @@ async def async_cluster_create_index(
     return await default_node.execute_command(*args)
 
 
+def to_search_result(
+    client: Search | AsyncSearch, parsed: Any, query: Query, duration: float
+) -> Result:
+    """Return a parsed FT.SEARCH reply as a Result on any protocol.
+
+    A RESP3 client gets the reply back as a dict rather than a Result; it is
+    converted here. Anything else, such as the Result redis-py builds from a
+    RESP2 reply, is returned unchanged.
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+
+    resp3_parser = getattr(client, "_parse_search_resp3", None)
+    if resp3_parser is not None:
+        return resp3_parser(parsed, query=query, duration=duration)
+
+    # redis-py 6.x and 7.x return the raw RESP3 map from _parse_results. Convert
+    # it to the RESP2 shape expected by their private _parse_search callback.
+    def value(mapping: dict[Any, Any], key: str, default: Any = None) -> Any:
+        return mapping.get(key, mapping.get(key.encode(), default))
+
+    response: list[Any] = [value(parsed, "total_results", 0)]
+    for document in value(parsed, "results", []):
+        response.append(value(document, "id", ""))
+        if query._with_scores:
+            response.append(value(document, "score", 0))
+        if query._with_payloads:
+            response.append(value(document, "payload"))
+        if not query._no_content:
+            fields = value(document, "extra_attributes", {})
+            response.append([item for pair in fields.items() for item in pair])
+    return client._parse_search(response, query=query, duration=duration)  # type: ignore
+
+
 def cluster_search(
     client: Search,
     query: str | Query,
     query_params: dict[str, str | int | float | bytes] | None = None,
 ) -> Result | Pipeline | Any:  # type: ignore[type-arg]
-    args, query = client._mk_query_args(query, query_params=query_params)
+    args, built_query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 
     options = {}
@@ -377,9 +411,11 @@ def cluster_search(
     if isinstance(res, Pipeline):
         return res
 
-    return client._parse_results(
-        SEARCH_CMD, res, query=query, duration=(time.monotonic() - st) * 1000.0
+    duration = (time.monotonic() - st) * 1000.0
+    parsed = client._parse_results(
+        SEARCH_CMD, res, query=built_query, duration=duration
     )
+    return to_search_result(client, parsed, built_query, duration)
 
 
 async def async_cluster_search(
@@ -387,7 +423,7 @@ async def async_cluster_search(
     query: str | Query,
     query_params: dict[str, str | int | float | bytes] | None = None,
 ) -> Result | Pipeline | Any:  # type: ignore[type-arg]
-    args, query = client._mk_query_args(query, query_params=query_params)
+    args, built_query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 
     options = {}
@@ -402,9 +438,11 @@ async def async_cluster_search(
     if isinstance(res, Pipeline):
         return res
 
-    return client._parse_results(
-        SEARCH_CMD, res, query=query, duration=(time.monotonic() - st) * 1000.0
+    duration = (time.monotonic() - st) * 1000.0
+    parsed = client._parse_results(
+        SEARCH_CMD, res, query=built_query, duration=duration
     )
+    return to_search_result(client, parsed, built_query, duration)
 
 
 def _extract_hash_tag(key: str) -> str:
