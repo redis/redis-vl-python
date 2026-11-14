@@ -10,7 +10,6 @@ from redisvl.cli.utils import (
     add_json_output_flag,
     cli_print_json,
     create_redis_url,
-    log_cli_exception,
 )
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
@@ -81,7 +80,6 @@ class Index:
         try:
             args.handler(args)
         except Exception as e:
-            log_cli_exception(e)
             print(str(e), file=sys.stderr)
             sys.exit(1)
 

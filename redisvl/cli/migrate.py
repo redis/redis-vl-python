@@ -5,11 +5,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from redisvl.cli.utils import (
-    add_redis_connection_options,
-    create_redis_url,
-    log_cli_exception,
-)
+from redisvl.cli.utils import add_redis_connection_options, create_redis_url
 from redisvl.migration import (
     AsyncMigrationExecutor,
     BatchMigrationExecutor,
@@ -78,7 +74,6 @@ class Migrate:
             getattr(self, command)()
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
-            log_cli_exception(e)
             sys.exit(1)
 
     def helper(self):
