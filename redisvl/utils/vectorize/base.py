@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 from enum import Enum
 from pathlib import Path
@@ -7,7 +8,7 @@ from typing import Annotated, Any, Callable
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
-from redisvl.redis.utils import array_to_buffer
+from redisvl.redis.utils import array_to_buffer, hashify
 from redisvl.schema.fields import VectorDataType
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize import _telemetry
@@ -105,13 +106,16 @@ class BaseVectorizer(BaseModel):
         if preprocess is not None:
             content = preprocess(content)
 
+        cache_metadata = kwargs.pop("metadata", {})
+        cache_model_name = self._cache_model_name(kwargs)
+
         with _telemetry.embeddings(self) as call:
             # Check cache if available and not skipped
             if self.cache is not None and not skip_cache:
                 try:
                     cache_result = self.cache.get(
                         content=self._serialize_for_cache(content),
-                        model_name=self.model,
+                        model_name=cache_model_name,
                     )
                     if cache_result:
                         logger.debug(f"Cache hit for content with model {self.model}")
@@ -125,7 +129,6 @@ class BaseVectorizer(BaseModel):
                 call.cache_result(0, 1)
 
             # Generate embedding using provider-specific implementation
-            cache_metadata = kwargs.pop("metadata", {})
             with call.provider_call():
                 embedding = self._embed(content, **kwargs)
 
@@ -134,7 +137,7 @@ class BaseVectorizer(BaseModel):
                 try:
                     self.cache.set(
                         content=self._serialize_for_cache(content),
-                        model_name=self.model,
+                        model_name=cache_model_name,
                         embedding=embedding,
                         metadata=cache_metadata,
                     )
@@ -182,17 +185,19 @@ class BaseVectorizer(BaseModel):
         else:
             processed_contents = contents
 
+        cache_metadata = kwargs.pop("metadata", {})
+        cache_model_name = self._cache_model_name(kwargs)
+
         with _telemetry.embeddings(self) as call:
             # Get cached embeddings and identify misses
             results, cache_misses, cache_miss_indices = self._get_from_cache_batch(
-                processed_contents, skip_cache
+                processed_contents, skip_cache, cache_model_name
             )
             if self.cache is not None and not skip_cache:
                 call.cache_result(len(contents) - len(cache_misses), len(contents))
 
             # Generate embeddings for cache misses
             if cache_misses:
-                cache_metadata = kwargs.pop("metadata", {})
                 with call.provider_call():
                     new_embeddings = self._embed_many(
                         cache_misses, batch_size=batch_size, **kwargs
@@ -200,7 +205,11 @@ class BaseVectorizer(BaseModel):
 
                 # Store new embeddings in cache
                 self._store_in_cache_batch(
-                    cache_misses, new_embeddings, cache_metadata, skip_cache
+                    cache_misses,
+                    new_embeddings,
+                    cache_metadata,
+                    skip_cache,
+                    cache_model_name,
                 )
 
                 # Insert new embeddings into results array
@@ -246,13 +255,16 @@ class BaseVectorizer(BaseModel):
         if preprocess is not None:
             content = preprocess(content)
 
+        cache_metadata = kwargs.pop("metadata", {})
+        cache_model_name = self._cache_model_name(kwargs)
+
         with _telemetry.embeddings(self) as call:
             # Check cache if available and not skipped
             if self.cache is not None and not skip_cache:
                 try:
                     cache_result = await self.cache.aget(
                         content=self._serialize_for_cache(content),
-                        model_name=self.model,
+                        model_name=cache_model_name,
                     )
                     if cache_result:
                         logger.debug(
@@ -270,7 +282,6 @@ class BaseVectorizer(BaseModel):
                 call.cache_result(0, 1)
 
             # Generate embedding using provider-specific implementation
-            cache_metadata = kwargs.pop("metadata", {})
             with call.provider_call():
                 embedding = await self._aembed(content, **kwargs)
 
@@ -279,7 +290,7 @@ class BaseVectorizer(BaseModel):
                 try:
                     await self.cache.aset(
                         content=self._serialize_for_cache(content),
-                        model_name=self.model,
+                        model_name=cache_model_name,
                         embedding=embedding,
                         metadata=cache_metadata,
                     )
@@ -329,17 +340,21 @@ class BaseVectorizer(BaseModel):
         else:
             processed_contents = contents
 
+        cache_metadata = kwargs.pop("metadata", {})
+        cache_model_name = self._cache_model_name(kwargs)
+
         with _telemetry.embeddings(self) as call:
             # Get cached embeddings and identify misses
             results, cache_misses, cache_miss_indices = (
-                await self._aget_from_cache_batch(processed_contents, skip_cache)
+                await self._aget_from_cache_batch(
+                    processed_contents, skip_cache, cache_model_name
+                )
             )
             if self.cache is not None and not skip_cache:
                 call.cache_result(len(contents) - len(cache_misses), len(contents))
 
             # Generate embeddings for cache misses
             if cache_misses:
-                cache_metadata = kwargs.pop("metadata", {})
                 with call.provider_call():
                     new_embeddings = await self._aembed_many(
                         cache_misses, batch_size=batch_size, **kwargs
@@ -347,7 +362,11 @@ class BaseVectorizer(BaseModel):
 
                 # Store new embeddings in cache
                 await self._astore_in_cache_batch(
-                    cache_misses, new_embeddings, cache_metadata, skip_cache
+                    cache_misses,
+                    new_embeddings,
+                    cache_metadata,
+                    skip_cache,
+                    cache_model_name,
                 )
 
                 # Insert new embeddings into results array
@@ -390,14 +409,27 @@ class BaseVectorizer(BaseModel):
         )
         return self._embed_many(contents, batch_size=batch_size, **kwargs)
 
+    def _cache_model_name(self, kwargs: dict[str, Any]) -> str:
+        """Return the model name used as part of the embedding cache key.
+
+        Provider kwargs (e.g. Cohere's ``input_type``) change the embedding the
+        model returns, so they must be part of the key. Without kwargs the key
+        is just ``self.model``, so entries cached before are still found.
+        """
+        if not kwargs:
+            return self.model
+        digest = hashify(json.dumps(kwargs, sort_keys=True, default=str))
+        return f"{self.model}:{digest}"
+
     def _get_from_cache_batch(
-        self, contents: list[Any], skip_cache: bool
+        self, contents: list[Any], skip_cache: bool, model_name: str | None = None
     ) -> tuple[list[list[float] | None], list[str], list[int]]:
         """Get vector embeddings from cache and track cache misses.
 
         Args:
             contents: List of content to get from cache
             skip_cache: Whether to skip cache lookup
+            model_name: Cache key model name (defaults to ``self.model``)
 
         Returns:
             Tuple of (results, cache_misses, cache_miss_indices)
@@ -414,7 +446,7 @@ class BaseVectorizer(BaseModel):
             # Efficient batch cache lookup
             cache_results = self.cache.mget(
                 contents=(self._serialize_for_cache(c) for c in contents),
-                model_name=self.model,
+                model_name=model_name or self.model,
             )
 
             # Process cache hits and collect misses
@@ -437,13 +469,14 @@ class BaseVectorizer(BaseModel):
         return results, cache_misses, cache_miss_indices  # type: ignore
 
     async def _aget_from_cache_batch(
-        self, contents: list[Any], skip_cache: bool
+        self, contents: list[Any], skip_cache: bool, model_name: str | None = None
     ) -> tuple[list[list[float] | None], list[str], list[int]]:
         """Asynchronously get vector embeddings from cache and track cache misses.
 
         Args:
             contents: List of content to get from cache
             skip_cache: Whether to skip cache lookup
+            model_name: Cache key model name (defaults to ``self.model``)
 
         Returns:
             Tuple of (results, cache_misses, cache_miss_indices)
@@ -460,7 +493,7 @@ class BaseVectorizer(BaseModel):
             # Efficient batch cache lookup
             cache_results = await self.cache.amget(
                 contents=(self._serialize_for_cache(c) for c in contents),
-                model_name=self.model,
+                model_name=model_name or self.model,
             )
 
             # Process cache hits and collect misses
@@ -490,6 +523,7 @@ class BaseVectorizer(BaseModel):
         embeddings: list[list[float]],
         metadata: dict[str, Any],
         skip_cache: bool,
+        model_name: str | None = None,
     ) -> None:
         """Store a batch of vector embeddings in the cache.
 
@@ -498,6 +532,7 @@ class BaseVectorizer(BaseModel):
             embeddings: List of vector embeddings
             metadata: Metadata to store with the embeddings
             skip_cache: Whether to skip cache storage
+            model_name: Cache key model name (defaults to ``self.model``)
         """
         if skip_cache or self.cache is None:
             return
@@ -507,7 +542,7 @@ class BaseVectorizer(BaseModel):
             cache_items = [
                 {
                     "content": self._serialize_for_cache(content),
-                    "model_name": self.model,
+                    "model_name": model_name or self.model,
                     "embedding": emb,
                     "metadata": metadata,
                 }
@@ -523,6 +558,7 @@ class BaseVectorizer(BaseModel):
         embeddings: list[list[float]],
         metadata: dict[str, Any],
         skip_cache: bool,
+        model_name: str | None = None,
     ) -> None:
         """Asynchronously store a batch of vector embeddings in the cache.
 
@@ -531,6 +567,7 @@ class BaseVectorizer(BaseModel):
             embeddings: List of vector embeddings
             metadata: Metadata to store with the embeddings
             skip_cache: Whether to skip cache storage
+            model_name: Cache key model name (defaults to ``self.model``)
         """
         if skip_cache or self.cache is None:
             return
@@ -540,7 +577,7 @@ class BaseVectorizer(BaseModel):
             cache_items = [
                 {
                     "content": self._serialize_for_cache(content),
-                    "model_name": self.model,
+                    "model_name": model_name or self.model,
                     "embedding": emb,
                     "metadata": metadata,
                 }
