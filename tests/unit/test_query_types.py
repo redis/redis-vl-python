@@ -287,6 +287,20 @@ def test_text_query_rejects_empty_tokenized_text(text, stopwords):
         TextQuery(text=text, text_field_name="body", stopwords=stopwords)
 
 
+def test_text_query_filters_stopwords_with_apostrophe():
+    query = TextQuery("don't panic", text_field_name="body")
+    assert "@body:(panic)" in str(query)
+
+
+def test_text_query_applies_weights_to_punctuated_tokens():
+    query = TextQuery(
+        "state-of-the-art search",
+        text_field_name="body",
+        text_weights={"state-of-the-art": 3},
+    )
+    assert "state\\-of\\-the\\-art=>{$weight:3}" in str(query)
+
+
 def test_text_query_keeps_stopwords_when_disabled():
     query = TextQuery("the a an", text_field_name="body", stopwords=None)
     assert "@body:(the | a | an)" in str(query)
