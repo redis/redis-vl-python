@@ -19,6 +19,7 @@ from redisvl.mcp.tools.profiles import (
     validate_profile_against_schema,
 )
 from redisvl.mcp.tools.search import merge_locked_filter
+from redisvl.schema import IndexSchema
 
 LOCKED_CATEGORY_FILTER = {"field": "category", "op": "eq", "value": "resolved"}
 FILTER_HINT = "Object filter fields: content(text), category(tag), rating(numeric)."
@@ -616,6 +617,35 @@ def test_validate_profile_against_schema_rejects_locked_filter_on_unknown_field(
 
     # Caught at startup rather than silently matching nothing per request.
     assert exc_info.value.code == MCPErrorCode.INVALID_FILTER
+
+
+def _schema_with_index_missing(*field_names: str) -> IndexSchema:
+    schema_dict = _schema().to_dict()
+    for field in schema_dict["fields"]:
+        if field["name"] in field_names:
+            field.setdefault("attrs", {})["index_missing"] = True
+    return IndexSchema.from_dict(schema_dict)
+
+
+@pytest.mark.parametrize("field_name", ["category", "embedding"])
+def test_validate_profile_against_schema_rejects_locked_exists_without_index_missing(
+    field_name,
+):
+    profile = _profile(lock={"filter": {"field": field_name, "op": "exists"}})
+
+    with pytest.raises(ValueError, match="not indexed with INDEXMISSING"):
+        validate_profile_against_schema(profile, _schema())
+
+
+@pytest.mark.parametrize("field_name", ["category", "embedding"])
+def test_validate_profile_against_schema_accepts_locked_exists_with_index_missing(
+    field_name,
+):
+    # Redis answers ismissing() on vector fields declared with INDEXMISSING too,
+    # so a vector field is held to the same rule as every other field type.
+    profile = _profile(lock={"filter": {"field": field_name, "op": "exists"}})
+
+    validate_profile_against_schema(profile, _schema_with_index_missing(field_name))
 
 
 def test_resolve_locked_filter_returns_none_when_no_filter_is_locked():
