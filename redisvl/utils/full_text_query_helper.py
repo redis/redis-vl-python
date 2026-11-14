@@ -111,19 +111,21 @@ class FullTextQueryHelper:
         """
         escaper = TokenEscaper()
 
+        # Compare stopwords and weights against the raw token, then escape it:
+        # escaping first would turn "don't" into an escaped form that never matches.
         tokens = [
-            escaper.escape(
-                token.strip().strip(",").replace("“", "").replace("”", "").lower()
-            )
+            token.strip().strip(",").replace("“", "").replace("”", "").lower()
             for token in user_query.split()
         ]
 
-        token_list = [
-            token for token in tokens if token and token not in self._stopwords
-        ]
-        for i, token in enumerate(token_list):
+        token_list = []
+        for token in tokens:
+            if not token or token in self._stopwords:
+                continue
+            escaped = escaper.escape(token)
             if token in self._text_weights:
-                token_list[i] = f"{token}=>{{$weight:{self._text_weights[token]}}}"
+                escaped = f"{escaped}=>{{$weight:{self._text_weights[token]}}}"
+            token_list.append(escaped)
 
         if not token_list:
             raise ValueError("text string cannot be empty after removing stopwords")
