@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
@@ -181,3 +181,31 @@ def test_preprocess(storage_instance):
     preprocessed_data = storage_instance._preprocess(obj=data, preprocess=fn)
     assert "foo" in preprocessed_data
     assert preprocessed_data["foo"] == "bar"
+
+
+ITERABLE_SCHEMA = IndexSchema.from_dict(
+    {
+        "index": {"name": "t", "prefix": "t"},
+        "fields": [{"name": "title", "type": "text"}],
+    }
+)
+ITERABLE_OBJS = [{"title": "a"}, {"title": "b"}]
+
+
+async def test_write_accepts_single_pass_iterables():
+    storage = HashStorage(index_schema=ITERABLE_SCHEMA)
+    keys = ["t:1", "t:2"]
+    assert storage.write(MagicMock(), iter(ITERABLE_OBJS), keys=iter(keys)) == keys
+    client = MagicMock()
+    client.pipeline.return_value.__aenter__.return_value = AsyncMock()
+    assert await storage.awrite(client, iter(ITERABLE_OBJS), keys=iter(keys)) == keys
+
+
+@pytest.mark.parametrize("keys", [[], ["t:1"], ["t:1", "t:2", "t:3"]])
+async def test_write_rejects_mismatched_keys_before_writing(keys):
+    storage, client = HashStorage(index_schema=ITERABLE_SCHEMA), MagicMock()
+    with pytest.raises(ValueError, match="Length of keys"):
+        storage.write(client, iter(ITERABLE_OBJS), keys=iter(keys))
+    with pytest.raises(ValueError, match="Length of keys"):
+        await storage.awrite(client, iter(ITERABLE_OBJS), keys=iter(keys))
+    client.pipeline.assert_not_called()
