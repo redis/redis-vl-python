@@ -294,13 +294,24 @@ gh workflow run test-fork-pr.yml -f pr_number=<PR number>
 
 The result appears on the PR as the **Fork PR - Service Tests** check. Notebook Validation has no manual equivalent; it runs on `main` after merge and nightly.
 
+### AI Assistance
+
+Every PR declares whether AI tools were used, in the **AI Assistance** section of the PR template. Tick one of the two boxes:
+
+- **No AI assistance was used.** You wrote the code, tests, docs and description yourself. Single-line editor autocomplete doesn't count as assistance.
+- **This PR is AI-assisted.** An AI tool wrote or rewrote any part of it. Name the tool and model and say what it did. Ticking the box also states that you have reviewed and understood everything in the PR and take responsibility for it.
+
+AI-assisted PRs are welcome. The declaration decides one thing: an AI-assisted PR must carry a Reviewer Brief, described below, and a PR written without AI doesn't need one. A PR with neither box ticked, or an AI-assisted PR with no brief, isn't assigned a reviewer until that's fixed. Please declare accurately; a PR that is plainly agent-written and declared otherwise will be asked for a brief anyway.
+
 ### Reviewer Brief
 
-Maintainer PRs, and any PR written with a coding agent, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Outside contributors are welcome to add one but don't have to.
+Maintainer PRs, and every AI-assisted PR, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Contributors who declare no AI assistance are welcome to add one but don't have to.
 
 #### Writing one
 
 Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review looks at the change from six angles (correctness, security, design, tests, docs and Redis behaviour), checks each finding against the code, fixes what holds up, and then writes the brief under the `## Reviewer Brief` heading of the PR template. Run it again after any substantive push.
+
+Whether or not you use an agent, read the issue and its comments before you start, and rebase on `main` before you ask for review.
 
 A brief tells the reviewer:
 
@@ -351,7 +362,9 @@ Before submitting your PR, ensure:
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear and descriptive
 - [ ] PR description explains what changes were made and why
-- [ ] For maintainer or agent-assisted PRs, the Reviewer Brief covers the PR's head commit
+- [ ] The branch is rebased on the current `main`
+- [ ] One box is ticked in the AI Assistance section
+- [ ] For maintainer or AI-assisted PRs, the Reviewer Brief covers the PR's head commit
 - [ ] Appropriate `auto:*` label is applied to indicate the change type
 
 ## Getting Help
