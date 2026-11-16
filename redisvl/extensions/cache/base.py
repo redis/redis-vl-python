@@ -5,7 +5,7 @@ specific cache types such as LLM caches and embedding caches.
 """
 
 import asyncio
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
@@ -333,12 +333,18 @@ class BaseCache:
         if batch:
             await client.delete(*batch)
 
+    def _release_owned_async_client(self) -> Optional[Any]:
+        """Clear the async client if this cache created it; return it."""
+        if not self._owns_async_redis_client:
+            return None
+        client, self._async_redis_client = self._async_redis_client, None
+        self._owns_async_redis_client = False
+        return client
+
     def disconnect(self) -> None:
         """Disconnect from Redis."""
-        if self._owns_async_redis_client:
-            # A sync method cannot await aclose(); drop the loop-bound client.
-            self._async_redis_client = None
-            self._owns_async_redis_client = False
+        # A sync method cannot await aclose(); drop the loop-bound client.
+        self._release_owned_async_client()
         if self._owns_redis_client is False:
             return
 
@@ -348,11 +354,9 @@ class BaseCache:
 
     async def adisconnect(self) -> None:
         """Async disconnect from Redis."""
-        if self._owns_async_redis_client:
-            client, self._async_redis_client = self._async_redis_client, None
-            self._owns_async_redis_client = False
-            if client is not None:
-                await client.aclose()
+        client = self._release_owned_async_client()
+        if client is not None:
+            await client.aclose()
         if self._owns_redis_client is False:
             return
 

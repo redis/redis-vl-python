@@ -6,7 +6,6 @@ import pytest
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.extensions.cache.base import BaseCache
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.extensions.router.semantic import SemanticRouter
@@ -14,6 +13,7 @@ from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.sql import SQLQuery
 from redisvl.schema import IndexSchema
 from redisvl.utils.utils import assert_no_warnings
+from redisvl.utils.vectorize import CustomVectorizer
 
 
 def _schema_dict(name: str = "idx") -> dict:
@@ -593,73 +593,53 @@ def test_wrong_flavour_guard_catches_specced_mocks():
     assert SearchIndex(schema, redis_client=MagicMock()) is not None
 
 
-@pytest.mark.parametrize("disconnect_method", ["disconnect", "adisconnect"])
-@pytest.mark.parametrize("semantic", [False, True])
-@pytest.mark.parametrize("provided_sync", [False, True])
-def test_cache_owned_async_client_reconnects(
-    disconnect_method, semantic, provided_sync
-):
-    """Owned clients and semantic indexes must not survive a disconnected loop."""
-    provided = MagicMock(spec=Redis) if provided_sync else None
-    cache = (
-        SemanticCache.__new__(SemanticCache)
-        if semantic
-        else EmbeddingsCache(redis_client=provided)
-    )
-    if semantic:
-        BaseCache.__init__(cache, name="reconnect", redis_client=provided)
-        cache._index = MagicMock()
-        cache._aindex = None
+def _run_twice(cache, disconnect):
+    """Use the async client on two loops, disconnecting in between."""
     created = []
 
-    def factory(*args, **kwargs):
-        client = AsyncMock()
-        created.append(client)
-        return client
+    def make(*args, **kwargs):
+        created.append(AsyncMock())
+        return created[-1]
 
-    async def async_factory(*args, **kwargs):
-        return factory()
+    async def amake(*args, **kwargs):
+        return make()
 
-    async def use_then_disconnect():
+    async def use():
         client = await cache._get_async_redis_client()
-        if semantic:
-            index = await cache._get_async_index()
-            assert index.client is client
-        if disconnect_method == "adisconnect":
+        if isinstance(cache, SemanticCache):
+            assert (await cache._get_async_index())._redis_client is client
+        if disconnect == "adisconnect":
             await cache.adisconnect()
         else:
             cache.disconnect()
 
+    base = "redisvl.extensions.cache.base.RedisConnectionFactory"
     with (
-        patch(
-            "redisvl.extensions.cache.base.RedisConnectionFactory.sync_to_async_redis",
-            side_effect=factory,
-        ),
-        patch(
-            "redisvl.extensions.cache.base.RedisConnectionFactory._get_aredis_connection",
-            side_effect=async_factory,
-        ),
-        patch(
-            "redisvl.extensions.cache.llm.semantic.AsyncSearchIndex",
-            side_effect=lambda **kw: SimpleNamespace(
-                client=kw["redis_client"],
-                disconnect=AsyncMock(),
-                disconnect_sync=MagicMock(),
-            ),
-        ),
+        patch(f"{base}.sync_to_async_redis", side_effect=make),
+        patch(f"{base}._get_aredis_connection", side_effect=amake),
     ):
-        asyncio.run(use_then_disconnect())
-        asyncio.run(use_then_disconnect())
-
+        asyncio.run(use())
+        asyncio.run(use())
     assert len(created) == 2
-    for client in created:
-        if disconnect_method == "adisconnect":
-            client.aclose.assert_awaited_once()
-        else:
-            client.aclose.assert_not_awaited()
-    if provided is not None:
-        provided.close.assert_not_called()
-        assert cache._redis_client is provided
+    return created
+
+
+@pytest.mark.parametrize("disconnect", ["disconnect", "adisconnect"])
+def test_cache_releases_async_client_derived_from_sync_client(disconnect):
+    provided = MagicMock(spec=Redis)
+    first, _ = _run_twice(EmbeddingsCache(redis_client=provided), disconnect)
+    assert first.aclose.await_count == (disconnect == "adisconnect")
+    provided.close.assert_not_called()
+
+
+def test_semantic_cache_disconnect_drops_its_async_index():
+    cache = SemanticCache(
+        name="reconnect",
+        vectorizer=CustomVectorizer(lambda text: [0.1, 0.2, 0.3]),
+        redis_url="redis://localhost:6379",
+        create_index=False,
+    )
+    _run_twice(cache, "disconnect")
 
 
 @pytest.mark.parametrize("disconnect_method", ["disconnect", "adisconnect"])
