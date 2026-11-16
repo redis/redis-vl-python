@@ -9,16 +9,18 @@ Run the branch's tests against the code it branched from, before reading the tes
 Use a separate worktree, so the working tree is never touched, and put the base's library under the branch's tests:
 
 ```
+target=origin/main   # the PR's target branch: in a stack, the parent branch
 py="$PWD/.venv/bin/python"
-base=$(git merge-base origin/main HEAD)
-git worktree add --detach "$TMPDIR/base-run" HEAD
-git -C "$TMPDIR/base-run" restore --source="$base" -- redisvl
-rsync -a --exclude __pycache__ tests/ "$TMPDIR/base-run/tests/"
+run="$(mktemp -d)/base-run"
+base=$(git merge-base "$target" HEAD)
+git worktree add --detach "$run" HEAD
+git -C "$run" restore --source="$base" -- redisvl
+rsync -a --exclude __pycache__ tests/ "$run/tests/"
 ```
 
 The worktree holds only what is committed, so the last line copies in the working tree's `tests/`, including uncommitted and untracked test files. The changed test files are those in `git diff --name-only "$base" -- tests` plus `git ls-files --others --exclude-standard tests`.
 
-Run these from the checkout where you ran `make install`, so `py` is the project's interpreter: `uv sync` puts pytest in `.venv` without activating it, so a bare `python` may lack it. Then, from inside `$TMPDIR/base-run`, run `PYTHONPATH=. "$py" -m pytest <changed test files>`, adding `--noconftest` for unit tests that need no Redis. `PYTHONPATH=.` matters: without it, an editable install can import `redisvl` from your main checkout, and every test passes for the wrong reason. For the same reason, don't fall back to `uv run` or `make test` from the main checkout. Remove the worktree afterwards with `git worktree remove --force "$TMPDIR/base-run"`.
+Run these from the checkout where you ran `make install`, so `py` is the project's interpreter: `uv sync` puts pytest in `.venv` without activating it, so a bare `python` may lack it. Then, from inside `$run`, run `PYTHONPATH=. "$py" -m pytest <changed test files>`, adding `--noconftest` for unit tests that need no Redis. `PYTHONPATH=.` matters: without it, an editable install can import `redisvl` from your main checkout, and every test passes for the wrong reason. For the same reason, don't fall back to `uv run` or `make test` from the main checkout. Remove the worktree afterwards with `git worktree remove --force "$run"`.
 
 Every test the branch added that passes there needs one of three outcomes:
 
