@@ -13,7 +13,7 @@ The approver can only rely on the brief if it's accurate, so report only what yo
 ## 1. Scope the change
 
 - Check the starting point. Read the linked issue and every maintainer comment on it, and search open PRs that touch the same files (`gh pr list --search "<path or symbol>"`). If a maintainer has ruled an approach out, or an open PR already covers the work, stop and tell the author. If the issue proposes a fix, the change should either be that fix or say in Notes why it isn't. AGENTS.md asks for this before any code is written; do it now if it was skipped.
-- Rebase on the current `origin/main`. A review of a stale branch describes code the reviewer won't see.
+- Rebase on the current tip of the branch the PR targets: `origin/main`, or the parent branch in a stack. A review of a stale branch describes code the reviewer won't see. Don't rebase when you've been asked to review a fixed commit, such as an eval's historical checkout. Wherever this skill says `origin/main`, read the PR's target branch.
 - Diff the work against its merge base with `main`: `git diff $(git merge-base origin/main HEAD)` covers commits and uncommitted changes, and `git status` shows untracked files to read as well.
 - Read each changed file in full, not just the hunks. Bugs often sit in the unchanged lines a hunk depends on.
 - For every changed public function, method or class, read its callers and its sync or async twin (`SearchIndex` and `AsyncSearchIndex`, and so on). Drift between twins is one of this project's most common defects.

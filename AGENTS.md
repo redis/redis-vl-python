@@ -151,7 +151,7 @@ The procedure lives in `.agents/skills/pre-pr-review/SKILL.md`, in the Agent Ski
 
 In short, the review:
 
-1. Rebases on `main`, then reads the full diff, the callers of anything public that changed, and every other site with the same pattern, and runs the new tests against the base code to find any that pass without the change.
+1. Rebases on the PR's target branch (`main`, or the parent in a stack), then reads the full diff, the callers of anything public that changed, and every other site with the same pattern, and runs the new tests against the base code to find any that pass without the change.
 2. Runs six review lenses (correctness, security, design, tests, docs and Redis behaviour), each starting fresh from the diff. Authors who want to save tokens can run fewer; correctness always runs.
 3. Runs a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure or cost.
 4. Fixes the surviving findings, in scope, and re-runs the checks those fixes touched.
