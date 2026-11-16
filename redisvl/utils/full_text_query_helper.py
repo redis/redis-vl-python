@@ -116,10 +116,10 @@ class FullTextQueryHelper:
             word = token.strip().strip(",").replace("“", "").replace("”", "").lower()
             if not word or word in self._stopwords:
                 continue
-            escaped = escaper.escape(word)
+            term = escaper.escape(word)
             if word in self._text_weights:
-                escaped = f"{escaped}=>{{$weight:{self._text_weights[word]}}}"
-            token_list.append(escaped)
+                term = f"{term}=>{{$weight:{self._text_weights[word]}}}"
+            token_list.append(term)
 
         if not token_list:
             raise ValueError("text string cannot be empty after removing stopwords")
