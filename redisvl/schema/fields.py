@@ -311,6 +311,9 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
                 f"Unsupported types: BFLOAT16, FLOAT64, INT8, UINT8."
             )
 
+        if self.training_threshold is not None and self.compression is None:
+            raise ValueError("training_threshold requires compression to be set")
+
         # Reduce validation: must be less than dims and only valid with LeanVec
         if self.reduce is not None:
             if self.reduce >= self.dims:

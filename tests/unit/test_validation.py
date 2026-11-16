@@ -876,6 +876,31 @@ class TestSVSVamanaValidation:
         ):
             IndexSchema.from_dict(schema_dict)
 
+    def test_svs_vamana_training_threshold_without_compression_raises_error(self):
+        """Test SVS-VAMANA rejects training_threshold without compression."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "training_threshold": 2048,
+                    },
+                }
+            ],
+        }
+        with pytest.raises(Exception, match="training_threshold requires compression"):
+            IndexSchema.from_dict(schema_dict)
+
     def test_svs_vamana_reduce_without_compression_raises_error(self):
         """Test SVS-VAMANA rejects reduce parameter without compression."""
         schema_dict = {

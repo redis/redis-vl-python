@@ -1,5 +1,7 @@
 """Unit tests for convert_index_info_to_schema function."""
 
+import pytest
+
 from redisvl.redis.connection import convert_index_info_to_schema
 from redisvl.schema import IndexSchema
 
@@ -41,8 +43,16 @@ def test_convert_index_info_svs_no_compression():
     assert IndexSchema.from_dict(result).fields["emb"].attrs.compression is None
 
 
-def test_convert_index_info_svs_training_threshold():
-    """FT.INFO reports TRAINING_THRESHOLD for SVS-VAMANA; keep it in the schema."""
+@pytest.mark.parametrize(
+    "tail, expected",
+    [
+        (["compression", "NO_COMPRESSION"], None),
+        (["compression", "GlobalSQ8", "training_threshold", 2048], 2048),
+        (["compression", "GlobalSQ8", "training_threshold", 10240], None),
+    ],
+)
+def test_convert_index_info_svs_training_threshold(tail, expected):
+    """A non-default TRAINING_THRESHOLD is kept; the reported server default is not."""
     index_info = {
         "index_name": "svs",
         "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
@@ -62,19 +72,59 @@ def test_convert_index_info_svs_training_threshold():
                 4,
                 "distance_metric",
                 "COSINE",
-                "compression",
-                "LVQ8",
-                "training_threshold",
-                2048,
+                "graph_max_degree",
+                32,
+                "construction_window_size",
+                200,
+                *tail,
             ]
         ],
     }
 
     result = convert_index_info_to_schema(index_info)
 
-    assert result["fields"][0]["attrs"]["training_threshold"] == 2048
     attrs = IndexSchema.from_dict(result).fields["emb"].attrs
-    assert attrs.training_threshold == 2048
+    assert attrs.training_threshold == expected
+
+
+def test_reported_default_threshold_matches_unset_target():
+    """A live default (10240) must not make a target without it look different."""
+    from redisvl.migration.utils import schemas_equal
+
+    def svs_info(*tail):
+        return {
+            "index_name": "svs",
+            "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
+            "attributes": [
+                [
+                    "identifier",
+                    "emb",
+                    "attribute",
+                    "emb",
+                    "type",
+                    "VECTOR",
+                    "algorithm",
+                    "SVS-VAMANA",
+                    "data_type",
+                    "FLOAT32",
+                    "dim",
+                    4,
+                    "distance_metric",
+                    "COSINE",
+                    "graph_max_degree",
+                    32,
+                    "construction_window_size",
+                    200,
+                    "compression",
+                    "GlobalSQ8",
+                    *tail,
+                ]
+            ],
+        }
+
+    live = convert_index_info_to_schema(svs_info("training_threshold", 10240))
+    target = convert_index_info_to_schema(svs_info())
+    assert schemas_equal(target, live, strip_excluded=True)
 
 
 def test_convert_index_info_single_prefix():
