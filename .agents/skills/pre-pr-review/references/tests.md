@@ -12,7 +12,10 @@ Use a separate worktree, so the working tree is never touched, and put the base'
 base=$(git merge-base origin/main HEAD)
 git worktree add --detach "$TMPDIR/base-run" HEAD
 git -C "$TMPDIR/base-run" restore --source="$base" -- redisvl
+rsync -a --exclude __pycache__ tests/ "$TMPDIR/base-run/tests/"
 ```
+
+The worktree holds only what is committed, so the last line copies in the working tree's `tests/`, including uncommitted and untracked test files. The changed test files are those in `git diff --name-only "$base" -- tests` plus `git ls-files --others --exclude-standard tests`.
 
 Then, from inside `$TMPDIR/base-run`, run `PYTHONPATH=. python -m pytest <changed test files>`, adding `--noconftest` for unit tests that need no Redis. `PYTHONPATH=.` matters: without it, an editable install can import `redisvl` from your main checkout, and every test passes for the wrong reason. Remove the worktree afterwards with `git worktree remove --force "$TMPDIR/base-run"`.
 
