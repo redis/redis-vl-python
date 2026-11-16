@@ -155,7 +155,7 @@ In short, the review:
 2. Runs six review lenses (correctness, security, design, tests, docs and Redis behaviour), each starting fresh from the diff. Authors who want to save tokens can run fewer; correctness always runs.
 3. Runs a separate challenger pass that drops any finding it can't tie to a file, a line and a concrete failure or cost.
 4. Fixes the surviving findings, in scope, and re-runs the checks those fixes touched.
-5. Lists every input that now behaves differently from `main`, and checks the Release Notes and description against that list.
+5. Lists every input that now behaves differently from the target branch, and checks the Release Notes and description against that list.
 6. Settles anything it couldn't resolve with the author, so the PR has no open questions.
 7. Writes the Reviewer Brief into the PR description. `scripts/update_brief.py` replaces just that section.
 
