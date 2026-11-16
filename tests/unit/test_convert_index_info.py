@@ -6,54 +6,9 @@ from redisvl.redis.connection import convert_index_info_to_schema
 from redisvl.schema import IndexSchema
 
 
-def test_convert_index_info_svs_no_compression():
-    """Redis 8.2+ reports an uncompressed SVS-VAMANA field as NO_COMPRESSION."""
-    index_info = {
-        "index_name": "svs",
-        "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
-        "attributes": [
-            [
-                "identifier",
-                "emb",
-                "attribute",
-                "emb",
-                "type",
-                "VECTOR",
-                "algorithm",
-                "SVS-VAMANA",
-                "data_type",
-                "FLOAT32",
-                "dim",
-                4,
-                "distance_metric",
-                "COSINE",
-                "graph_max_degree",
-                40,
-                "construction_window_size",
-                250,
-                "compression",
-                "NO_COMPRESSION",
-            ]
-        ],
-    }
-
-    result = convert_index_info_to_schema(index_info)
-
-    assert "compression" not in result["fields"][0]["attrs"]
-    assert IndexSchema.from_dict(result).fields["emb"].attrs.compression is None
-
-
-@pytest.mark.parametrize(
-    "tail, expected",
-    [
-        (["compression", "NO_COMPRESSION"], None),
-        (["compression", "GlobalSQ8", "training_threshold", 2048], 2048),
-        (["compression", "GlobalSQ8", "training_threshold", 10240], None),
-    ],
-)
-def test_convert_index_info_svs_training_threshold(tail, expected):
-    """A non-default TRAINING_THRESHOLD is kept; the reported server default is not."""
-    index_info = {
+def svs_info(*tail):
+    """FT.INFO reply for an SVS-VAMANA field with the given trailing attributes."""
+    return {
         "index_name": "svs",
         "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
         "attributes": [
@@ -81,9 +36,24 @@ def test_convert_index_info_svs_training_threshold(tail, expected):
         ],
     }
 
-    result = convert_index_info_to_schema(index_info)
+
+@pytest.mark.parametrize(
+    "tail, expected",
+    [
+        (["compression", "NO_COMPRESSION"], None),
+        (["compression", "GlobalSQ8", "training_threshold", 2048], 2048),
+        (["compression", "GlobalSQ8", "training_threshold", 10240], None),
+    ],
+)
+def test_convert_index_info_svs_no_compression(tail, expected):
+    """Redis 8.2+ reports NO_COMPRESSION; a non-default TRAINING_THRESHOLD is
+    kept, the reported server default (10240) is not."""
+    result = convert_index_info_to_schema(svs_info(*tail))
 
     attrs = IndexSchema.from_dict(result).fields["emb"].attrs
+    if tail[1] == "NO_COMPRESSION":
+        assert "compression" not in result["fields"][0]["attrs"]
+        assert attrs.compression is None
     assert attrs.training_threshold == expected
 
 
@@ -91,39 +61,10 @@ def test_reported_default_threshold_matches_unset_target():
     """A live default (10240) must not make a target without it look different."""
     from redisvl.migration.utils import schemas_equal
 
-    def svs_info(*tail):
-        return {
-            "index_name": "svs",
-            "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
-            "attributes": [
-                [
-                    "identifier",
-                    "emb",
-                    "attribute",
-                    "emb",
-                    "type",
-                    "VECTOR",
-                    "algorithm",
-                    "SVS-VAMANA",
-                    "data_type",
-                    "FLOAT32",
-                    "dim",
-                    4,
-                    "distance_metric",
-                    "COSINE",
-                    "graph_max_degree",
-                    32,
-                    "construction_window_size",
-                    200,
-                    "compression",
-                    "GlobalSQ8",
-                    *tail,
-                ]
-            ],
-        }
-
-    live = convert_index_info_to_schema(svs_info("training_threshold", 10240))
-    target = convert_index_info_to_schema(svs_info())
+    live = convert_index_info_to_schema(
+        svs_info("compression", "GlobalSQ8", "training_threshold", 10240)
+    )
+    target = convert_index_info_to_schema(svs_info("compression", "GlobalSQ8"))
     assert schemas_equal(target, live, strip_excluded=True)
 
 
