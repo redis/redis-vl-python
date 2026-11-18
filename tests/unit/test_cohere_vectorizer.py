@@ -4,6 +4,7 @@ import types
 
 import pytest
 
+from redisvl.schema.fields import VectorDataType
 from redisvl.utils.vectorize.text.cohere import CohereTextVectorizer
 
 
@@ -120,7 +121,12 @@ async def test_aembed_dtype_wins_over_embedding_types(fake_cohere_module):
 
 @pytest.mark.parametrize(
     "dtype, embedding_type",
-    [("INT8", "int8"), ("UINT8", "uint8")],
+    [
+        ("INT8", "int8"),
+        ("UINT8", "uint8"),
+        (VectorDataType.INT8, "int8"),
+        (VectorDataType.UINT8, "uint8"),
+    ],
 )
 def test_embed_maps_dtype_case_insensitively(fake_cohere_module, dtype, embedding_type):
     vectorizer = CohereTextVectorizer(api_config={"api_key": "test-key"}, dtype=dtype)
