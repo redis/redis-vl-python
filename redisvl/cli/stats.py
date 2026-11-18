@@ -14,9 +14,6 @@ from redisvl.cli.utils import (
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.schema.schema import IndexSchema
-from redisvl.utils.log import get_logger
-
-logger = get_logger("[RedisVL]")
 
 # Exceptions commonly raised when loading or validating a schema path (-s).
 SCHEMA_INPUT_ERRORS = (
@@ -113,7 +110,6 @@ class Stats:
         try:
             self.stats(args)
         except Exception as e:
-            logger.error(e, exc_info=True)
             print(str(e), file=sys.stderr)
             sys.exit(1)
 

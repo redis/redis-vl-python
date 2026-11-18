@@ -2,7 +2,6 @@ import builtins
 import importlib
 import sys
 import types
-from collections import namedtuple
 
 import pytest
 
@@ -12,13 +11,6 @@ from redisvl.cli.main import RedisVlCLI, _command_overview
 def _import_cli_mcp():
     sys.modules.pop("redisvl.cli.mcp", None)
     return importlib.import_module("redisvl.cli.mcp")
-
-
-def _make_version_info(major, minor, micro=0):
-    version_info = namedtuple(
-        "VersionInfo", ["major", "minor", "micro", "releaselevel", "serial"]
-    )
-    return version_info(major, minor, micro, "final", 0)
 
 
 def _install_fake_redisvl_mcp(monkeypatch, settings_factory, server_factory):
@@ -57,7 +49,6 @@ def test_cli_dispatches_mcp_command_lazily(monkeypatch):
 def test_mcp_command_reports_missing_optional_dependencies(monkeypatch, capsys):
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
 
     original_import = builtins.__import__
 
@@ -104,7 +95,6 @@ def test_mcp_help_includes_description_and_example(monkeypatch, capsys):
 def test_mcp_command_preserves_env_read_only_when_flag_is_omitted(monkeypatch):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
 
     calls = []
@@ -146,7 +136,6 @@ def test_mcp_command_preserves_env_read_only_when_flag_is_omitted(monkeypatch):
 def test_mcp_command_runs_startup_then_stdio_then_shutdown(monkeypatch):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(
         sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml", "--read-only"]
     )
@@ -194,7 +183,6 @@ def test_mcp_command_runs_startup_then_stdio_then_shutdown(monkeypatch):
 def test_mcp_command_prefers_run_async_without_manual_lifecycle(monkeypatch):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
 
     calls = []
@@ -234,7 +222,6 @@ def test_mcp_command_prefers_run_async_without_manual_lifecycle(monkeypatch):
 def test_mcp_command_reports_startup_failures(monkeypatch, capsys):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
 
     calls = []
@@ -277,7 +264,6 @@ def test_mcp_command_reports_run_async_failures_without_manual_shutdown(
 ):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
 
     calls = []
@@ -321,7 +307,6 @@ def test_mcp_command_reports_run_async_failures_without_manual_shutdown(
 def test_mcp_command_shuts_down_when_run_fails(monkeypatch, capsys):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
 
     calls = []
@@ -367,7 +352,6 @@ def test_mcp_command_shuts_down_when_run_fails(monkeypatch, capsys):
 def test_mcp_command_passes_streamable_http_transport(monkeypatch):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(
         sys,
         "argv",
@@ -417,7 +401,6 @@ def test_mcp_command_passes_streamable_http_transport(monkeypatch):
 def test_mcp_command_stdio_does_not_pass_host_port(monkeypatch):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
 
     calls = []
@@ -451,7 +434,6 @@ def test_mcp_command_stdio_does_not_pass_host_port(monkeypatch):
 def test_mcp_command_rejects_invalid_transport(monkeypatch, capsys):
     """TDD: argparse should reject transports not in the choices list."""
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(
         sys,
         "argv",
@@ -473,7 +455,6 @@ def test_mcp_command_fallback_run_path_passes_http_transport_kwargs(monkeypatch)
     forward transport and host/port kwargs for HTTP transports."""
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
     monkeypatch.setattr(
         sys,
         "argv",

@@ -1,8 +1,7 @@
-from typing import Any
+from typing import Any, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
-from typing_extensions import Self
 
 from redisvl.query.filter import FilterExpression, intersect_with_filter
 from redisvl.redis.utils import array_to_buffer

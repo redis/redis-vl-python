@@ -174,22 +174,18 @@ class SchemaModelGenerator:
                                     raise ValueError(
                                         f"Vector field '{fname}' must have {dims} dimensions, got {len(value)}"
                                     )
-                                # Validate data types
-                                datatype_str = str(datatype).upper()
-                                # Integer-based datatypes
-                                if datatype_str in ("INT8", "UINT8"):
-                                    # Check range for INT8
-                                    if datatype_str == "INT8":
-                                        if any(v < -128 or v > 127 for v in value):
-                                            raise ValueError(
-                                                f"Vector field '{fname}' contains values outside the INT8 range (-128 to 127)"
-                                            )
-                                    # Check range for UINT8
-                                    elif datatype_str == "UINT8":
-                                        if any(v < 0 or v > 255 for v in value):
-                                            raise ValueError(
-                                                f"Vector field '{fname}' contains values outside the UINT8 range (0 to 255)"
-                                            )
+                                # Check range for INT8
+                                if datatype == VectorDataType.INT8:
+                                    if any(v < -128 or v > 127 for v in value):
+                                        raise ValueError(
+                                            f"Vector field '{fname}' contains values outside the INT8 range (-128 to 127)"
+                                        )
+                                # Check range for UINT8
+                                elif datatype == VectorDataType.UINT8:
+                                    if any(v < 0 or v > 255 for v in value):
+                                        raise ValueError(
+                                            f"Vector field '{fname}' contains values outside the UINT8 range (0 to 255)"
+                                        )
                         return value
 
                     return _validate_vector

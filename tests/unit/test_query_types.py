@@ -276,6 +276,33 @@ def test_text_query():
     assert text_query.filter == filter_expression
 
 
+@pytest.mark.parametrize(
+    "text, stopwords",
+    [("the a an", "english"), ("only", {"only"}), (", “ ”", None)],
+)
+def test_text_query_rejects_empty_tokenized_text(text, stopwords):
+    with pytest.raises(
+        ValueError, match="text string cannot be empty after removing stopwords"
+    ):
+        TextQuery(text=text, text_field_name="body", stopwords=stopwords)
+
+
+def test_text_query_keeps_stopwords_when_disabled():
+    query = TextQuery("the a an", text_field_name="body", stopwords=None)
+    assert "@body:(the | a | an)" in str(query)
+
+
+@pytest.mark.parametrize("text", ["", "  "])
+def test_text_query_rejects_empty_text_without_stopwords(text):
+    with pytest.raises(ValueError, match="^text string cannot be empty$"):
+        TextQuery(text, "body", stopwords=None)
+
+
+def test_text_query_validates_filter_before_stopword_content():
+    with pytest.raises(TypeError):
+        TextQuery("the", "body", filter_expression=123)
+
+
 def test_text_query_with_string_filter():
     """Test that TextQuery correctly includes string filter expressions in query string.
 
