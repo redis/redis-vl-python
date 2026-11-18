@@ -8,13 +8,18 @@ from redis.exceptions import NoPermissionError
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
 from redisvl.index import SearchIndex
-from redisvl.query import VectorQuery
+from redisvl.query import TextQuery, VectorQuery
 from redisvl.query.query import FilterQuery
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 from redisvl.schema.fields import VectorIndexAlgorithm
 from tests.conftest import skip_if_no_redis_search
+
+_NEEDS_REDIS_PY_8 = pytest.mark.skipif(
+    int(redis.__version__.split(".")[0]) < 8,
+    reason="legacy_responses requires redis-py 8",
+)
 
 fields = [
     {"name": "test", "type": "tag"},
@@ -605,25 +610,19 @@ def test_batch_search(index):
         pytest.param(
             {"legacy_responses": False},
             id="new-response-format",
-            marks=pytest.mark.skipif(
-                int(redis.__version__.split(".")[0]) < 8,
-                reason="legacy_responses requires redis-py 8",
-            ),
+            marks=_NEEDS_REDIS_PY_8,
         ),
         pytest.param(
             {"protocol": 2, "legacy_responses": False},
             id="resp2-new-response-format",
-            marks=pytest.mark.skipif(
-                int(redis.__version__.split(".")[0]) < 8,
-                reason="legacy_responses requires redis-py 8",
-            ),
+            marks=_NEEDS_REDIS_PY_8,
         ),
     ],
 )
-def test_client_from_existing_and_batch_search(
+def test_client_from_existing_search_and_clear(
     redis_url, redis_test_name, client_kwargs
 ):
-    """User-provided redis-py clients support introspection and batch search."""
+    """User-provided redis-py clients support introspection, search and clear."""
     name = redis_test_name("client_index")
     prefix = f"{name}:"
     client = Redis.from_url(redis_url, **client_kwargs)
@@ -656,7 +655,10 @@ def test_client_from_existing_and_batch_search(
     try:
         index.create()
         index.load(
-            [{"id": "1", "test": "foo", "title": "suffix trie"}],
+            [
+                {"id": "1", "test": "foo", "title": "suffix trie"},
+                {"id": "2", "test": "bar", "title": "goodbye"},
+            ],
             id_field="id",
         )
 
@@ -666,6 +668,17 @@ def test_client_from_existing_and_batch_search(
         assert reopened.schema == index.schema
         assert results[0].total == 1
         assert results[0].docs[0]["id"] == f"{prefix}1"
+
+        # search(), query() and clear() read each reply as a Result too.
+        assert index.search("@test:{foo}").total == 1
+        assert index.query(
+            FilterQuery(filter_expression="@test:{foo}", return_fields=["test"])
+        ) == [{"id": f"{prefix}1", "test": "foo"}]
+        # TextQuery asks for scores, which take their own branch on RESP3.
+        text_results = index.query(TextQuery("suffix", "title", return_fields=["test"]))
+        assert [doc["id"] for doc in text_results] == [f"{prefix}1"]
+        assert float(text_results[0]["score"]) > 0
+        assert index.clear() == 2
     finally:
         index.delete(drop=True)
         client.close()

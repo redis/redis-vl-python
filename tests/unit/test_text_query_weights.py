@@ -120,3 +120,12 @@ def test_set_field_weights_method():
     query_string = str(text_query)
     assert "$weight: 5.0" in query_string or "$weight:5.0" in query_string
     assert "$weight: 2.0" in query_string or "$weight:2.0" in query_string
+
+
+def test_set_text_weights_resets_cached_query_string():
+    query = TextQuery(
+        "the HELLO, redis-vl", text_field_name="body", text_weights={"hello": 2.0}
+    )
+    assert r"@body:(hello=>{$weight:2.0} | redis\-vl)" in str(query)
+    query.set_text_weights({"hello": 3.0})
+    assert r"@body:(hello=>{$weight:3.0} | redis\-vl)" in str(query)

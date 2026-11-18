@@ -17,7 +17,7 @@ import pickle
 import struct
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Self, Tuple
 
 
 @dataclass
@@ -52,7 +52,7 @@ class BackupHeader:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "BackupHeader":
+    def from_dict(cls, d: dict) -> Self:
         return cls(
             index_name=d["index_name"],
             fields=d["fields"],
@@ -98,7 +98,7 @@ class VectorBackup:
         target_schema_hash: Optional[str] = None,
         datatype_changes_hash: Optional[str] = None,
         plan_hash: Optional[str] = None,
-    ) -> "VectorBackup":
+    ) -> Self:
         """Create a new backup file. Raises FileExistsError if one already exists."""
         header_path = path + ".header"
         if os.path.exists(header_path):
@@ -119,7 +119,7 @@ class VectorBackup:
         return backup
 
     @classmethod
-    def load(cls, path: str) -> Optional["VectorBackup"]:
+    def load(cls, path: str) -> Optional[Self]:
         """Load an existing backup from disk. Returns None if not found."""
         header_path = path + ".header"
         if not os.path.exists(header_path):
@@ -348,7 +348,7 @@ class MultiWorkerBackupManifest:
         target_schema_hash: Optional[str] = None,
         datatype_changes_hash: Optional[str] = None,
         plan_hash: Optional[str] = None,
-    ) -> "MultiWorkerBackupManifest":
+    ) -> Self:
         manifest_path = path + ".manifest"
         if os.path.exists(manifest_path):
             raise FileExistsError(f"Backup manifest already exists at {manifest_path}")
@@ -370,7 +370,7 @@ class MultiWorkerBackupManifest:
         return manifest
 
     @classmethod
-    def load(cls, path: str) -> Optional["MultiWorkerBackupManifest"]:
+    def load(cls, path: str) -> Optional[Self]:
         manifest_path = path + ".manifest"
         if not os.path.exists(manifest_path):
             return None

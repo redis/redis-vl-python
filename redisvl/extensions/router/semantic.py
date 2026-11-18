@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, Self
 
 import redis.commands.search.reducers as reducers
 import yaml
@@ -163,7 +163,7 @@ class SemanticRouter(BaseModel):
         redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         **kwargs,
-    ) -> "SemanticRouter":
+    ) -> Self:
         """Return SemanticRouter instance from existing index.
 
         Reads the stored route config with ``JSON.GET``, so unlike
@@ -913,7 +913,7 @@ class SemanticRouter(BaseModel):
         cls,
         data: dict[str, Any],
         **kwargs,
-    ) -> "SemanticRouter":
+    ) -> Self:
         """Create a SemanticRouter from a dictionary.
 
         Args:
@@ -991,7 +991,7 @@ class SemanticRouter(BaseModel):
         cls,
         file_path: str,
         **kwargs,
-    ) -> "SemanticRouter":
+    ) -> Self:
         """Create a SemanticRouter from a YAML file.
 
         Args:
