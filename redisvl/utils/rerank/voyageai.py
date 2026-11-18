@@ -62,7 +62,8 @@ class VoyageAIReranker(BaseReranker):
             return_score (bool): Whether to return scores alongside the
                 reranked results.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+                Missing or empty keys fall back to the
+                ``VOYAGE_API_KEY`` environment variable. Defaults to None.
 
         Raises:
             ImportError: If the voyageai library is not installed.
@@ -86,9 +87,7 @@ class VoyageAIReranker(BaseReranker):
                     Please install with `pip install voyageai`")
 
         # Fetch the API key from api_config or environment variable
-        api_key = (
-            api_config.get("api_key") if api_config else os.getenv("VOYAGE_API_KEY")
-        )
+        api_key = (api_config or {}).get("api_key") or os.getenv("VOYAGE_API_KEY")
         if not api_key:
             raise ValueError(
                 "VoyageAI API key is required. "

@@ -1,8 +1,4 @@
-try:
-    from importlib.metadata import PackageNotFoundError, version
-except ImportError:
-    # Python < 3.8 fallback
-    from importlib_metadata import PackageNotFoundError, version  # type: ignore
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("redisvl")

@@ -2,7 +2,7 @@ import datetime
 import math
 import numbers
 import re
-from enum import Enum
+from enum import Enum, StrEnum
 from functools import wraps
 from typing import Any, Callable
 
@@ -12,7 +12,7 @@ from redisvl.utils.token_escaper import TokenEscaper
 # mypy: disable-error-code="override"
 
 
-class Inclusive(str, Enum):
+class Inclusive(StrEnum):
     """Enum for valid inclusive options"""
 
     BOTH = "both"

@@ -74,7 +74,6 @@ class Migrate:
             getattr(self, command)()
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
-            logger.error(e)
             sys.exit(1)
 
     def helper(self):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -15,7 +15,7 @@ class FieldUpdate(BaseModel):
     options: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def merge_options_into_attrs(self) -> "FieldUpdate":
+    def merge_options_into_attrs(self) -> Self:
         if self.options:
             merged_attrs = dict(self.attrs)
             merged_attrs.update(self.options)

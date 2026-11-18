@@ -81,7 +81,9 @@ class OpenAITextVectorizer(BaseVectorizer):
             model (str): Model to use for embedding. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key and any additional OpenAI API options. Defaults to None.
+                API key and any additional OpenAI API options. The API key
+                falls back to the ``OPENAI_API_KEY`` environment variable when it
+                is missing or empty. Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
@@ -117,8 +119,8 @@ class OpenAITextVectorizer(BaseVectorizer):
             ImportError: If the openai library is not installed
             ValueError: If no API key is provided
         """
-        if api_config is None:
-            api_config = {}
+        # Copy so we never mutate the caller's dict.
+        api_config = dict(api_config or {})
 
         # Dynamic import of the openai module
         try:
@@ -129,9 +131,7 @@ class OpenAITextVectorizer(BaseVectorizer):
                 "Please install with `pip install openai>=1.13.0`"
             )
 
-        api_key = (
-            api_config.pop("api_key") if api_config else os.getenv("OPENAI_API_KEY")
-        )
+        api_key = api_config.pop("api_key", None) or os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError(
                 "OpenAI API key is required. "
