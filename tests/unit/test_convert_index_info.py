@@ -38,23 +38,20 @@ def svs_info(*tail):
 
 
 @pytest.mark.parametrize(
-    "tail, expected",
+    "tail, compression, threshold",
     [
-        (["compression", "NO_COMPRESSION"], None),
-        (["compression", "GlobalSQ8", "training_threshold", 2048], 2048),
-        (["compression", "GlobalSQ8", "training_threshold", 10240], None),
+        (["compression", "NO_COMPRESSION"], None, None),
+        (["compression", "GlobalSQ8", "training_threshold", 2048], "LVQ4x4", 2048),
+        (["compression", "GlobalSQ8", "training_threshold", 10240], "LVQ4x4", None),
     ],
 )
-def test_convert_index_info_svs_no_compression(tail, expected):
-    """Redis 8.2+ reports NO_COMPRESSION; a non-default TRAINING_THRESHOLD is
-    kept, the reported server default (10240) is not."""
+def test_convert_index_info_svs_compression(tail, compression, threshold):
+    """Redis 8.2+ reply shapes; the reported default threshold (10240) loads as unset."""
     result = convert_index_info_to_schema(svs_info(*tail))
 
     attrs = IndexSchema.from_dict(result).fields["emb"].attrs
-    if tail[1] == "NO_COMPRESSION":
-        assert "compression" not in result["fields"][0]["attrs"]
-        assert attrs.compression is None
-    assert attrs.training_threshold == expected
+    assert attrs.compression == compression
+    assert attrs.training_threshold == threshold
 
 
 def test_reported_default_threshold_matches_unset_target():
