@@ -92,7 +92,7 @@ class HybridQuery:
             yield_vsim_score_as: The name of the field to yield the vector similarity score as.
             filter_expression: The filter expression to use for both the text and vector searches. Defaults to None.
             combination_method: The combination method to use. Options are {RRF, LINEAR}. If not specified, the server
-                defaults to RRF. If "RRF" is specified, then at least one of `rrf_window` or `rrf_constant` must be
+                defaults to RRF (RRF is also used when only `yield_combined_score_as` is set). If "RRF" is specified, then at least one of `rrf_window` or `rrf_constant` must be
                 provided. If "LINEAR" is specified, then at least one of `linear_alpha` or `linear_beta` must be
                 provided.
             rrf_window: The window size to use for the reciprocal rank fusion (RRF) combination method. Limits
@@ -173,6 +173,11 @@ class HybridQuery:
             yield_vsim_score_as=yield_vsim_score_as,
             filter_expression=filter_expression,
         )
+
+        if yield_combined_score_as and not combination_method:
+            # The server defaults to RRF, but COMBINE (and thus YIELD_SCORE_AS)
+            # is only emitted when a method is configured.
+            combination_method = "RRF"
 
         if combination_method:
             self.combination_method: CombineResultsMethod | None = (
