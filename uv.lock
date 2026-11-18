@@ -4610,7 +4610,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.32.0"
+version = "0.32.1"
 source = { editable = "." }
 default-groups = ["dev", "docs"]
 dependencies = [
