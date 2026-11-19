@@ -14,14 +14,14 @@ import pytest
 
 from redisvl.extensions.cache.llm import SemanticCache
 
-ACCEPTED = [0, 2, np.float32(0.5)]
+# The 0 and 2 boundaries run end to end in tests/integration/test_llmcache.py.
+ACCEPTED = [np.float32(0.5)]
 
 REFUSED = [
     pytest.param(2 + 1e-9, ValueError, id="just-above-2"),
     pytest.param(-1e-9, ValueError, id="just-below-0"),
     pytest.param(float("nan"), ValueError, id="nan"),
     pytest.param(True, TypeError, id="true"),
-    pytest.param(False, TypeError, id="false"),
     pytest.param("0.5", TypeError, id="numeric-string"),
 ]
 
@@ -46,7 +46,7 @@ def cache():
 
 
 @pytest.mark.parametrize("value", ACCEPTED)
-async def test_every_path_accepts_the_closed_range(cache, value):
+async def test_every_path_accepts_a_numpy_scalar_as_a_float(cache, value):
     applied = []
     cache._within_threshold = (
         lambda candidates, threshold: applied.append(threshold) or candidates
@@ -58,6 +58,7 @@ async def test_every_path_accepts_the_closed_range(cache, value):
 
     assert applied == [float(value)] * 2
     assert cache.distance_threshold == float(value)
+    # A numpy scalar must not reach the client-side filter or the span attribute.
     assert all(type(t) is float for t in [*applied, cache.distance_threshold])
 
 

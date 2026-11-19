@@ -682,9 +682,9 @@ class SemanticCache(BaseLLMCache):
 
         One rule for the cache-wide threshold and for a per-call override: a
         real number from 0 to 2 inclusive, the range of the COSINE distance the
-        cache schema uses. A bool is refused even though it is an ``int``, and
-        NaN fails the range check, which it would otherwise pass silently by
-        matching nothing.
+        cache schema uses. A bool is refused even though it is an ``int``. NaN
+        fails the range check; accepted, it would make every lookup miss without
+        an error, because every comparison with NaN is false.
 
         Raises:
             TypeError: If the threshold is not a real number, or is a bool.
