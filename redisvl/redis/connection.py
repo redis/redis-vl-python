@@ -688,6 +688,15 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, TypeError):
                 pass
 
+        if "training_threshold" in vector_attrs:
+            # FT.INFO reports the server default when none was set; keep it unset.
+            try:
+                training_threshold = int(vector_attrs["training_threshold"])
+            except (ValueError, TypeError):
+                training_threshold = None
+            if training_threshold not in (None, 10 * 1024):
+                normalized["training_threshold"] = training_threshold
+
         if index_missing:
             normalized["index_missing"] = True
 
