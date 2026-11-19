@@ -993,12 +993,16 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         Raises:
             TypeError: If distance_threshold is not a real number, or is a bool
-            ValueError: If distance_threshold is negative or NaN
+            ValueError: If distance_threshold is negative or NaN, or above 1
+                when normalize_vector_distance is True
         """
         if isinstance(distance_threshold, bool) or not isinstance(
             distance_threshold, numbers.Real
         ):
-            raise TypeError("distance_threshold must be of type float or int")
+            raise TypeError(
+                "distance_threshold must be a real number, got "
+                f"{type(distance_threshold).__name__}"
+            )
         # Written so that NaN fails too: it would make the range match nothing.
         if not distance_threshold >= 0:
             raise ValueError(

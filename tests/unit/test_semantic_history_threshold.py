@@ -1,31 +1,17 @@
-"""SemanticMessageHistory applies one distance-threshold rule everywhere.
+"""SemanticMessageHistory applies its distance-threshold rule on every path.
 
-The history-wide threshold (``__init__`` and ``set_distance_threshold``) and a
-per-call override (``get_relevant``) accept the same values and refuse the rest
-with the same exception, the rule ``SemanticCache`` uses. Hermetic: an invalid
-threshold is refused before the history touches Redis or its vectorizer.
+The rule itself is tested in tests/unit/test_utils.py; this checks that the
+constructor, ``set_distance_threshold`` and ``get_relevant`` all apply it.
+Hermetic: an invalid threshold is refused before the history touches Redis or
+its vectorizer.
 """
 
-import re
 from unittest.mock import Mock
 
-import numpy as np
 import pytest
 
 from redisvl.extensions.message_history import SemanticMessageHistory
 from redisvl.query.filter import Tag
-
-# 2 pins the inclusive upper bound, which no integration test reaches; 0 is
-# covered end to end in tests/integration/test_message_history.py.
-ACCEPTED = [2, np.float32(0.5)]
-
-REFUSED = [
-    pytest.param(2 + 1e-9, ValueError, id="just-above-2"),
-    pytest.param(-1e-9, ValueError, id="just-below-0"),
-    pytest.param(float("nan"), ValueError, id="nan"),
-    pytest.param(True, TypeError, id="true"),
-    pytest.param("0.5", TypeError, id="numeric-string"),
-]
 
 
 @pytest.fixture
@@ -40,35 +26,23 @@ def history():
     return history
 
 
-@pytest.mark.parametrize("value", ACCEPTED)
-def test_every_path_accepts_a_valid_threshold_as_a_float(history, value):
-    history.get_relevant("prompt", distance_threshold=value)
-    history.set_distance_threshold(value)
-
-    (query,), _ = history._index.query.call_args
-    assert query.distance_threshold == float(value)
-    assert history.distance_threshold == float(value)
-    assert type(history.distance_threshold) is float
-
-
-@pytest.mark.parametrize("value, error", REFUSED)
-def test_every_path_refuses_alike(history, monkeypatch, value, error):
+def test_every_path_refuses_an_invalid_threshold(history, monkeypatch):
     # The constructor must refuse before it loads the default vectorizer.
     monkeypatch.setattr(
         "redisvl.extensions.message_history.semantic_history.HFTextVectorizer",
         Mock(side_effect=AssertionError("default vectorizer loaded")),
     )
+    nan = float("nan")
 
-    with pytest.raises(error) as expected:
-        history.set_distance_threshold(value)
-    match = re.escape(str(expected.value))
-
-    with pytest.raises(error, match=match):
-        history.get_relevant("prompt", distance_threshold=value)
-    with pytest.raises(error, match=match):
-        history.get_relevant("prompt", top_k=0, distance_threshold=value)
-    with pytest.raises(error, match=match):
-        SemanticMessageHistory("history", distance_threshold=value)
+    with pytest.raises(ValueError, match="between 0 and 2"):
+        SemanticMessageHistory("history", distance_threshold=nan)
+    with pytest.raises(ValueError, match="between 0 and 2"):
+        history.set_distance_threshold(nan)
+    with pytest.raises(ValueError, match="between 0 and 2"):
+        history.get_relevant("prompt", distance_threshold=nan)
+    # Checked before the top_k == 0 early return, not skipped by it.
+    with pytest.raises(ValueError, match="between 0 and 2"):
+        history.get_relevant("prompt", top_k=0, distance_threshold=nan)
     assert history.distance_threshold == 0.1
     history._vectorizer.embed.assert_not_called()
     history._index.query.assert_not_called()

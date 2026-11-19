@@ -1,7 +1,7 @@
 import numbers
 from typing import Any, Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 
 from redisvl.query.filter import FilterExpression, intersect_with_filter
@@ -31,6 +31,9 @@ class Vector(BaseModel):
     weight: The weight for this vector in the combined score (default: 1.0)
     max_distance: The maximum distance for vector range search (default: 2.0, range: [0.0, 2.0])
     """
+
+    # Validate max_distance on assignment too: it is interpolated into the query.
+    model_config = ConfigDict(validate_assignment=True)
 
     vector: list[float] | bytes
     field_name: str

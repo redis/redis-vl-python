@@ -477,6 +477,11 @@ def test_vector_object_validation():
                 vector=sample_vector, field_name="text embedding", max_distance=distance
             )
 
+    # Assignment is validated too, since max_distance is interpolated into the query.
+    vec = Vector(vector=sample_vector, field_name="text embedding")
+    with pytest.raises(ValueError):
+        vec.max_distance = "1) | @x:[0 inf]"
+
 
 def test_vector_object_handles_byte_conversion():
     # test that passing an array of floats gets converted to bytes

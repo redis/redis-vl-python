@@ -308,6 +308,9 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Raises:
             ValueError: If prompt is not provided.
+            TypeError: If `distance_threshold` is not a real number, or is a bool.
+            ValueError: If `distance_threshold` is NaN or outside its scale's
+                range: [0, 1] for "normalized", [0, 2] for "redis".
         """
         if not prompt:
             raise ValueError("prompt is required for LangCache search")
@@ -390,6 +393,9 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Raises:
             ValueError: If prompt is not provided.
+            TypeError: If `distance_threshold` is not a real number, or is a bool.
+            ValueError: If `distance_threshold` is NaN or outside its scale's
+                range: [0, 1] for "normalized", [0, 2] for "redis".
         """
         if not prompt:
             raise ValueError("prompt is required for LangCache search")

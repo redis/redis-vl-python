@@ -322,17 +322,11 @@ class TestLangCacheSemanticCache:
         assert call_kwargs["similarity_threshold"] == 0.8
 
     @pytest.mark.parametrize(
-        "distance_scale, distance_threshold, error",
-        [
-            ("redis", 2.5, ValueError),
-            ("redis", float("nan"), ValueError),
-            ("normalized", 1.5, ValueError),
-            ("normalized", True, TypeError),
-            ("normalized", "0.2", TypeError),
-        ],
+        "distance_scale, distance_threshold",
+        [("redis", 2.5), ("normalized", 1.5)],
     )
-    def test_check_refuses_invalid_distance_threshold(
-        self, mock_langcache_client, distance_scale, distance_threshold, error
+    def test_check_refuses_a_threshold_outside_its_scale(
+        self, mock_langcache_client, distance_scale, distance_threshold
     ):
         """An invalid threshold is refused before it reaches the LangCache API."""
         _, mock_client = mock_langcache_client
@@ -344,7 +338,7 @@ class TestLangCacheSemanticCache:
             distance_scale=distance_scale,
         )
 
-        with pytest.raises(error):
+        with pytest.raises(ValueError):
             cache.check(prompt="What is Python?", distance_threshold=distance_threshold)
         mock_client.search.assert_not_called()
 

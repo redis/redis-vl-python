@@ -136,6 +136,8 @@ class SemanticCache(BaseLLMCache):
         connection_kwargs = connection_kwargs or {}
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+        # Refuse a bad threshold before loading the default vectorizer.
+        validate_cosine_distance_threshold(distance_threshold)
 
         # Call parent class with all shared parameters
         super().__init__(
