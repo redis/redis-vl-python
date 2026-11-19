@@ -889,9 +889,9 @@ def test_model_kwargs_are_part_of_the_key(cache):
             },
         ]
     )
-    assert [
-        r["embedding"] for r in cache.mget(["x", "y"], "m", model_kwargs=doc)[:1]
-    ] == [[0.1]]
+    x, y = cache.mget(["x", "y"], "m", model_kwargs=doc)
+    assert x["embedding"] == [0.1]
+    assert y is None
     assert cache.mget(["y"], "m")[0]["embedding"] == [0.2]
     assert cache.mget(["y"], "m", model_kwargs=query)[0]["embedding"] == [0.3]
     assert cache.mexists(["x", "y"], "m", model_kwargs=query) == [False, True]

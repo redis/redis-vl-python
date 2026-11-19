@@ -1010,9 +1010,12 @@ def input_type_vectorizer(embeddings_cache):
 async def test_cache_keys_on_request_kwargs(input_type_vectorizer, use_async, batch):
     """The query vector is never served from the document vector's cache entry."""
     vectorizer, calls = input_type_vectorizer
+    calls_made = []
 
     async def embed(input_type):
-        kwargs = {"input_type": input_type, "metadata": {"source": input_type}}
+        # Fresh metadata on every call: a repeat must hit even though it differs.
+        kwargs = {"input_type": input_type, "metadata": {"call": len(calls_made)}}
+        calls_made.append(input_type)
         if batch:
             if use_async:
                 return (await vectorizer.aembed_many([TEST_TEXT], **kwargs))[0]

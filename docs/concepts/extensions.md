@@ -43,7 +43,7 @@ Embedding APIs have per-token costs, and computing the same embedding repeatedly
 
 ### How It Works
 
-Unlike semantic cache (which uses similarity search), embeddings cache uses exact key matching. A deterministic hash is computed from the input text and model name. If that hash exists in the cache, the stored embedding is returned. If not, the embedding is computed, stored, and returned.
+Unlike semantic cache (which uses similarity search), embeddings cache uses exact key matching. A deterministic hash is computed from the input, the model name and any request parameters that change the embedding, such as `input_type` or `dimensions`; metadata is not part of it. If that hash exists in the cache, the stored embedding is returned. If not, the embedding is computed, stored, and returned.
 
 This is useful when the same content is embedded multiple times—common in applications where users submit similar queries, or where documents are re-processed periodically.
 

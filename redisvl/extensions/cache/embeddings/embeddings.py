@@ -14,10 +14,15 @@ logger = get_logger(__name__)
 
 
 def _canonical_default(value: Any) -> Any:
-    """Encode a value ``json.dumps`` cannot, keeping the key order-independent."""
+    """Encode a set for ``json.dumps`` order-independently; refuse anything else.
+
+    Falling back to ``str()`` would let distinct values share a key (numpy
+    truncates large arrays) or give one value a new key on every call (a
+    default ``repr`` includes the object's address).
+    """
     if isinstance(value, (set, frozenset)):
         return sorted(value, key=repr)
-    return str(value)
+    raise TypeError(f"{type(value).__name__} is not JSON-serialisable")
 
 
 class EmbeddingsCache(BaseCache):
@@ -82,6 +87,10 @@ class EmbeddingsCache(BaseCache):
         Returns:
             str: A deterministic entry ID based on the content, model name and
             model kwargs.
+
+        Raises:
+            TypeError: If ``model_kwargs`` holds a value JSON cannot encode,
+                other than a set.
         """
         # Canonical JSON keeps every part in its own field: no separator in the
         # content or model name can shift a boundary, bytes differ from a
@@ -96,11 +105,15 @@ class EmbeddingsCache(BaseCache):
             "model_name": model_name,
             "model_kwargs": dict(model_kwargs or {}),
         }
-        return hashify(
-            json.dumps(
+        try:
+            encoded_key = json.dumps(
                 key, sort_keys=True, separators=(",", ":"), default=_canonical_default
             )
-        )
+        except (TypeError, ValueError) as e:
+            raise TypeError(
+                f"model_kwargs must be JSON-serialisable to form a cache key: {e}"
+            ) from e
+        return hashify(encoded_key)
 
     def _make_cache_key(
         self,
@@ -136,11 +149,11 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            embedding (List[float]): The embedding vector.
+            metadata (Optional[Dict[str, Any]]): Optional metadata.
             model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
                 change the embedding, such as ``input_type`` or ``dimensions``.
                 They are part of the cache key; None and ``{}`` key the same.
-            embedding (List[float]): The embedding vector.
-            metadata (Optional[Dict[str, Any]]): Optional metadata.
 
         Returns:
             Tuple[str, Dict[str, Any]]: A tuple of (key, entry_data)
@@ -343,12 +356,12 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (Union[bytes, str]): The content to be embedded.
             model_name (str): The name of the embedding model.
-            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
-                change the embedding, such as ``input_type`` or ``dimensions``.
-                They are part of the cache key; None and ``{}`` key the same.
             embedding (List[float]): The embedding vector to store.
             metadata (Optional[Dict[str, Any]]): Optional metadata to store with the embedding.
             ttl (Optional[int]): Optional TTL override for this specific entry.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             str: The Redis key where the embedding was stored.
@@ -814,12 +827,12 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
-            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
-                change the embedding, such as ``input_type`` or ``dimensions``.
-                They are part of the cache key; None and ``{}`` key the same.
             embedding (List[float]): The embedding vector to store.
             metadata (Optional[Dict[str, Any]]): Optional metadata to store with the embedding.
             ttl (Optional[int]): Optional TTL override for this specific entry.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             str: The Redis key where the embedding was stored.

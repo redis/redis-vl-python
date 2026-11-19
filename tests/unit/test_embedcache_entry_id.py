@@ -42,3 +42,18 @@ def test_distinct_inputs_get_distinct_ids(first, second):
 )
 def test_equivalent_inputs_share_an_id(first, second):
     assert make_id(*first) == make_id(*second)
+
+
+class Opaque:
+    pass
+
+
+@pytest.mark.parametrize(
+    "model_kwargs",
+    [{"weights": Opaque()}, {"nested": {1: "a", "b": "c"}}],
+    ids=["non_json_value", "mixed_type_keys"],
+)
+def test_kwargs_json_cannot_encode_are_refused(model_kwargs):
+    """Refused rather than keyed on str(), which can collide or never repeat."""
+    with pytest.raises(TypeError, match="model_kwargs must be JSON-serialisable"):
+        make_id("x", "m", model_kwargs)
