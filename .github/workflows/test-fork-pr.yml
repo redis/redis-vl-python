@@ -66,8 +66,8 @@ jobs:
     needs: setup
     # This job runs fork code on the dispatching ref (main), and a cache saved
     # here would be restored by every later run on main and by every PR.
-    # `read` lets it restore but makes the cache toolkit skip every save,
-    # whichever step attempts it.
+    # `read` gives the job a cache token that can restore but not save, so
+    # the cache service refuses a save from any step, fork code included.
     cache-mode: read
     steps:
       - name: Create check run
@@ -94,11 +94,9 @@ jobs:
           # fork's code could read it.
           persist-credentials: false
 
-      # Run the action from this repository rather than from the fork
-      # checkout, so the fork cannot edit away `save-cache: "false"`. Together
-      # with `cache-mode: read` this stops the workflow's own steps saving a
-      # cache; it cannot stop fork code that obtains the runner's cache token
-      # and calls the cache service itself.
+      # A second guard, in case `cache-mode` is ever not honoured: run the
+      # action from this repository rather than from the fork checkout, so
+      # the fork cannot edit away `save-cache: "false"`.
       - name: Check out trusted actions
         uses: actions/checkout@v6
         with:

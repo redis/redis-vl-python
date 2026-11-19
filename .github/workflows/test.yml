@@ -37,7 +37,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      # The canary saves the Python 3.11 uv cache and, when its tests pass, the
+      # The canary saves the PYTHON_VERSION uv cache and, when its tests pass, the
       # HuggingFace model cache. It finishes before the matrix starts, so the
       # matrix legs and notebooks restore what it saved and never save these
       # themselves. When it is skipped (fork and Dependabot PRs) they restore
@@ -184,7 +184,7 @@ jobs:
           uv run python -c 'import redis; print("redis-py:", redis.__version__)'
 
       # One saver per Python version, so legs don't race to save the same key.
-      # service-tests saves 3.11; for the other versions the redis-py 8.x x
+      # service-tests saves PYTHON_VERSION; for the others the redis-py 8.x x
       # redis:latest leg saves (`redis:latest` is the image value that never
       # rotates; its continue-on-error doesn't matter because the save comes
       # before the tests). Saving here rather than after the tests keeps the
@@ -238,7 +238,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       # No cache: this job installs only the dev group, without the project,
-      # so a cache would hold little and claim a key the test jobs need.
+      # so a cache would hold little.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
@@ -559,8 +559,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # No cache: the docs install is small, and its cache used to claim the
-      # shared 3.11 key before the test jobs could save a useful one.
+      # No cache: the docs install is small.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
