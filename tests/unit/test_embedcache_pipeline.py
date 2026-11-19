@@ -12,7 +12,6 @@ They need no Redis, so unlike the cluster tests in
 """
 
 import pytest
-from redis.exceptions import ResponseError
 
 from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 from redisvl.extensions.cache.embeddings.schema import CacheEntry
@@ -24,9 +23,8 @@ class FakeAsyncClusterPipeline:
     HGETALL replies come from ``store``; every other command replies 1.
     """
 
-    def __init__(self, store=None, failing=()):
+    def __init__(self, store=None):
         self.store = store or {}
-        self.failing = failing
         self.queued: list[tuple] = []
         self.executed: list[list[tuple]] = []
 
@@ -59,36 +57,16 @@ class FakeAsyncClusterPipeline:
         self.queued.append(("hgetall", key))
         return self
 
-    def pexpire(self, key, ttl):
-        self.queued.append(("pexpire", key, ttl))
-        return self
-
-    def delete(self, key):
-        self.queued.append(("delete", key))
-        return self
-
-    def pttl(self, key):
-        self.queued.append(("pttl", key))
-        return self
-
     def _run(self):
         self.executed.append(list(self.queued))
-        replies = {
-            "hgetall": lambda key: self.store.get(key, {}),
-            "pttl": lambda key: -1,
-        }
         results = [
-            (
-                ResponseError("OOM command not allowed")
-                if command in self.failing
-                else replies.get(command, lambda key: 1)(key)
-            )
+            self.store.get(key, {}) if command == "hgetall" else 1
             for command, key, *_ in self.queued
         ]
         self.queued.clear()
         return results
 
-    async def execute(self, raise_on_error=True):
+    async def execute(self):
         return self._run()
 
 
@@ -101,7 +79,7 @@ class FakeSyncPipeline(FakeAsyncClusterPipeline):
     def __exit__(self, *exc_info):
         return False
 
-    def execute(self, raise_on_error=True):
+    def execute(self):
         return self._run()
 
 
@@ -110,16 +88,15 @@ class FakeAsyncClusterClient:
 
     pipeline_class = FakeAsyncClusterPipeline
 
-    def __init__(self, store=None, failing=()):
+    def __init__(self, store=None):
         self.store = store
-        self.failing = failing
         self.pipelines: list[FakeAsyncClusterPipeline] = []
         self.transactions: list[bool] = []
 
     # redis-py's default, so a missing transaction=False is caught.
     def pipeline(self, transaction=True):
         self.transactions.append(transaction)
-        pipeline = self.pipeline_class(self.store, self.failing)
+        pipeline = self.pipeline_class(self.store)
         self.pipelines.append(pipeline)
         return pipeline
 
@@ -152,7 +129,7 @@ def make_cache(client, ttl=None):
 async def test_amset_sends_every_command_in_one_pipeline(monkeypatch, ttl, expected):
     """amset must queue each write, and its expiry, into a single execute()."""
     monkeypatch.setattr(
-        EmbeddingsCache, "_make_entry_id", lambda self, content, model_name: content
+        EmbeddingsCache, "_make_entry_id", lambda self, content, *_: content
     )
     client = FakeAsyncClusterClient()
     cache = make_cache(client, ttl=ttl)
@@ -226,7 +203,7 @@ async def test_mget_by_keys_refreshes_ttls_in_the_lookup_pipeline(
 async def test_single_key_get_and_set_each_cost_one_pipeline(monkeypatch, use_async):
     """Single-key reads and writes queue their EXPIRE in the same pipeline."""
     monkeypatch.setattr(
-        EmbeddingsCache, "_make_entry_id", lambda self, content, model_name: content
+        EmbeddingsCache, "_make_entry_id", lambda self, content, *_: content
     )
     store = {"embedcache:a": HIT.to_dict()}
     if use_async:
@@ -247,62 +224,3 @@ async def test_single_key_get_and_set_each_cost_one_pipeline(monkeypatch, use_as
         [[("hgetall", "embedcache:a"), ("expire", "embedcache:a", 60)]],
         [[("hset", "embedcache:b"), ("expire", "embedcache:b", 5)]],
     ]
-
-
-@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
-@pytest.mark.asyncio
-async def test_content_lookup_reads_the_legacy_key_only_on_a_miss(
-    monkeypatch, use_async
-):
-    """A hit costs one pipeline; a miss adds one legacy read, and nothing else."""
-    monkeypatch.setattr(
-        EmbeddingsCache, "_make_entry_id", lambda self, content, model_name: content
-    )
-    monkeypatch.setattr(
-        EmbeddingsCache,
-        "_make_legacy_entry_id",
-        lambda self, content, model_name: "old-" + content,
-    )
-    store = {"embedcache:a": HIT.to_dict()}
-    if use_async:
-        client = FakeAsyncClusterClient(store)
-        cache = make_cache(client)
-        results = [await cache.aget("a", "m"), await cache.aget("b", "m")]
-    else:
-        client = FakeSyncClient(store)
-        cache = EmbeddingsCache(name="embedcache", redis_client=client)
-        results = [cache.get("a", "m"), cache.get("b", "m")]
-
-    assert results == [HIT.model_dump(exclude_none=True), None]
-    assert [pipeline.executed for pipeline in client.pipelines] == [
-        [[("hgetall", "embedcache:a")]],
-        [[("hgetall", "embedcache:b")]],
-        [[("hgetall", "embedcache:old-b"), ("pttl", "embedcache:old-b")]],
-    ]
-
-
-@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
-@pytest.mark.asyncio
-async def test_failed_migration_write_keeps_the_legacy_entry(monkeypatch, use_async):
-    """An HSET refused under noeviction must not be followed by the DEL."""
-    monkeypatch.setattr(
-        EmbeddingsCache, "_make_entry_id", lambda self, content, model_name: content
-    )
-    monkeypatch.setattr(
-        EmbeddingsCache,
-        "_make_legacy_entry_id",
-        lambda self, content, model_name: "old-" + content,
-    )
-    store = {"embedcache:old-a": HIT.to_dict()}
-    if use_async:
-        client = FakeAsyncClusterClient(store, failing={"hset"})
-        hit = await make_cache(client, ttl=60).aget("a", "m")
-    else:
-        client = FakeSyncClient(store, failing={"hset"})
-        cache = EmbeddingsCache(name="embedcache", ttl=60, redis_client=client)
-        hit = cache.get("a", "m")
-
-    assert hit["embedding"] == HIT.embedding
-    commands = [c for p in client.pipelines for batch in p.executed for c in batch]
-    assert ("hset", "embedcache:a") in commands
-    assert not [c for c in commands if c[0] == "delete"]

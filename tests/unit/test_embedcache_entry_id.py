@@ -1,13 +1,10 @@
-"""Unit tests for EmbeddingsCache entry IDs and the legacy-ID fallback checks."""
+"""Unit tests for EmbeddingsCache entry IDs."""
 
 import pytest
 
 from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
-from redisvl.redis.utils import hashify
 
-CACHE = EmbeddingsCache()  # connects lazily, so no Redis is needed
-make_id = CACHE._make_entry_id
-make_legacy_id = CACHE._make_legacy_entry_id
+make_id = EmbeddingsCache()._make_entry_id  # connects lazily, so no Redis needed
 
 
 @pytest.mark.parametrize(
@@ -16,45 +13,32 @@ make_legacy_id = CACHE._make_legacy_entry_id
         (("a:b", "c"), ("a", "b:c")),
         ((b"a", "m"), ("61", "m")),
         ((b"", "m"), ("", "m")),
+        (("x", "m", {"input_type": "query"}), ("x", "m", {"input_type": "document"})),
+        (("x", "m", {"dimensions": 256}), ("x", "m", {"dimensions": "256"})),
+        (("x", "m"), ("x", "m", {"input_type": None})),
     ],
-    ids=["colon_in_content", "bytes_vs_hex_string", "empty"],
+    ids=[
+        "colon_in_content",
+        "bytes_vs_hex_string",
+        "empty_bytes_vs_empty_string",
+        "different_kwarg_value",
+        "int_vs_string_kwarg",
+        "no_kwargs_vs_none_valued_kwarg",
+    ],
 )
 def test_distinct_inputs_get_distinct_ids(first, second):
-    """Each pair shared one ID under the legacy format."""
-    assert make_legacy_id(*first) == make_legacy_id(*second)
     assert make_id(*first) != make_id(*second)
 
 
-def test_legacy_id_is_unchanged():
-    """The fallback must keep finding keys written by RedisVL 0.32."""
-    assert make_legacy_id("hi", "m") == hashify("hi:m")
-    assert make_legacy_id(b"hi", "m") == hashify("6869:m")
-
-
 @pytest.mark.parametrize(
-    "stored, content, model_name, expected",
+    "first, second",
     [
-        ({b"content": b"a:b", b"model_name": b"c"}, "a:b", "c", True),
-        ({"content": "a:b", "model_name": "c"}, "a:b", "c", True),
-        ({b"content": b"a:b", b"model_name": b"c"}, "a", "b:c", False),
-        ({b"content": b"61", b"model_name": b"m"}, b"a", "m", False),
-        ({b"content": b"\xff\x00", b"model_name": b"m"}, b"\xff\x00", "m", True),
+        (("x", "m"), ("x", "m", {})),
+        (("x", "m", {"a": 1, "b": 2}), ("x", "m", {"b": 2, "a": 1})),
+        (("x", "m", {"o": {"p": 1, "q": 2}}), ("x", "m", {"o": {"q": 2, "p": 1}})),
+        (("x", "m", {"s": {"b", "a"}}), ("x", "m", {"s": {"a", "b"}})),
     ],
-    ids=["match", "decoded_reply", "collision", "bytes_collision", "binary"],
+    ids=["none_vs_empty", "kwarg_order", "nested_order", "set_order"],
 )
-def test_legacy_entry_is_trusted_only_for_its_own_input(
-    stored, content, model_name, expected
-):
-    assert (
-        EmbeddingsCache._legacy_entry_matches(stored, content, model_name) is expected
-    )
-
-
-def test_legacy_key_that_expired_mid_lookup_is_not_migrated():
-    """HGETALL can return data for a key whose PTTL then reports it gone."""
-    data = {b"content": b"x", b"model_name": b"m"}
-    replies = [data, -2, data, 5000]
-
-    plan = CACHE._plan_legacy_migrations(["x", "x"], "m", [0, 1], replies)
-
-    assert [(index, pttl) for index, *_, pttl in plan] == [(1, 5000)]
+def test_equivalent_inputs_share_an_id(first, second):
+    assert make_id(*first) == make_id(*second)

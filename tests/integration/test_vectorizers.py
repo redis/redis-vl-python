@@ -981,3 +981,49 @@ def test_voyageai_batch_size_for_current_models(model, expected_batch_size):
     """Current-generation models fall into batch-size tiers matching their token limits."""
     vectorizer, _, _ = _build_voyage_vectorizer(model)
     assert vectorizer._get_batch_size() == expected_batch_size
+
+
+VECTORS_BY_INPUT_TYPE = {
+    None: [0.0, 0.0, 1.0],
+    "document": [1.0, 0.0, 0.0],
+    "query": [0.0, 1.0, 0.0],
+}
+
+
+@pytest.fixture
+def input_type_vectorizer(embeddings_cache):
+    """A vectorizer whose output depends on the input_type kwarg."""
+    calls = []
+
+    def embed(content, input_type=None, **kwargs):
+        calls.append(input_type)
+        return VECTORS_BY_INPUT_TYPE[input_type]
+
+    vectorizer = CustomVectorizer(embed=embed, cache=embeddings_cache)
+    calls.clear()  # drop the constructor's dimension probe
+    return vectorizer, calls
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("batch", [False, True], ids=["single", "batch"])
+@pytest.mark.asyncio
+async def test_cache_keys_on_request_kwargs(input_type_vectorizer, use_async, batch):
+    """The query vector is never served from the document vector's cache entry."""
+    vectorizer, calls = input_type_vectorizer
+
+    async def embed(input_type):
+        kwargs = {"input_type": input_type, "metadata": {"source": input_type}}
+        if batch:
+            if use_async:
+                return (await vectorizer.aembed_many([TEST_TEXT], **kwargs))[0]
+            return vectorizer.embed_many([TEST_TEXT], **kwargs)[0]
+        if use_async:
+            return await vectorizer.aembed(TEST_TEXT, **kwargs)
+        return vectorizer.embed(TEST_TEXT, **kwargs)
+
+    assert await embed("document") == VECTORS_BY_INPUT_TYPE["document"]
+    assert await embed("query") == VECTORS_BY_INPUT_TYPE["query"]
+    # Both are now cached, and metadata is not part of the key.
+    assert await embed("document") == VECTORS_BY_INPUT_TYPE["document"]
+    assert await embed("query") == VECTORS_BY_INPUT_TYPE["query"]
+    assert calls == ["document", "query"]

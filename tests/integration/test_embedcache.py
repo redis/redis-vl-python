@@ -6,7 +6,6 @@ import pytest
 from redis.exceptions import ConnectionError
 
 from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
-from redisvl.extensions.cache.embeddings.schema import CacheEntry
 from redisvl.redis.utils import hashify
 
 
@@ -109,7 +108,15 @@ def test_make_entry_id():
     # Test ID format
     assert isinstance(entry_id1, str)
     expected_id = hashify(
-        json.dumps(["str", content, model_name], separators=(",", ":"))
+        json.dumps(
+            {
+                "content": content,
+                "content_type": "str",
+                "model_kwargs": {},
+                "model_name": model_name,
+            },
+            separators=(",", ":"),
+        )
     )
     assert entry_id1 == expected_id
 
@@ -860,151 +867,59 @@ async def test_aclear_does_not_delete_caches_colliding_under_glob(colliding_cach
             ), f"aclear() on {target_name!r} deleted entries belonging to {name!r}"
 
 
-def write_legacy_entry(cache, content, model_name, embedding, ttl=None):
-    """Store an entry the way RedisVL 0.32.0 did, under its legacy key."""
-    entry_id = cache._make_legacy_entry_id(content, model_name)
-    key = cache._make_key(entry_id)
-    entry = CacheEntry(
-        entry_id=entry_id, content=content, model_name=model_name, embedding=embedding
+def test_model_kwargs_are_part_of_the_key(cache):
+    """An embedding stored for one input_type is not a hit for another."""
+    doc, query = {"input_type": "document"}, {"input_type": "query"}
+    cache.set("x", "m", [0.1], model_kwargs=doc)
+
+    assert cache.get("x", "m", model_kwargs=doc)["embedding"] == [0.1]
+    assert cache.get("x", "m", model_kwargs=query) is None
+    assert cache.get("x", "m") is None
+    assert cache.exists("x", "m", model_kwargs=doc)
+    assert not cache.exists("x", "m", model_kwargs=query)
+
+    cache.mset(
+        [
+            {"content": "y", "model_name": "m", "embedding": [0.2]},
+            {
+                "content": "y",
+                "model_name": "m",
+                "embedding": [0.3],
+                "model_kwargs": query,
+            },
+        ]
     )
-    client = cache._get_redis_client()
-    client.hset(key, mapping=entry.to_dict())
-    if ttl:
-        client.expire(key, ttl)
-    return key
+    assert [
+        r["embedding"] for r in cache.mget(["x", "y"], "m", model_kwargs=doc)[:1]
+    ] == [[0.1]]
+    assert cache.mget(["y"], "m")[0]["embedding"] == [0.2]
+    assert cache.mget(["y"], "m", model_kwargs=query)[0]["embedding"] == [0.3]
+    assert cache.mexists(["x", "y"], "m", model_kwargs=query) == [False, True]
 
-
-@pytest.mark.parametrize(
-    "content", ["What is AI?", b"\x00\xffbinary"], ids=["str", "bytes"]
-)
-def test_get_migrates_a_legacy_entry(cache, content, caplog):
-    """A legacy hit is returned, rewritten under its new key, and logged."""
-    model_name = "text-embedding-ada-002"
-    legacy_key = write_legacy_entry(cache, content, model_name, [0.1, 0.2])
-    new_key = cache._make_cache_key(content, model_name)
-    assert legacy_key != new_key
-
-    with caplog.at_level("WARNING", logger="redisvl.extensions.cache.embeddings"):
-        result = cache.get(content, model_name)
-
-    assert result["embedding"] == [0.1, 0.2]
-    assert result["entry_id"] == cache._make_entry_id(content, model_name)
-    client = cache._get_redis_client()
-    assert not client.exists(legacy_key)
-    assert cache.get_by_key(new_key)["embedding"] == [0.1, 0.2]
-    assert "RedisVL 0.32.0 and earlier" in caplog.text
-
-
-def test_legacy_collision_is_not_returned(cache):
-    """A legacy entry stored for ("a:b", "c") is not a hit for ("a", "b:c")."""
-    legacy_key = write_legacy_entry(cache, "a:b", "c", [0.1])
-
-    assert cache.get("a", "b:c") is None
-    assert not cache.exists("a", "b:c")
-    assert cache.mget(["a"], "b:c") == [None]
-    # The rightful owner can still migrate it.
-    assert cache._get_redis_client().exists(legacy_key)
-    assert cache.get("a:b", "c")["embedding"] == [0.1]
-
-
-def test_mget_mixes_new_legacy_and_missing_entries(cache, caplog):
-    model_name = "m"
-    cache.set("new", model_name, [0.1])
-    write_legacy_entry(cache, "old-1", model_name, [0.2])
-    write_legacy_entry(cache, "old-2", model_name, [0.3])
-
-    with caplog.at_level("WARNING", logger="redisvl.extensions.cache.embeddings"):
-        results = cache.mget(["new", "old-1", "missing", "old-2"], model_name)
-        # A later migration by the same cache does not log again.
-        write_legacy_entry(cache, "old-3", model_name, [0.4])
-        assert cache.get("old-3", model_name)["embedding"] == [0.4]
-
-    assert [r and r["embedding"] for r in results] == [[0.1], [0.2], None, [0.3]]
-    assert caplog.text.count("RedisVL 0.32.0 and earlier") == 1
-
-
-def test_exists_migrates_and_drop_removes_legacy_entries(cache):
-    model_name = "m"
-    first = write_legacy_entry(cache, "first", model_name, [0.1])
-    second = write_legacy_entry(cache, "second", model_name, [0.2])
-    client = cache._get_redis_client()
-
-    assert cache.mexists(["first", "absent"], model_name) == [True, False]
-    assert not client.exists(first)
-    assert client.exists(cache._make_cache_key("first", model_name))
-
-    cache.drop("second", model_name)
-    assert not client.exists(second)
-    assert not cache.exists("second", model_name)
-
-
-def test_drop_leaves_entries_that_only_share_a_legacy_key(cache):
-    """Dropping one input never removes another input's entry."""
-    client = cache._get_redis_client()
-    # ("a", "b:c") and ("a:b", "c") share a legacy key.
-    legacy_key = write_legacy_entry(cache, "a:b", "c", [0.1])
-    cache.drop("a", "b:c")
-    assert client.exists(legacy_key)
-
-    # This content's legacy key is the new key of ("a:b", "m").
-    cache.set("a:b", "m", [0.2])
-    crafted = '["str","a'
-    assert cache._make_legacy_cache_key(crafted, 'b","m"]') == cache._make_cache_key(
-        "a:b", "m"
-    )
-    cache.drop(crafted, 'b","m"]')
-    assert cache.get("a:b", "m")["embedding"] == [0.2]
-
-
-def test_migration_keeps_the_legacy_ttl_when_the_cache_has_none(cache):
-    legacy_key = write_legacy_entry(cache, "content", "m", [0.1], ttl=300)
-
-    cache.get("content", "m")
-
-    ttl = cache._get_redis_client().ttl(cache._make_cache_key("content", "m"))
-    assert 0 < ttl <= 300
-    assert not cache._get_redis_client().exists(legacy_key)
-
-
-def test_migration_applies_the_cache_ttl(cache_with_ttl):
-    # The legacy key's longer remaining TTL must not win over the cache's.
-    write_legacy_entry(cache_with_ttl, "content", "m", [0.1], ttl=300)
-
-    cache_with_ttl.get("content", "m")
-
-    ttl = cache_with_ttl._get_redis_client().ttl(
-        cache_with_ttl._make_cache_key("content", "m")
-    )
-    assert 0 < ttl <= 2
+    cache.drop("y", "m", model_kwargs=query)
+    cache.mdrop(["x"], "m", model_kwargs=doc)
+    assert cache.mexists(["x", "y"], "m", model_kwargs=doc) == [False, False]
+    assert cache.exists("y", "m")
 
 
 @pytest.mark.asyncio
-async def test_async_reads_migrate_legacy_entries(cache):
-    model_name = "m"
-    write_legacy_entry(cache, "one", model_name, [0.1])
-    write_legacy_entry(cache, "two", model_name, [0.2])
-    write_legacy_entry(cache, "three", model_name, [0.3])
-    write_legacy_entry(cache, "a:b", "c", [0.4])
+async def test_async_model_kwargs_are_part_of_the_key(cache):
+    doc, query = {"input_type": "document"}, {"input_type": "query"}
+    await cache.aset("x", "m", [0.1], model_kwargs=doc)
+    await cache.amset(
+        [{"content": "y", "model_name": "m", "embedding": [0.2], "model_kwargs": query}]
+    )
 
-    assert (await cache.aget("one", model_name))["embedding"] == [0.1]
-    assert await cache.aexists("two", model_name)
-    assert await cache.aget("a", "b:c") is None
-    await cache.adrop("three", model_name)
+    assert (await cache.aget("x", "m", model_kwargs=doc))["embedding"] == [0.1]
+    assert await cache.aget("x", "m", model_kwargs=query) is None
+    assert await cache.amget(["x", "y"], "m", model_kwargs=query) == [
+        None,
+        await cache.aget("y", "m", model_kwargs=query),
+    ]
+    assert await cache.aexists("y", "m", model_kwargs=query)
+    assert await cache.amexists(["x", "y"], "m") == [False, False]
 
-    client = cache._get_redis_client()
-    for content in ("one", "two"):
-        assert client.exists(cache._make_cache_key(content, model_name))
-        assert not client.exists(cache._make_legacy_cache_key(content, model_name))
-    assert not client.exists(cache._make_legacy_cache_key("three", model_name))
-    assert client.exists(cache._make_legacy_cache_key("a:b", "c"))
-
-
-def test_read_only_client_still_gets_legacy_hits(cache, acl_user):
-    """A client that cannot write gets the legacy hit; the entry stays put."""
-    legacy_key = write_legacy_entry(cache, "content", "m", [0.1])
-    with acl_user("~*", "+@read", name="embedcache_reader") as user:
-        reader = EmbeddingsCache(name=cache.name, redis_client=user.connect())
-
-        assert reader.get("content", "m")["embedding"] == [0.1]
-        assert reader.exists("content", "m")
-    assert cache._get_redis_client().exists(legacy_key)
+    await cache.adrop("x", "m", model_kwargs=doc)
+    await cache.amdrop(["y"], "m", model_kwargs=query)
+    assert await cache.amexists(["x", "y"], "m", model_kwargs=doc) == [False, False]
+    assert not await cache.aexists("y", "m", model_kwargs=query)

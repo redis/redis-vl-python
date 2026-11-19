@@ -13,17 +13,15 @@ from redisvl.utils.log import get_logger
 logger = get_logger(__name__)
 
 
-class EmbeddingsCache(BaseCache):
-    """Embeddings Cache for storing embedding vectors with exact key matching.
+def _canonical_default(value: Any) -> Any:
+    """Encode a value ``json.dumps`` cannot, keeping the key order-independent."""
+    if isinstance(value, (set, frozenset)):
+        return sorted(value, key=repr)
+    return str(value)
 
-    Note:
-        Entries written by RedisVL 0.32.0 and earlier use an older key format.
-        Content-based reads (``get``, ``mget``, ``exists``, ``mexists`` and
-        their async versions) still find them, and move each one to its new
-        key as they do. The ``*_by_key`` methods do not, so a key returned by
-        ``set`` or ``mset`` before the upgrade stops resolving once its entry
-        has moved; look such entries up, or drop them, by content instead.
-    """
+
+class EmbeddingsCache(BaseCache):
+    """Embeddings Cache for storing embedding vectors with exact key matching."""
 
     _warning_shown: bool = False  # Class-level flag to prevent warning spam
 
@@ -65,248 +63,64 @@ class EmbeddingsCache(BaseCache):
             redis_url=redis_url,
             connection_kwargs=connection_kwargs,
         )
-        self._legacy_warning_shown = False
 
-    def _make_entry_id(self, content: bytes | str, model_name: str) -> str:
+    def _make_entry_id(
+        self,
+        content: bytes | str,
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> str:
         """Generate a deterministic entry ID for the given content and model name.
-
-        The content's type, the content and the model name are hashed as a JSON
-        array, so no two distinct inputs share an ID: ``("a:b", "c")`` differs
-        from ``("a", "b:c")``, and bytes content differs from a string that
-        happens to equal its hex form.
 
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
-            str: A deterministic entry ID based on the content and model name.
+            str: A deterministic entry ID based on the content, model name and
+            model kwargs.
         """
+        # Canonical JSON keeps every part in its own field: no separator in the
+        # content or model name can shift a boundary, bytes differ from a
+        # string equal to their hex form, and kwargs are order-independent.
         if isinstance(content, bytes):
-            parts = ["bytes", content.hex(), model_name]
+            content_type, encoded = "bytes", content.hex()
         else:
-            parts = ["str", content, model_name]
-        return hashify(json.dumps(parts, separators=(",", ":")))
-
-    def _make_legacy_entry_id(self, content: bytes | str, model_name: str) -> str:
-        """Generate the entry ID that RedisVL 0.32.0 and earlier used.
-
-        That format joined content and model name with ``:``, so distinct
-        inputs could share an ID. It is kept only to find entries written
-        before the upgrade; remove it together with the legacy fallback.
-        """
-        if isinstance(content, bytes):
-            content = content.hex()
-        return hashify(f"{content}:{model_name}")
-
-    def _make_legacy_cache_key(self, content: bytes | str, model_name: str) -> str:
-        """Generate the full Redis key that RedisVL 0.32.0 and earlier used."""
-        return self._make_key(self._make_legacy_entry_id(content, model_name))
-
-    @staticmethod
-    def _legacy_entry_matches(
-        data: Mapping[bytes | str, Any], content: bytes | str, model_name: str
-    ) -> bool:
-        """Whether a legacy entry was stored for exactly this content and model.
-
-        Legacy IDs can collide, so a legacy entry is only trusted when the
-        content and model name stored in it equal the ones requested.
-        """
-        stored = convert_bytes(dict(data))
-        return stored.get("model_name") == model_name and stored.get(
-            "content"
-        ) == convert_bytes(content)
-
-    def _plan_legacy_migrations(
-        self,
-        contents: list[bytes | str],
-        model_name: str,
-        misses: list[int],
-        replies: list[Any],
-    ) -> list[tuple[int, str, str, dict[Any, Any], int]]:
-        """Pick the legacy entries to move to their new keys.
-
-        Args:
-            contents: The requested contents.
-            model_name: The requested model name.
-            misses: Indexes into ``contents`` whose new key was missing.
-            replies: Alternating HGETALL and PTTL replies for each miss's
-                legacy key, in ``misses`` order.
-
-        Returns:
-            One ``(index, legacy_key, new_key, entry_data, pttl)`` tuple per
-            legacy entry that matches its request.
-        """
-        migrations = []
-        for i, data, pttl in zip(misses, replies[::2], replies[1::2]):
-            content = contents[i]
-            # PTTL -2: the key expired after HGETALL read it, so treat it as gone.
-            if not data or pttl == -2:
-                continue
-            if not self._legacy_entry_matches(data, content, model_name):
-                continue
-            entry_id = self._make_entry_id(content, model_name)
-            entry_data = convert_bytes(dict(data))
-            entry_data["entry_id"] = entry_id
-            migrations.append(
-                (
-                    i,
-                    self._make_legacy_cache_key(content, model_name),
-                    self._make_key(entry_id),
-                    entry_data,
-                    pttl,
-                )
+            content_type, encoded = "str", content
+        key = {
+            "content_type": content_type,
+            "content": encoded,
+            "model_name": model_name,
+            "model_kwargs": dict(model_kwargs or {}),
+        }
+        return hashify(
+            json.dumps(
+                key, sort_keys=True, separators=(",", ":"), default=_canonical_default
             )
-        return migrations
-
-    def _queue_legacy_write(
-        self, pipeline: Any, migration: tuple[int, str, str, dict[Any, Any], int]
-    ) -> int:
-        """Queue the commands that copy one legacy entry to its new key.
-
-        The new key gets this cache's TTL, or keeps the legacy key's remaining
-        TTL when the cache has none.
-
-        Nothing ties these writes to the earlier read: a ``set`` of the same
-        content and model in between is overwritten with the legacy fields,
-        and a ``drop`` in between is undone. Both inputs embed the same
-        content with the same model, so this is accepted for a fallback that
-        will be removed.
-
-        Returns:
-            The number of commands queued; the first is the HSET.
-        """
-        _, _, new_key, entry_data, pttl = migration
-        pipeline.hset(new_key, mapping=entry_data)
-        _ttl = self._resolve_ttl()
-        if _ttl:
-            pipeline.expire(new_key, _ttl)
-        elif pttl and pttl > 0:
-            pipeline.pexpire(new_key, pttl)
-        else:
-            return 1
-        return 2
-
-    @staticmethod
-    def _copied_legacy_keys(
-        migrations: list[tuple[int, str, str, dict[Any, Any], int]],
-        counts: list[int],
-        replies: list[Any],
-    ) -> list[str]:
-        """The legacy keys whose entry was written to its new key.
-
-        Only these may be deleted: under ``noeviction`` at ``maxmemory``, or
-        for a client without write access, the HSET fails, and deleting the
-        legacy key then would lose the entry.
-        """
-        copied, position = [], 0
-        for migration, count in zip(migrations, counts):
-            if not isinstance(replies[position], Exception):
-                copied.append(migration[1])
-            position += count
-        return copied
-
-    def _warn_legacy_migration(self, replies: list[Any]) -> None:
-        """Log, once per cache instance, that legacy entries are being migrated.
-
-        Args:
-            replies: The replies of the migration write pipeline, which runs
-                with ``raise_on_error=False`` so that a failed write still
-                returns the hit.
-        """
-        if self._legacy_warning_shown:
-            return
-        error = next((r for r in replies if isinstance(r, Exception)), None)
-        logger.warning(
-            "EmbeddingsCache '%s' is reading entries stored under the key "
-            "format used by RedisVL 0.32.0 and earlier, and moving each to the "
-            "new format as it is read. A future release will stop reading the "
-            "old format, and entries still in it will then miss.%s",
-            self.name,
-            (
-                f" Moving some entries failed, so they stay under the old key: {error}"
-                if error
-                else ""
-            ),
         )
-        self._legacy_warning_shown = True
 
-    def _migrate_legacy_entries(
-        self, contents: list[bytes | str], model_name: str, misses: list[int]
-    ) -> dict[int, dict[str, Any] | None]:
-        """Look up missed contents under their legacy keys and migrate matches.
-
-        Args:
-            contents: The requested contents.
-            model_name: The requested model name.
-            misses: Indexes into ``contents`` whose new key was missing.
-
-        Returns:
-            The migrated cache entries, keyed by index into ``contents``.
-        """
-        if not misses:
-            return {}
-        client = self._get_redis_client()
-        with client.pipeline(transaction=False) as pipeline:
-            for i in misses:
-                legacy_key = self._make_legacy_cache_key(contents[i], model_name)
-                pipeline.hgetall(legacy_key)
-                pipeline.pttl(legacy_key)
-            replies = pipeline.execute()
-
-        migrations = self._plan_legacy_migrations(contents, model_name, misses, replies)
-        if not migrations:
-            return {}
-        with client.pipeline(transaction=False) as pipeline:
-            counts = [
-                self._queue_legacy_write(pipeline, migration)
-                for migration in migrations
-            ]
-            replies = pipeline.execute(raise_on_error=False)
-        # Delete a legacy key only once its entry is safely under the new key.
-        self.mdrop_by_keys(self._copied_legacy_keys(migrations, counts, replies))
-        self._warn_legacy_migration(replies)
-        return {m[0]: self._process_cache_data(m[3]) for m in migrations}
-
-    async def _amigrate_legacy_entries(
-        self, contents: list[bytes | str], model_name: str, misses: list[int]
-    ) -> dict[int, dict[str, Any] | None]:
-        """Async version of :meth:`_migrate_legacy_entries`."""
-        if not misses:
-            return {}
-        client = await self._get_async_redis_client()
-        async with client.pipeline(transaction=False) as pipeline:
-            for i in misses:
-                legacy_key = self._make_legacy_cache_key(contents[i], model_name)
-                pipeline.hgetall(legacy_key)
-                pipeline.pttl(legacy_key)
-            replies = await pipeline.execute()
-
-        migrations = self._plan_legacy_migrations(contents, model_name, misses, replies)
-        if not migrations:
-            return {}
-        async with client.pipeline(transaction=False) as pipeline:
-            counts = [
-                self._queue_legacy_write(pipeline, migration)
-                for migration in migrations
-            ]
-            replies = await pipeline.execute(raise_on_error=False)
-        # Delete a legacy key only once its entry is safely under the new key.
-        await self.amdrop_by_keys(self._copied_legacy_keys(migrations, counts, replies))
-        self._warn_legacy_migration(replies)
-        return {m[0]: self._process_cache_data(m[3]) for m in migrations}
-
-    def _make_cache_key(self, content: bytes | str, model_name: str) -> str:
+    def _make_cache_key(
+        self,
+        content: bytes | str,
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> str:
         """Generate a full Redis key for the given content and model name.
 
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             str: The full Redis key.
         """
-        entry_id = self._make_entry_id(content, model_name)
+        entry_id = self._make_entry_id(content, model_name, model_kwargs)
         return self._make_key(entry_id)
 
     def _prepare_entry_data(
@@ -315,12 +129,16 @@ class EmbeddingsCache(BaseCache):
         model_name: str,
         embedding: list[float],
         metadata: dict[str, Any] | None = None,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Prepare data for storage in Redis
 
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
             embedding (List[float]): The embedding vector.
             metadata (Optional[Dict[str, Any]]): Optional metadata.
 
@@ -328,7 +146,7 @@ class EmbeddingsCache(BaseCache):
             Tuple[str, Dict[str, Any]]: A tuple of (key, entry_data)
         """
         # Create cache entry with entry_id
-        entry_id = self._make_entry_id(content, model_name)
+        entry_id = self._make_entry_id(content, model_name, model_kwargs)
         key = self._make_key(entry_id)
         entry = CacheEntry(
             entry_id=entry_id,
@@ -368,6 +186,7 @@ class EmbeddingsCache(BaseCache):
         self,
         content: bytes | str,
         model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Get embedding by content and model name.
 
@@ -377,6 +196,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             Optional[Dict[str, Any]]: Embedding cache entry or None if not found.
@@ -388,7 +210,8 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        return self.mget([content], model_name)[0]
+        key = self._make_cache_key(content, model_name, model_kwargs)
+        return self.get_by_key(key)
 
     def get_by_key(self, key: str) -> dict[str, Any] | None:
         """Get embedding by its full Redis key.
@@ -466,7 +289,10 @@ class EmbeddingsCache(BaseCache):
         return [self._process_cache_data(result) for result in results]
 
     def mget(
-        self, contents: Iterable[bytes | str], model_name: str
+        self,
+        contents: Iterable[bytes | str],
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any] | None]:
         """Get multiple embeddings by their content and model name.
 
@@ -476,6 +302,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             contents (Iterable[bytes | str]): Iterable of content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             List[Optional[Dict[str, Any]]]: List of embedding cache entries or None for contents not found.
@@ -488,19 +317,17 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        contents = list(contents)
-        keys = [self._make_cache_key(content, model_name) for content in contents]
+        # Generate keys for each piece of content
+        keys = [
+            self._make_cache_key(content, model_name, model_kwargs)
+            for content in contents
+        ]
 
         if not keys:
             return []
 
-        results = self.mget_by_keys(keys)
-        # Fall back to the legacy key format; remove in a future release.
-        misses = [i for i, result in enumerate(results) if result is None]
-        migrated = self._migrate_legacy_entries(contents, model_name, misses)
-        for i, entry in migrated.items():
-            results[i] = entry
-        return results
+        # Use the key-based batch operation
+        return self.mget_by_keys(keys)
 
     def set(
         self,
@@ -509,12 +336,16 @@ class EmbeddingsCache(BaseCache):
         embedding: list[float],
         metadata: dict[str, Any] | None = None,
         ttl: int | None = None,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> str:
         """Store an embedding with its content and model name.
 
         Args:
             content (Union[bytes, str]): The content to be embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
             embedding (List[float]): The embedding vector to store.
             metadata (Optional[Dict[str, Any]]): Optional metadata to store with the embedding.
             ttl (Optional[int]): Optional TTL override for this specific entry.
@@ -544,6 +375,7 @@ class EmbeddingsCache(BaseCache):
             "model_name": model_name,
             "embedding": embedding,
             "metadata": metadata,
+            "model_kwargs": model_kwargs,
         }
         return self.mset([item], ttl=ttl)[0]
 
@@ -559,6 +391,7 @@ class EmbeddingsCache(BaseCache):
         - 'model_name': The name of the embedding model
         - 'embedding': The embedding vector
         - 'metadata': Optional metadata to store with the embedding
+        - 'model_kwargs': Optional request parameters that change the embedding
 
         Args:
             items: List of dictionaries, each containing content, model_name, embedding, and optional metadata.
@@ -621,12 +454,20 @@ class EmbeddingsCache(BaseCache):
 
         return keys
 
-    def exists(self, content: bytes | str, model_name: str) -> bool:
+    def exists(
+        self,
+        content: bytes | str,
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> bool:
         """Check if an embedding exists for the given content and model.
 
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             bool: True if the embedding exists in the cache, False otherwise.
@@ -636,7 +477,9 @@ class EmbeddingsCache(BaseCache):
             if cache.exists("What is machine learning?", "text-embedding-ada-002"):
                 print("Embedding is in cache")
         """
-        return self.mexists([content], model_name)[0]
+        client = self._get_redis_client()
+        key = self._make_cache_key(content, model_name, model_kwargs)
+        return bool(client.exists(key))
 
     def exists_by_key(self, key: str) -> bool:
         """Check if an embedding exists for the given Redis key.
@@ -686,7 +529,12 @@ class EmbeddingsCache(BaseCache):
         # Convert to boolean values
         return [bool(result) for result in results]
 
-    def mexists(self, contents: Iterable[bytes | str], model_name: str) -> list[bool]:
+    def mexists(
+        self,
+        contents: Iterable[bytes | str],
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> list[bool]:
         """Check if multiple embeddings exist by their contents and model name.
 
         Efficiently checks existence of multiple embeddings in a single operation.
@@ -694,6 +542,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             contents (Iterable[bytes | str]): Iterable of content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             List[bool]: List of boolean values indicating whether each embedding exists.
@@ -706,26 +557,32 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        contents = list(contents)
-        keys = [self._make_cache_key(content, model_name) for content in contents]
+        # Generate keys for each content
+        keys = [
+            self._make_cache_key(content, model_name, model_kwargs)
+            for content in contents
+        ]
 
         if not keys:
             return []
 
-        results = self.mexists_by_keys(keys)
-        # Fall back to the legacy key format; remove in a future release.
-        misses = [i for i, found in enumerate(results) if not found]
-        migrated = self._migrate_legacy_entries(contents, model_name, misses)
-        for i in migrated:
-            results[i] = True
-        return results
+        # Use the key-based batch operation
+        return self.mexists_by_keys(keys)
 
-    def drop(self, content: bytes | str, model_name: str) -> None:
+    def drop(
+        self,
+        content: bytes | str,
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> None:
         """Remove an embedding from the cache.
 
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         .. code-block:: python
 
@@ -734,7 +591,8 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        self.mdrop([content], model_name)
+        key = self._make_cache_key(content, model_name, model_kwargs)
+        self.drop_by_key(key)
 
     def drop_by_key(self, key: str) -> None:
         """Remove an embedding from the cache by its Redis key.
@@ -772,7 +630,12 @@ class EmbeddingsCache(BaseCache):
                 pipeline.delete(key)
             pipeline.execute()
 
-    def mdrop(self, contents: Iterable[bytes | str], model_name: str) -> None:
+    def mdrop(
+        self,
+        contents: Iterable[bytes | str],
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> None:
         """Remove multiple embeddings from the cache by their contents and model name.
 
         Efficiently removes multiple embeddings in a single operation.
@@ -780,6 +643,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             contents (Iterable[bytes | str]): Iterable of content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         .. code-block:: python
 
@@ -789,30 +655,23 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        contents = list(contents)
-        if not contents:
+        # Generate keys for each content
+        keys = [
+            self._make_cache_key(content, model_name, model_kwargs)
+            for content in contents
+        ]
+
+        if not keys:
             return
 
-        client = self._get_redis_client()
-        with client.pipeline(transaction=False) as pipeline:
-            for content in contents:
-                pipeline.delete(self._make_cache_key(content, model_name))
-                # Legacy key format fallback; remove in a future release.
-                pipeline.hgetall(self._make_legacy_cache_key(content, model_name))
-            replies = pipeline.execute()
-
-        # Legacy IDs can collide, so only drop legacy entries stored for this input.
-        legacy_keys = [
-            self._make_legacy_cache_key(content, model_name)
-            for content, data in zip(contents, replies[1::2])
-            if data and self._legacy_entry_matches(data, content, model_name)
-        ]
-        self.mdrop_by_keys(legacy_keys)
+        # Use the key-based batch operation
+        self.mdrop_by_keys(keys)
 
     async def aget(
         self,
         content: bytes | str,
         model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Async get embedding by content and model name.
 
@@ -822,6 +681,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             Optional[Dict[str, Any]]: Embedding cache entry or None if not found.
@@ -833,7 +695,8 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        return (await self.amget([content], model_name))[0]
+        key = self._make_cache_key(content, model_name, model_kwargs)
+        return await self.aget_by_key(key)
 
     async def aget_by_key(self, key: str) -> dict[str, Any] | None:
         """Async get embedding by its full Redis key.
@@ -895,7 +758,10 @@ class EmbeddingsCache(BaseCache):
         return [self._process_cache_data(result) for result in results]
 
     async def amget(
-        self, contents: Iterable[bytes | str], model_name: str
+        self,
+        contents: Iterable[bytes | str],
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any] | None]:
         """Async get multiple embeddings by their contents and model name.
 
@@ -905,6 +771,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             contents (Iterable[bytes | str]): Iterable of content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             List[Optional[Dict[str, Any]]]: List of embedding cache entries or None for contents not found.
@@ -917,19 +786,17 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        contents = list(contents)
-        keys = [self._make_cache_key(content, model_name) for content in contents]
+        # Generate keys for each content
+        keys = [
+            self._make_cache_key(content, model_name, model_kwargs)
+            for content in contents
+        ]
 
         if not keys:
             return []
 
-        results = await self.amget_by_keys(keys)
-        # Fall back to the legacy key format; remove in a future release.
-        misses = [i for i, result in enumerate(results) if result is None]
-        migrated = await self._amigrate_legacy_entries(contents, model_name, misses)
-        for i, entry in migrated.items():
-            results[i] = entry
-        return results
+        # Use the key-based batch operation
+        return await self.amget_by_keys(keys)
 
     async def aset(
         self,
@@ -938,6 +805,7 @@ class EmbeddingsCache(BaseCache):
         embedding: list[float],
         metadata: dict[str, Any] | None = None,
         ttl: int | None = None,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> str:
         """Async store an embedding with its content and model name.
 
@@ -946,6 +814,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
             embedding (List[float]): The embedding vector to store.
             metadata (Optional[Dict[str, Any]]): Optional metadata to store with the embedding.
             ttl (Optional[int]): Optional TTL override for this specific entry.
@@ -967,6 +838,7 @@ class EmbeddingsCache(BaseCache):
             "model_name": model_name,
             "embedding": embedding,
             "metadata": metadata,
+            "model_kwargs": model_kwargs,
         }
         return (await self.amset([item], ttl=ttl))[0]
 
@@ -982,6 +854,7 @@ class EmbeddingsCache(BaseCache):
         - 'model_name': The name of the embedding model
         - 'embedding': The embedding vector
         - 'metadata': Optional metadata to store with the embedding
+        - 'model_kwargs': Optional request parameters that change the embedding
 
         Args:
             items: List of dictionaries, each containing content, model_name, embedding, and optional metadata.
@@ -1071,7 +944,10 @@ class EmbeddingsCache(BaseCache):
         return [bool(result) for result in results]
 
     async def amexists(
-        self, contents: Iterable[bytes | str], model_name: str
+        self,
+        contents: Iterable[bytes | str],
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
     ) -> list[bool]:
         """Async check if multiple embeddings exist by their contents and model name.
 
@@ -1080,6 +956,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             contents (Iterable[bytes | str]): Iterable of content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             List[bool]: List of boolean values indicating whether each embedding exists.
@@ -1092,19 +971,17 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        contents = list(contents)
-        keys = [self._make_cache_key(content, model_name) for content in contents]
+        # Generate keys for each content
+        keys = [
+            self._make_cache_key(content, model_name, model_kwargs)
+            for content in contents
+        ]
 
         if not keys:
             return []
 
-        results = await self.amexists_by_keys(keys)
-        # Fall back to the legacy key format; remove in a future release.
-        misses = [i for i, found in enumerate(results) if not found]
-        migrated = await self._amigrate_legacy_entries(contents, model_name, misses)
-        for i in migrated:
-            results[i] = True
-        return results
+        # Use the key-based batch operation
+        return await self.amexists_by_keys(keys)
 
     async def amdrop_by_keys(self, keys: list[str]) -> None:
         """Async remove multiple embeddings from the cache by their Redis keys.
@@ -1125,7 +1002,12 @@ class EmbeddingsCache(BaseCache):
         client = await self._get_async_redis_client()
         await client.delete(*keys)
 
-    async def amdrop(self, contents: Iterable[bytes | str], model_name: str) -> None:
+    async def amdrop(
+        self,
+        contents: Iterable[bytes | str],
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> None:
         """Async remove multiple embeddings from the cache by their contents and model name.
 
         Asynchronously removes multiple embeddings in a single operation.
@@ -1133,6 +1015,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             contents (Iterable[bytes | str]): Iterable of content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         .. code-block:: python
 
@@ -1142,27 +1027,24 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        contents = list(contents)
-        if not contents:
+        # Generate keys for each content
+        keys = [
+            self._make_cache_key(content, model_name, model_kwargs)
+            for content in contents
+        ]
+
+        if not keys:
             return
 
-        client = await self._get_async_redis_client()
-        async with client.pipeline(transaction=False) as pipeline:
-            for content in contents:
-                pipeline.delete(self._make_cache_key(content, model_name))
-                # Legacy key format fallback; remove in a future release.
-                pipeline.hgetall(self._make_legacy_cache_key(content, model_name))
-            replies = await pipeline.execute()
+        # Use the key-based batch operation
+        await self.amdrop_by_keys(keys)
 
-        # Legacy IDs can collide, so only drop legacy entries stored for this input.
-        legacy_keys = [
-            self._make_legacy_cache_key(content, model_name)
-            for content, data in zip(contents, replies[1::2])
-            if data and self._legacy_entry_matches(data, content, model_name)
-        ]
-        await self.amdrop_by_keys(legacy_keys)
-
-    async def aexists(self, content: bytes | str, model_name: str) -> bool:
+    async def aexists(
+        self,
+        content: bytes | str,
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> bool:
         """Async check if an embedding exists.
 
         Asynchronously checks if an embedding exists for the given content and model.
@@ -1170,6 +1052,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         Returns:
             bool: True if the embedding exists in the cache, False otherwise.
@@ -1179,7 +1064,8 @@ class EmbeddingsCache(BaseCache):
             if await cache.aexists("What is machine learning?", "text-embedding-ada-002"):
                 print("Embedding is in cache")
         """
-        return (await self.amexists([content], model_name))[0]
+        key = self._make_cache_key(content, model_name, model_kwargs)
+        return await self.aexists_by_key(key)
 
     async def aexists_by_key(self, key: str) -> bool:
         """Async check if an embedding exists for the given Redis key.
@@ -1200,7 +1086,12 @@ class EmbeddingsCache(BaseCache):
         client = await self._get_async_redis_client()
         return bool(await client.exists(key))
 
-    async def adrop(self, content: bytes | str, model_name: str) -> None:
+    async def adrop(
+        self,
+        content: bytes | str,
+        model_name: str,
+        model_kwargs: Mapping[str, Any] | None = None,
+    ) -> None:
         """Async remove an embedding from the cache.
 
         Asynchronously removes an embedding from the cache.
@@ -1208,6 +1099,9 @@ class EmbeddingsCache(BaseCache):
         Args:
             content (bytes | str): The content that was embedded.
             model_name (str): The name of the embedding model.
+            model_kwargs (Optional[Mapping[str, Any]]): Request parameters that
+                change the embedding, such as ``input_type`` or ``dimensions``.
+                They are part of the cache key; None and ``{}`` key the same.
 
         .. code-block:: python
 
@@ -1216,7 +1110,8 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        await self.amdrop([content], model_name)
+        key = self._make_cache_key(content, model_name, model_kwargs)
+        await self.adrop_by_key(key)
 
     async def adrop_by_key(self, key: str) -> None:
         """Async remove an embedding from the cache by its Redis key.
