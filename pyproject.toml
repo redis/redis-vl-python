@@ -192,7 +192,11 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
-source = ["redisvl"]
+# source_pkgs, not source: the XML report writes paths relative to `source`,
+# so `redisvl/version.py` would appear as a bare `version.py` that Codecov
+# can't tell apart from `redisvl/cli/version.py`. With source_pkgs every path
+# is repo-relative (`redisvl/...`).
+source_pkgs = ["redisvl"]
 branch = true
 # Paths are stored relative to the checkout, so data from different CI
 # runners combines into one report.
