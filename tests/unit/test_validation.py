@@ -529,6 +529,59 @@ class TestBasicFieldValidation:
         )
 
 
+class TestIntegerVectorRangeValidation:
+    """Range checks for INT8 and UINT8 vectors given as lists (JSON storage)."""
+
+    @pytest.fixture
+    def int_vector_schema(self):
+        return IndexSchema.from_dict(
+            {
+                "index": {"name": "int-vectors", "storage_type": "json"},
+                "fields": [
+                    {
+                        "name": field_name,
+                        "type": "vector",
+                        "attrs": {
+                            "algorithm": "flat",
+                            "dims": 2,
+                            "datatype": datatype,
+                            "distance_metric": "l2",
+                        },
+                    }
+                    for field_name, datatype in (("i8", "int8"), ("u8", "uint8"))
+                ],
+            }
+        )
+
+    @pytest.mark.parametrize(
+        "field_name,value",
+        [
+            ("i8", [-128, 127]),
+            ("u8", [0, 255]),
+        ],
+    )
+    def test_in_range_values_accepted(self, int_vector_schema, field_name, value):
+        assert validate_object(int_vector_schema, {field_name: value}) == {
+            field_name: value
+        }
+
+    @pytest.mark.parametrize(
+        "field_name,value,error_text",
+        [
+            ("i8", [999, -999], "INT8 range"),
+            ("i8", [-129, 0], "INT8 range"),
+            ("i8", [0, 128], "INT8 range"),
+            ("u8", [-1, 0], "UINT8 range"),
+            ("u8", [0, 256], "UINT8 range"),
+        ],
+    )
+    def test_out_of_range_values_rejected(
+        self, int_vector_schema, field_name, value, error_text
+    ):
+        with pytest.raises(ValueError, match=error_text):
+            validate_object(int_vector_schema, {field_name: value})
+
+
 class TestNestedJsonValidation:
     """Tests for JSON path-based validation with nested structures."""
 
@@ -874,6 +927,31 @@ class TestSVSVamanaValidation:
         with pytest.raises(
             Exception, match="reduce parameter is only supported with LeanVec"
         ):
+            IndexSchema.from_dict(schema_dict)
+
+    def test_svs_vamana_training_threshold_without_compression_raises_error(self):
+        """Test SVS-VAMANA rejects training_threshold without compression."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "training_threshold": 2048,
+                    },
+                }
+            ],
+        }
+        with pytest.raises(Exception, match="training_threshold requires compression"):
             IndexSchema.from_dict(schema_dict)
 
     def test_svs_vamana_reduce_without_compression_raises_error(self):

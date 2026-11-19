@@ -34,7 +34,7 @@ References:
     - Vector Search: https://redis.io/docs/interact/search-and-query/advanced-concepts/vectors/
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -57,7 +57,7 @@ VECTOR_NORM_MAP = {
 }
 
 
-class FieldTypes(str, Enum):
+class FieldTypes(StrEnum):
     TAG = "tag"
     TEXT = "text"
     NUMERIC = "numeric"
@@ -65,13 +65,13 @@ class FieldTypes(str, Enum):
     VECTOR = "vector"
 
 
-class VectorDistanceMetric(str, Enum):
+class VectorDistanceMetric(StrEnum):
     COSINE = "COSINE"
     L2 = "L2"
     IP = "IP"
 
 
-class VectorDataType(str, Enum):
+class VectorDataType(StrEnum):
     BFLOAT16 = "BFLOAT16"
     FLOAT16 = "FLOAT16"
     FLOAT32 = "FLOAT32"
@@ -80,13 +80,13 @@ class VectorDataType(str, Enum):
     UINT8 = "UINT8"
 
 
-class VectorIndexAlgorithm(str, Enum):
+class VectorIndexAlgorithm(StrEnum):
     FLAT = "FLAT"
     HNSW = "HNSW"
     SVS_VAMANA = "SVS-VAMANA"
 
 
-class CompressionType(str, Enum):
+class CompressionType(StrEnum):
     """Vector compression types for SVS-VAMANA algorithm"""
 
     LVQ4 = "LVQ4"
@@ -238,8 +238,6 @@ class BaseVectorFieldAttributes(BaseModel):
         }
         if self.initial_cap is not None:  # Only include it if it's set
             field_data["INITIAL_CAP"] = self.initial_cap
-        if self.index_missing:  # Only include it if it's set
-            field_data["INDEXMISSING"] = True
         return field_data
 
 
@@ -313,6 +311,9 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
                 f"Unsupported types: BFLOAT16, FLOAT64, INT8, UINT8."
             )
 
+        if self.training_threshold is not None and self.compression is None:
+            raise ValueError("training_threshold requires compression to be set")
+
         # Reduce validation: must be less than dims and only valid with LeanVec
         if self.reduce is not None:
             if self.reduce >= self.dims:
@@ -330,7 +331,7 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
             if not self.compression.value.startswith("LeanVec"):
                 raise ValueError(
                     f"reduce parameter is only supported with LeanVec compression types. "
-                    f"Got compression={self.compression.value}. "
+                    f"Got compression={self.compression}. "
                     f"Either use LeanVec4x8/LeanVec8x8 or remove the reduce parameter."
                 )
 
@@ -566,7 +567,13 @@ class FlatVectorField(BaseField):
         field_data = self.attrs.field_data
         if self.attrs.block_size is not None:
             field_data["BLOCK_SIZE"] = self.attrs.block_size
-        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+        return RedisVectorField(
+            name,
+            self.attrs.algorithm,
+            field_data,
+            as_name=as_name,
+            index_missing=self.attrs.index_missing,
+        )
 
 
 class HNSWVectorField(BaseField):
@@ -587,7 +594,13 @@ class HNSWVectorField(BaseField):
                 "EPSILON": self.attrs.epsilon,
             }
         )
-        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+        return RedisVectorField(
+            name,
+            self.attrs.algorithm,
+            field_data,
+            as_name=as_name,
+            index_missing=self.attrs.index_missing,
+        )
 
 
 class SVSVectorField(BaseField):
@@ -614,7 +627,13 @@ class SVSVectorField(BaseField):
             field_data["REDUCE"] = self.attrs.reduce
         if self.attrs.training_threshold is not None:
             field_data["TRAINING_THRESHOLD"] = self.attrs.training_threshold
-        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+        return RedisVectorField(
+            name,
+            self.attrs.algorithm,
+            field_data,
+            as_name=as_name,
+            index_missing=self.attrs.index_missing,
+        )
 
 
 FIELD_TYPE_MAP = {

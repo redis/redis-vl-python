@@ -207,7 +207,21 @@ class TestFieldModifierIntegration:
         # Cleanup
         index.delete(drop=True)
 
-    def test_indexmissing_enables_ismissing_query(self, client, redis_url, worker_id):
+    @pytest.mark.parametrize(
+        "field_type,attrs,value",
+        [
+            pytest.param("text", {}, "has value", id="text"),
+            pytest.param(
+                "vector",
+                {"algorithm": "hnsw", "dims": 3},
+                b"\x00" * 12,
+                id="vector-hnsw",
+            ),
+        ],
+    )
+    def test_indexmissing_enables_ismissing_query(
+        self, client, redis_url, worker_id, field_type, attrs, value
+    ):
         """Test that INDEXMISSING enables ismissing() query function."""
         skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
@@ -219,8 +233,8 @@ class TestFieldModifierIntegration:
             "fields": [
                 {
                     "name": "optional_field",
-                    "type": "text",
-                    "attrs": {"index_missing": True},
+                    "type": field_type,
+                    "attrs": {**attrs, "index_missing": True},
                 }
             ],
         }
@@ -231,9 +245,9 @@ class TestFieldModifierIntegration:
         index.create(overwrite=True)
 
         # Create documents with and without the field
-        client.hset(f"ismiss_{worker_id}:1", "optional_field", "has value")
+        client.hset(f"ismiss_{worker_id}:1", "optional_field", value)
         client.hset(f"ismiss_{worker_id}:2", "other_field", "no optional_field")
-        client.hset(f"ismiss_{worker_id}:3", "optional_field", "also has value")
+        client.hset(f"ismiss_{worker_id}:3", "optional_field", value)
 
         # Query for missing fields
         result = client.execute_command(

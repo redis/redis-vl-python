@@ -31,7 +31,7 @@ Here's how to get started with your code contribution:
 
 ### Prerequisites
 
-- **Python**: RedisVL supports Python 3.10 through 3.15
+- **Python**: RedisVL supports Python 3.11 through 3.15
 - **Docker**: Required for running Redis and integration tests
 - **UV**: Modern Python package manager for fast dependency management
 
@@ -174,11 +174,15 @@ uv run pytest tests/unit/test_fields.py -v
 # Run the Redis Cluster tests, which are skipped by default
 uv run pytest --run-cluster-tests -m requires_cluster
 
-# Run tests with coverage
-uv run pytest --cov=redisvl --cov-report=html
+# Run tests with coverage (writes an HTML report to htmlcov/)
+make test ARGS="--cov --cov-report=html"
 ```
 
 **Note:** Tests requiring external APIs need appropriate API keys set as environment variables.
+
+#### Coverage in CI
+
+CI measures coverage in segments and uploads each to Codecov under its own flag: `core` (every leg of the pull-request test matrix, which skips the tests that need API keys), `service` (the full suite including those tests, run by `make test-all` on Python 3.11) and `cluster` (the Redis Cluster tests, on the nightly schedule and manual runs only). Only the nightly run and manual (`workflow_dispatch`) runs measure every segment; on a run that skips `service` or `cluster`, Codecov carries that flag forward from the nearest ancestor commit with a report for it. Fork pull requests skip the service job. Because `service` covers nearly the whole suite, the headline number on a fork pull request can hide a drop; read the `core` row in the Codecov comment for the change itself. Dependabot pull requests get no Codecov token, so they aren't reported to Codecov. Either way, the `Coverage` job's summary on each workflow run shows the totals per segment. Coverage is reported, not enforced.
 
 Where such an API is a *shared, stateful* service -- one managed instance reached by
 every xdist worker and every concurrent CI run -- tests must namespace everything
@@ -187,7 +191,7 @@ belonging to other workers and other pull requests' CI runs. See the module
 docstring in `tests/integration/test_langcache_semantic_cache_integration.py` for a
 worked example.
 
-**Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running.
+**Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running. The nodes announce themselves as `host.docker.internal`, so the host running the tests must resolve that name too: add `127.0.0.1 host.docker.internal` to `/etc/hosts` if it doesn't already. CI runs these tests nightly, in the `cluster-tests` job of `.github/workflows/test.yml`, not on pull requests.
 
 ## Documentation
 
@@ -294,13 +298,24 @@ gh workflow run test-fork-pr.yml -f pr_number=<PR number>
 
 The result appears on the PR as the **Fork PR - Service Tests** check. Notebook Validation has no manual equivalent; it runs on `main` after merge and nightly.
 
+### AI Assistance
+
+Every PR declares whether AI tools were used, in the **AI Assistance** section of the PR template. Tick one of the two boxes:
+
+- **No AI assistance was used.** You wrote the code, tests, docs and description yourself. Single-line editor autocomplete doesn't count as assistance.
+- **This PR is AI-assisted.** An AI tool wrote or rewrote any part of it. Name the tool and model and say what it did. Ticking the box also states that you have reviewed and understood everything in the PR and take responsibility for it.
+
+AI-assisted PRs are welcome. The declaration decides one thing: an AI-assisted PR must carry a Reviewer Brief, described below, and a PR written without AI doesn't need one. A PR with neither box ticked, or an AI-assisted PR with no brief, isn't assigned a reviewer until that's fixed. Please declare accurately; a PR that is plainly agent-written and declared otherwise will be asked for a brief anyway.
+
 ### Reviewer Brief
 
-Maintainer PRs, and any PR written with a coding agent, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Outside contributors are welcome to add one but don't have to.
+Maintainer PRs, and every AI-assisted PR, carry a **Reviewer Brief**: a short section at the end of the PR description that helps the reviewer get started. Contributors who declare no AI assistance are welcome to add one but don't have to.
 
 #### Writing one
 
 Ask your coding agent to run the pre-PR review described in [AGENTS.md](AGENTS.md). The procedure is in `.agents/skills/pre-pr-review/`, and any agent can follow it. You can also follow it by hand. The review looks at the change from six angles (correctness, security, design, tests, docs and Redis behaviour), checks each finding against the code, fixes what holds up, and then writes the brief under the `## Reviewer Brief` heading of the PR template. Run it again after any substantive push.
+
+Whether or not you use an agent, read the issue and its comments before you start, and rebase on `main` before you ask for review.
 
 A brief tells the reviewer:
 
@@ -351,7 +366,9 @@ Before submitting your PR, ensure:
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear and descriptive
 - [ ] PR description explains what changes were made and why
-- [ ] For maintainer or agent-assisted PRs, the Reviewer Brief covers the PR's head commit
+- [ ] The branch is rebased on the current `main`
+- [ ] One box is ticked in the AI Assistance section
+- [ ] For maintainer or AI-assisted PRs, the Reviewer Brief covers the PR's head commit
 - [ ] Appropriate `auto:*` label is applied to indicate the change type
 
 ## Getting Help

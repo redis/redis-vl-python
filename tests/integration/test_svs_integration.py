@@ -337,6 +337,8 @@ class TestSVSFromExisting:
         assert embedding_field.attrs.algorithm.value == "SVS-VAMANA"
         assert embedding_field.attrs.compression.value == "LVQ4x4"
         assert embedding_field.attrs.dims == 384
+        # server default is reported by FT.INFO but must load as unset
+        assert embedding_field.attrs.training_threshold is None
 
         # Verify data is accessible
         info = loaded_index.info()
