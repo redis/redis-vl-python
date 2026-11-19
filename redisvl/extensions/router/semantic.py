@@ -3,7 +3,7 @@ from typing import Any, NoReturn, Self
 
 import redis.commands.search.reducers as reducers
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, TypeAdapter
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
@@ -15,6 +15,7 @@ from redisvl.extensions.constants import (
 )
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
+    DistanceThreshold,
     Route,
     RouteMatch,
     RoutingConfig,
@@ -37,6 +38,8 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger(__name__)
+
+_DISTANCE_THRESHOLD_ADAPTER = TypeAdapter(DistanceThreshold)
 
 
 class SemanticRouter(BaseModel):
@@ -300,7 +303,7 @@ class SemanticRouter(BaseModel):
         return [route.name for route in self.routes]
 
     @property
-    def route_thresholds(self) -> dict[str, float | None]:
+    def route_thresholds(self) -> dict[str, float]:
         """Get the distance thresholds for each route.
 
         Returns:
@@ -316,15 +319,24 @@ class SemanticRouter(BaseModel):
         """
         self.routing_config = routing_config
 
-    def update_route_thresholds(self, route_thresholds: dict[str, float | None]):
+    def update_route_thresholds(self, route_thresholds: dict[str, float]):
         """Update the distance thresholds for each route.
+
+        Thresholds follow the same rule as :class:`Route`: a real number in
+        (0, 2]. Every value is checked before any is applied, so an invalid
+        one leaves all thresholds unchanged.
 
         Args:
             route_thresholds (Dict[str, float]): Dictionary of route names and their distance thresholds.
+
+        Raises:
+            pydantic.ValidationError: If any threshold is not a real number in (0, 2].
         """
+        for threshold in route_thresholds.values():
+            _DISTANCE_THRESHOLD_ADAPTER.validate_python(threshold)
         for route in self.routes:
             if route.name in route_thresholds:
-                route.distance_threshold = route_thresholds[route.name]  # type: ignore
+                route.distance_threshold = route_thresholds[route.name]
 
     @staticmethod
     def _route_ref_key(index: SearchIndex, route_name: str, reference_hash: str) -> str:
@@ -1254,7 +1266,9 @@ class SemanticRouter(BaseModel):
                 )
                 continue
             # Duplicate references share one hash, so every copy went with it.
-            route.references = [ref for ref in route.references if ref != reference]
+            # Edited in place: the list may empty here, which `Route` rejects on
+            # assignment, and emptied routes are dropped just below.
+            route.references[:] = [ref for ref in route.references if ref != reference]
 
         # A route whose last reference was just deleted has nothing left to match,
         # and `Route` rejects an empty reference list -- persisting one would write a
