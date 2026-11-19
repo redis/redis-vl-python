@@ -24,7 +24,7 @@ Common Vector Field Attributes (all algorithms):
 
 Algorithm-Specific Parameters:
     - FLAT: block_size (memory management for dynamic indices)
-    - HNSW: m, ef_construction, ef_runtime, epsilon (graph tuning)
+    - HNSW: m, ef_construction, ef_runtime, epsilon, rerank
     - SVS-VAMANA: graph_max_degree, construction_window_size, search_window_size,
                   compression, reduce, training_threshold (VAMANA graph algorithm
                   with Intel hardware optimization and vector compression)
@@ -264,6 +264,9 @@ class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
 
     ef_runtime: int = Field(default=10)
     """Max top candidates during search (default: 10) - primary tuning parameter"""
+
+    rerank: bool | None = None
+    """Enable or disable disk HNSW reranking on Redis Flex. Omit to leave RERANK unset."""
 
     epsilon: float = Field(default=0.01)
     """Range search boundary factor (default: 0.01)"""
@@ -594,6 +597,8 @@ class HNSWVectorField(BaseField):
                 "EPSILON": self.attrs.epsilon,
             }
         )
+        if self.attrs.rerank is not None:
+            field_data["RERANK"] = "TRUE" if self.attrs.rerank else "FALSE"
         return RedisVectorField(
             name,
             self.attrs.algorithm,
