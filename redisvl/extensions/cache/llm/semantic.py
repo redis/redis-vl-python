@@ -986,6 +986,7 @@ class SemanticCache(BaseLLMCache):
         # Close the async search index connections
         if hasattr(self, "_aindex") and self._aindex:
             self._aindex.disconnect_sync()
+            self._aindex = None
 
         # Close the base Redis connections
         super().disconnect()

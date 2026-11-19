@@ -10,6 +10,25 @@ from redisvl.index import SearchIndex
 from redisvl.schema import IndexSchema
 
 
+@pytest.fixture
+def cluster_index_url(redis_cluster_url):
+    """A cluster URL that makes SearchIndex build a RedisCluster client.
+
+    RedisVL only builds a cluster client when the URL (or kwargs) says so; a
+    bare single-node URL gets a plain Redis client that raises MovedError as
+    soon as a key hashes to another shard.
+    """
+    return f"{redis_cluster_url}?cluster=true"
+
+
+def _create_cluster_index(schema, url):
+    index = SearchIndex(schema, redis_url=url)
+    index.create(overwrite=True, drop=True)
+    # The client is built lazily, so it only exists once create() has run.
+    assert isinstance(index.client, RedisCluster)
+    return index
+
+
 @pytest.mark.requires_cluster
 def test_real_cluster_pipeline_get_protocol_version(redis_cluster_url):
     """
@@ -34,7 +53,7 @@ def test_real_cluster_pipeline_get_protocol_version(redis_cluster_url):
 
 @pytest.mark.requires_cluster
 def test_real_searchindex_with_cluster_batch_operations(
-    redis_cluster_url, redis_test_name
+    cluster_index_url, redis_test_name
 ):
     """
     Test SearchIndex.load() with Redis Cluster.
@@ -56,10 +75,7 @@ def test_real_searchindex_with_cluster_batch_operations(
     schema = IndexSchema.from_dict(schema_dict)
 
     # Create SearchIndex with REAL cluster URL
-    index = SearchIndex(schema, redis_url=redis_cluster_url)
-
-    # Create the index
-    index.create(overwrite=True, drop=True)
+    index = _create_cluster_index(schema, cluster_index_url)
 
     try:
         # Test data like user had
@@ -82,46 +98,27 @@ def test_real_searchindex_with_cluster_batch_operations(
 
 
 @pytest.mark.requires_cluster
-def test_cluster_pipeline_protocol_version_directly():
+@pytest.mark.parametrize(
+    "protocol, expected",
+    [(None, [None, "2", "3", 2, 3]), (2, [2, "2", None]), (3, [3, "3", None])],
+)
+def test_cluster_pipeline_protocol_version_directly(
+    redis_cluster_url, protocol, expected
+):
     """
     Test get_protocol_version with various cluster configurations.
     """
-    import os
-
-    # Skip if no cluster available
-    cluster_url = os.getenv("REDIS_CLUSTER_URL", "redis://localhost:7000")
-
+    kwargs = {} if protocol is None else {"protocol": protocol}
+    cluster = RedisCluster.from_url(redis_cluster_url, **kwargs)
     try:
-        # Test with default protocol
-        cluster = RedisCluster.from_url(cluster_url)
-        pipeline = cluster.pipeline()
-
         # This should work without AttributeError
-        protocol = get_protocol_version(pipeline)
-        print(f"Protocol version from real cluster pipeline: {protocol}")
-
+        assert get_protocol_version(cluster.pipeline()) in expected
+    finally:
         cluster.close()
-
-        # Test with explicit RESP2
-        cluster2 = RedisCluster.from_url(cluster_url, protocol=2)
-        pipeline2 = cluster2.pipeline()
-        protocol2 = get_protocol_version(pipeline2)
-        assert protocol2 in [2, "2", None]
-        cluster2.close()
-
-        # Test with explicit RESP3
-        cluster3 = RedisCluster.from_url(cluster_url, protocol=3)
-        pipeline3 = cluster3.pipeline()
-        protocol3 = get_protocol_version(pipeline3)
-        assert protocol3 in [3, "3", None]
-        cluster3.close()
-
-    except Exception as e:
-        pytest.skip(f"Redis Cluster not available: {e}")
 
 
 @pytest.mark.requires_cluster
-def test_batch_search_with_real_cluster(redis_cluster_url, redis_test_name):
+def test_batch_search_with_real_cluster(cluster_index_url, redis_test_name):
     """
     Test batch_search which uses get_protocol_version internally.
     """
@@ -140,9 +137,7 @@ def test_batch_search_with_real_cluster(redis_cluster_url, redis_test_name):
     }
 
     schema = IndexSchema.from_dict(schema_dict)
-    index = SearchIndex(schema, redis_url=redis_cluster_url)
-
-    index.create(overwrite=True, drop=True)
+    index = _create_cluster_index(schema, cluster_index_url)
 
     try:
         # Load test data
@@ -167,7 +162,7 @@ def test_batch_search_with_real_cluster(redis_cluster_url, redis_test_name):
 
 @pytest.mark.requires_cluster
 @pytest.mark.parametrize("ttl", [None, 30])
-def test_cluster_load_with_ttl(redis_cluster_url, ttl, redis_test_name):
+def test_cluster_load_with_ttl(cluster_index_url, ttl, redis_test_name):
     """
     Test that TTL is correctly set on keys when using load() with ttl parameter on cluster.
     """
@@ -184,9 +179,7 @@ def test_cluster_load_with_ttl(redis_cluster_url, ttl, redis_test_name):
     }
 
     schema = IndexSchema.from_dict(schema_dict)
-    index = SearchIndex(schema, redis_url=redis_cluster_url)
-
-    index.create(overwrite=True, drop=True)
+    index = _create_cluster_index(schema, cluster_index_url)
 
     try:
         # Load test data with TTL parameter

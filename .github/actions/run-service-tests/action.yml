@@ -15,6 +15,10 @@ inputs:
       executes untrusted code.
     required: false
     default: 'true'
+  pytest-args:
+    description: 'Extra arguments passed to pytest through `make test-all`'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -97,8 +101,10 @@ runs:
 
     - name: Run full test suite
       shell: bash
+      env:
+        PYTEST_ARGS: ${{ inputs.pytest-args }}
       run: |
-        make test-all
+        make test-all ARGS="$PYTEST_ARGS"
 
     # After the tests, which download the models. Only on success, because the
     # key is static: a cache saved after an early failure would be missing

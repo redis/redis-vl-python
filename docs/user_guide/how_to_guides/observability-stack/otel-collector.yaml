@@ -1,0 +1,33 @@
+# Receives OTLP from the application, exposes metrics for Prometheus to scrape,
+# and forwards traces to Jaeger.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  # Produces the metric names the RedisVL guide's queries use, such as
+  # redisvl_semantic_cache_operation_duration_seconds_bucket.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_grpc/jaeger]

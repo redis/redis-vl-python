@@ -1,6 +1,7 @@
 from fnmatch import fnmatch
 from unittest.mock import MagicMock
 
+import pytest
 import yaml
 from redis.client import Redis
 
@@ -11,9 +12,11 @@ from redisvl.migration.models import (
     KeyspaceSnapshot,
     MigrationPlan,
     RenameOperations,
+    SchemaPatch,
     SourceSnapshot,
 )
 from redisvl.migration.validation import MigrationValidator
+from redisvl.schema.fields import CompressionType
 from redisvl.schema.schema import IndexSchema
 
 
@@ -1314,3 +1317,53 @@ class TestValidatorExactSourceCounts:
 
         assert validation.doc_count_match is True
         assert validation.errors == []
+
+
+def test_merge_patch_rejects_training_threshold_without_compression():
+    """Dropping compression while the source keeps training_threshold is invalid."""
+    source_schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test_idx", "prefix": "test"},
+            "fields": [
+                {
+                    "name": "v",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 8,
+                        "compression": "LVQ8",
+                        "training_threshold": 2048,
+                    },
+                }
+            ],
+        }
+    )
+    patch = SchemaPatch(
+        changes={"update_fields": [{"name": "v", "attrs": {"compression": None}}]}
+    )
+    with pytest.raises(ValueError, match="training_threshold requires compression"):
+        MigrationPlanner().merge_patch(source_schema, patch)
+
+
+def test_merge_patch_preserves_svs_vamana_compression():
+    """Test MigrationPlanner.merge_patch preserves SVS-VAMANA compression."""
+    source_schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test_idx", "prefix": "test"},
+            "fields": [
+                {
+                    "name": "vector",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 8,
+                        "compression": "LVQ8",
+                    },
+                }
+            ],
+        }
+    )
+    patch = SchemaPatch(changes={"add_fields": [{"name": "price", "type": "numeric"}]})
+    planner = MigrationPlanner()
+    result = planner.merge_patch(source_schema, patch)
+    assert result.fields["vector"].attrs.compression == CompressionType.LVQ8
