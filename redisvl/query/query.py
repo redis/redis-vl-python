@@ -1,3 +1,4 @@
+import numbers
 from enum import StrEnum
 from typing import Any, Self
 
@@ -991,13 +992,19 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             distance_threshold (float): Vector distance threshold.
 
         Raises:
-            TypeError: If distance_threshold is not a float or int
-            ValueError: If distance_threshold is negative
+            TypeError: If distance_threshold is not a real number, or is a bool
+            ValueError: If distance_threshold is negative or NaN
         """
-        if not isinstance(distance_threshold, (float, int)):
+        if isinstance(distance_threshold, bool) or not isinstance(
+            distance_threshold, numbers.Real
+        ):
             raise TypeError("distance_threshold must be of type float or int")
-        if distance_threshold < 0:
-            raise ValueError("distance_threshold must be non-negative")
+        # Written so that NaN fails too: it would make the range match nothing.
+        if not distance_threshold >= 0:
+            raise ValueError(
+                f"distance_threshold must be non-negative, got {distance_threshold}"
+            )
+        distance_threshold = float(distance_threshold)
         if self._normalize_vector_distance:
             if distance_threshold > 1:
                 raise ValueError(

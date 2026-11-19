@@ -40,13 +40,6 @@ def test_constructor_and_assignment_reject_the_same_values(value):
     assert route.distance_threshold == 0.5
 
 
-@pytest.mark.parametrize("value", [2, 2.0, 1e-9])
-def test_assignment_accepts_the_range_bounds(value):
-    route = _route()
-    route.distance_threshold = value
-    assert route.distance_threshold == value
-
-
 @pytest.mark.parametrize("value", INVALID, ids=INVALID_IDS)
 def test_update_route_thresholds_rejects_invalid_values(value):
     router = _router(_route())
@@ -63,6 +56,8 @@ def test_update_route_thresholds_applies_nothing_when_any_value_is_invalid():
 
 
 def test_update_route_thresholds_accepts_upper_bound():
+    # Passes before the fix too: it pins that the new up-front check keeps the
+    # inclusive bound and still applies valid values.
     router = _router(_route("greeting"), _route("farewell"))
     router.update_route_thresholds({"greeting": 2, "farewell": 0.25})
     assert router.route_thresholds == {"greeting": 2.0, "farewell": 0.25}

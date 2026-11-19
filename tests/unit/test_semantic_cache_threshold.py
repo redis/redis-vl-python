@@ -62,6 +62,13 @@ async def test_every_path_accepts_a_numpy_scalar_as_a_float(cache, value):
     assert all(type(t) is float for t in [*applied, cache.distance_threshold])
 
 
+def test_the_largest_threshold_keeps_a_rounded_opposite_vector():
+    # Measured on Redis 8.10.3: FLOAT32 COSINE, 1536 dims, query against -query.
+    candidates = [{"vector_distance": "2.00000023842"}]
+
+    assert SemanticCache._within_threshold(candidates, 2.0) == candidates
+
+
 @pytest.mark.parametrize("value, error", REFUSED)
 async def test_every_path_refuses_alike(cache, value, error):
     with pytest.raises(error) as expected:

@@ -675,7 +675,9 @@ class SemanticCache(BaseLLMCache):
             candidate
             for candidate in candidates
             if (distance := candidate.get(VectorQuery.DISTANCE_ID)) is None
-            or float(distance) <= distance_threshold
+            # Clamped as norm_cosine_distance is: float32 rounding can report an
+            # exactly opposite vector a little above 2, past the largest threshold.
+            or min(float(distance), 2.0) <= distance_threshold
         ]
 
     def _process_cache_results(

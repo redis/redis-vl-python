@@ -844,6 +844,13 @@ def test_vector_range_query_error_handling():
     with pytest.raises(ValueError, match="epsilon must be non-negative"):
         query.set_epsilon(-0.1)
 
+    # A bool is an int, and NaN fails every comparison, so neither is a radius.
+    with pytest.raises(TypeError, match="distance_threshold must be of type"):
+        query.set_distance_threshold(True)
+
+    with pytest.raises(ValueError, match="distance_threshold must be non-negative"):
+        query.set_distance_threshold(float("nan"))
+
     # Test invalid hybrid policy
     with pytest.raises(ValueError, match="hybrid_policy must be one of"):
         query.set_hybrid_policy("INVALID")

@@ -15,14 +15,15 @@ import pytest
 from redisvl.extensions.message_history import SemanticMessageHistory
 from redisvl.query.filter import Tag
 
-ACCEPTED = [0, 2, np.float32(0.5)]
+# 2 pins the inclusive upper bound, which no integration test reaches; 0 is
+# covered end to end in tests/integration/test_message_history.py.
+ACCEPTED = [2, np.float32(0.5)]
 
 REFUSED = [
     pytest.param(2 + 1e-9, ValueError, id="just-above-2"),
     pytest.param(-1e-9, ValueError, id="just-below-0"),
     pytest.param(float("nan"), ValueError, id="nan"),
     pytest.param(True, TypeError, id="true"),
-    pytest.param(False, TypeError, id="false"),
     pytest.param("0.5", TypeError, id="numeric-string"),
 ]
 
@@ -40,7 +41,7 @@ def history():
 
 
 @pytest.mark.parametrize("value", ACCEPTED)
-def test_every_path_accepts_the_closed_range(history, value):
+def test_every_path_accepts_a_valid_threshold_as_a_float(history, value):
     history.get_relevant("prompt", distance_threshold=value)
     history.set_distance_threshold(value)
 

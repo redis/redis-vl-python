@@ -293,17 +293,21 @@ def denorm_cosine_distance(value: float) -> float:
     return max(2 - 2 * value, 0)
 
 
-def validate_cosine_distance_threshold(distance_threshold: float) -> float:
+def validate_cosine_distance_threshold(
+    distance_threshold: float, max_distance: float = 2
+) -> float:
     """Validate a COSINE distance threshold and return it as a float.
 
-    A real number from 0 to 2 inclusive, the range of Redis COSINE distance. A
-    bool is refused even though it is an ``int``. NaN fails the range check;
-    accepted, it would make every lookup miss without an error, because every
-    comparison with NaN is false.
+    A real number from 0 to ``max_distance`` inclusive: 2, the range of Redis
+    COSINE distance, or 1 for a distance normalized to [0, 1]. A bool is
+    refused even though it is an ``int``. NaN fails the range check; accepted,
+    it would make every lookup miss without an error, because every comparison
+    with NaN is false.
 
     Raises:
         TypeError: If the threshold is not a real number, or is a bool.
-        ValueError: If the threshold is not between 0 and 2, or is NaN.
+        ValueError: If the threshold is not between 0 and ``max_distance``, or
+            is NaN.
     """
     if isinstance(distance_threshold, bool) or not isinstance(
         distance_threshold, numbers.Real
@@ -312,8 +316,10 @@ def validate_cosine_distance_threshold(distance_threshold: float) -> float:
             "distance_threshold must be a real number, got "
             f"{type(distance_threshold).__name__}"
         )
-    if not 0 <= distance_threshold <= 2:
-        raise ValueError(f"Distance must be between 0 and 2, got {distance_threshold}")
+    if not 0 <= distance_threshold <= max_distance:
+        raise ValueError(
+            f"Distance must be between 0 and {max_distance:g}, got {distance_threshold}"
+        )
     return float(distance_threshold)
 
 
