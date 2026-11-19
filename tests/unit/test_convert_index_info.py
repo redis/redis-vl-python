@@ -1,12 +1,14 @@
 """Unit tests for convert_index_info_to_schema function."""
 
+import pytest
+
 from redisvl.redis.connection import convert_index_info_to_schema
 from redisvl.schema import IndexSchema
 
 
-def test_convert_index_info_svs_no_compression():
-    """Redis 8.2+ reports an uncompressed SVS-VAMANA field as NO_COMPRESSION."""
-    index_info = {
+def svs_info(*tail):
+    """FT.INFO reply for an SVS-VAMANA field with the given trailing attributes."""
+    return {
         "index_name": "svs",
         "index_definition": ["key_type", "HASH", "prefixes", ["svs"]],
         "attributes": [
@@ -26,19 +28,41 @@ def test_convert_index_info_svs_no_compression():
                 "distance_metric",
                 "COSINE",
                 "graph_max_degree",
-                40,
+                32,
                 "construction_window_size",
-                250,
-                "compression",
-                "NO_COMPRESSION",
+                200,
+                *tail,
             ]
         ],
     }
 
-    result = convert_index_info_to_schema(index_info)
 
-    assert "compression" not in result["fields"][0]["attrs"]
-    assert IndexSchema.from_dict(result).fields["emb"].attrs.compression is None
+@pytest.mark.parametrize(
+    "tail, compression, threshold",
+    [
+        (["compression", "NO_COMPRESSION"], None, None),
+        (["compression", "GlobalSQ8", "training_threshold", 2048], "LVQ4x4", 2048),
+        (["compression", "GlobalSQ8", "training_threshold", 10240], "LVQ4x4", None),
+    ],
+)
+def test_convert_index_info_svs_compression(tail, compression, threshold):
+    """Redis 8.2+ reply shapes; the reported default threshold (10240) loads as unset."""
+    result = convert_index_info_to_schema(svs_info(*tail))
+
+    attrs = IndexSchema.from_dict(result).fields["emb"].attrs
+    assert attrs.compression == compression
+    assert attrs.training_threshold == threshold
+
+
+def test_reported_default_threshold_matches_unset_target():
+    """A live default (10240) must not make a target without it look different."""
+    from redisvl.migration.utils import schemas_equal
+
+    live = convert_index_info_to_schema(
+        svs_info("compression", "GlobalSQ8", "training_threshold", 10240)
+    )
+    target = convert_index_info_to_schema(svs_info("compression", "GlobalSQ8"))
+    assert schemas_equal(target, live, strip_excluded=True)
 
 
 def test_convert_index_info_single_prefix():
@@ -312,9 +336,6 @@ def test_convert_index_info_resp2_unified_vector_flags():
 
     result = convert_index_info_to_schema(index_info)
 
-    # INDEXMISSING is deliberately not recovered as ``index_missing``: a vector
-    # field can't be recreated with it yet, so restoring it here would turn a
-    # quiet loss into a failure on ``create()``.
     assert result["fields"] == [
         {
             "name": "emb",
@@ -326,6 +347,7 @@ def test_convert_index_info_resp2_unified_vector_flags():
                 "datatype": "float32",
                 "m": 24,
                 "ef_construction": 300,
+                "index_missing": True,
             },
         }
     ]

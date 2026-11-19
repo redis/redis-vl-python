@@ -40,7 +40,7 @@ def _build_filter_hint(
     that the model never sees the knob.
     """
     filter_fields = [
-        f"{field.name}({getattr(field.type, 'value', field.type)})"
+        f"{field.name}({field.type})"
         for field in schema.fields.values()
         if field.type in _DSL_FILTER_FIELD_TYPES and field.name not in exclude
     ]

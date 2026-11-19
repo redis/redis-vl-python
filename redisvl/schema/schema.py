@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -235,7 +235,7 @@ class IndexSchema(BaseModel):
         return values
 
     @classmethod
-    def from_yaml(cls, file_path: str) -> "IndexSchema":
+    def from_yaml(cls, file_path: str) -> Self:
         """Create an IndexSchema from a YAML file.
 
         Args:
@@ -262,7 +262,7 @@ class IndexSchema(BaseModel):
             return cls.model_validate(yaml_data)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "IndexSchema":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create an IndexSchema from a dictionary.
 
         Args:

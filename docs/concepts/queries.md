@@ -136,6 +136,15 @@ Use when neither pure keyword search nor pure semantic search gives good enough 
 HybridQuery requires Redis >= 8.4.0 and redis-py >= 7.1.0.
 ```
 
+For explicit `vector_search_method="KNN"` or `"RANGE"`, the optional tuning
+parameters default to `None`. RedisVL omits these parameters, so Redis uses the
+index's configured values. Set `knn_ef_runtime` only for HNSW,
+and `range_epsilon` only for HNSW or SVS-VAMANA. FLAT supports neither option.
+Explicit values, including zero, are sent to Redis for validation.
+
+`"RANGE"` requires `range_radius`. A radius of `0` is valid. Omitting the radius
+raises `ValueError`.
+
 ### AggregateHybridQuery
 
 Similar to HybridQuery but uses Redis aggregation pipelines. Provides more control over score combination and result processing.
@@ -350,11 +359,17 @@ query = HybridQuery(
 )
 ```
 
+## Result ids
+
+For search queries, such as `VectorQuery`, `RangeQuery`, `FilterQuery` and `TextQuery`, every result's `id` is the record's full Redis key, such as `users:t1`, whatever the storage type or `return_fields`. A field the document itself names `id` never replaces it. Aggregation, hybrid and SQL results are rows of loaded fields rather than documents: they do not set `id` to the key, and a field you load under the name `id` keeps the document's value. Redis-py already drops a hash field called `id` from search results, and a JSON `FilterQuery` without `return_fields`, which returns the whole document, drops the document's own `id` in the same way.
+
+To read that field back, request it under another name. On JSON, either add its path to `return_fields`, as in `return_fields=["status", "$.id"]`, which returns it under the `$.id` key, or index it under an alias such as `{"name": "doc_id", "type": "tag", "path": "$.id"}` and return `doc_id`. `index.fetch()` returns the stored document unchanged, `id` field included.
+
 ## Results and expiring documents
 
 RedisVL returns query results as a list of dictionaries, one per matched document. On Redis 8.8+ a document can occasionally come back with its field payload missing: the RediSearch worker pool now defaults to a nonzero number of background worker threads, and if a document — or one of its indexed fields — expires (via TTL or `HPEXPIRE`) at the exact moment a background search is reading it, the server returns the matched id with an empty field payload instead of dropping it from the result set. This is most likely in workloads that combine search with short TTLs, such as a semantic cache or chat history.
 
-RedisVL detects and **silently skips** such a document (logging at `WARNING` level) whenever the query type guarantees a field would be present on a healthy match:
+RedisVL detects and **skips** such a document (logging at `WARNING` level) whenever the query type guarantees a field would be present on a healthy match:
 
 - **`VectorQuery` / `VectorRangeQuery`** with `return_score=True` (the default) — a healthy match always carries a `vector_distance`.
 - **`FilterQuery` on JSON storage** that returns the whole object — a healthy match always carries its JSON payload.

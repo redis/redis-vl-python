@@ -53,9 +53,9 @@ class HybridQuery:
         text_scorer: str = "BM25STD",
         yield_text_score_as: str | None = None,
         vector_search_method: Literal["KNN", "RANGE"] | None = None,
-        knn_ef_runtime: int = 10,
+        knn_ef_runtime: int | None = None,
         range_radius: float | None = None,
-        range_epsilon: float = 0.01,
+        range_epsilon: float | None = None,
         yield_vsim_score_as: str | None = None,
         filter_expression: str | FilterExpression | None = None,
         combination_method: Literal["RRF", "LINEAR"] | None = None,
@@ -84,14 +84,16 @@ class HybridQuery:
                 see https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/scoring/
             yield_text_score_as: The name of the field to yield the text score as.
             vector_search_method: The vector search method to use. Options are {KNN, RANGE}. Defaults to None.
-            knn_ef_runtime: The exploration factor parameter for HNSW, optional if `vector_search_method` is "KNN".
-            range_radius: The search radius to use, required if `vector_search_method` is "RANGE".
-            range_epsilon: The epsilon value to use, optional if `vector_search_method` is "RANGE"; defines the
-                accuracy of the search.
+            knn_ef_runtime: The exploration factor for HNSW when `vector_search_method` is "KNN".
+                Defaults to None, which omits EF_RUNTIME and uses the index's configured value.
+            range_radius: The search radius, required if `vector_search_method` is "RANGE". Zero is valid.
+            range_epsilon: The search accuracy parameter for HNSW and SVS-VAMANA when
+                `vector_search_method` is "RANGE". Defaults to None, which omits EPSILON and uses the index's configured value.
             yield_vsim_score_as: The name of the field to yield the vector similarity score as.
             filter_expression: The filter expression to use for both the text and vector searches. Defaults to None.
             combination_method: The combination method to use. Options are {RRF, LINEAR}. If not specified, the server
-                defaults to RRF. If "RRF" is specified, then at least one of `rrf_window` or `rrf_constant` must be
+                defaults to RRF. If only `yield_combined_score_as` is set, RRF is sent explicitly so the alias
+                reaches the server. If "RRF" is specified, then at least one of `rrf_window` or `rrf_constant` must be
                 provided. If "LINEAR" is specified, then at least one of `linear_alpha` or `linear_beta` must be
                 provided.
             rrf_window: The window size to use for the reciprocal rank fusion (RRF) combination method. Limits
@@ -173,6 +175,11 @@ class HybridQuery:
             filter_expression=filter_expression,
         )
 
+        if yield_combined_score_as and not combination_method:
+            # The server defaults to RRF, but COMBINE (and thus YIELD_SCORE_AS)
+            # is only emitted when a method is configured.
+            combination_method = "RRF"
+
         if combination_method:
             self.combination_method: CombineResultsMethod | None = (
                 build_combination_method(
@@ -214,10 +221,11 @@ def build_base_query(
         yield_text_score_as: The name of the field to yield the text score as.
         vector_search_method: The vector search method to use. Options are {KNN, RANGE}. Defaults to None.
         num_results: The number of nearest neighbors to return, required if `vector_search_method` is "KNN".
-        knn_ef_runtime: The exploration factor parameter for HNSW, optional if `vector_search_method` is "KNN".
-        range_radius: The search radius to use, required if `vector_search_method` is "RANGE".
-        range_epsilon: The epsilon value to use, optional if `vector_search_method` is "RANGE"; defines the
-            accuracy of the search.
+        knn_ef_runtime: The exploration factor for HNSW when `vector_search_method` is "KNN".
+            Defaults to None, which omits EF_RUNTIME and uses the index's configured value.
+        range_radius: The search radius, required if `vector_search_method` is "RANGE". Zero is valid.
+        range_epsilon: The search accuracy parameter for HNSW and SVS-VAMANA when
+            `vector_search_method` is "RANGE". Defaults to None, which omits EPSILON and uses the index's configured value.
         yield_vsim_score_as: The name of the field to yield the vector similarity score as.
         filter_expression: The filter expression to use for the vector similarity search. Defaults to None.
 
@@ -262,16 +270,16 @@ def build_base_query(
             )
 
         vsim_search_method_params["K"] = num_results
-        if knn_ef_runtime:
+        if knn_ef_runtime is not None:
             vsim_search_method_params["EF_RUNTIME"] = knn_ef_runtime
 
     elif vector_search_method == "RANGE":
         vsim_search_method = VectorSearchMethods.RANGE
-        if not range_radius:
+        if range_radius is None:
             raise ValueError("Must provide RADIUS if vector_search_method is RANGE")
 
         vsim_search_method_params["RADIUS"] = range_radius
-        if range_epsilon:
+        if range_epsilon is not None:
             vsim_search_method_params["EPSILON"] = range_epsilon
 
     elif vector_search_method is not None:

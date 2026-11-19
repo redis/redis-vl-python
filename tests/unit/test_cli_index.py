@@ -2,6 +2,7 @@ import json
 import re
 import subprocess
 import sys
+import textwrap
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -459,3 +460,33 @@ def test_index_runtime_errors(
     assert exc_info.value.code == 1
     assert captured.out == ""
     assert captured.err != ""
+
+
+def test_index_failure_stderr_subprocess_has_no_traceback():
+    """Unconfigured logging: ``rvl index`` failures print one line, no traceback."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent("""
+                import sys
+                from unittest.mock import MagicMock, patch
+
+                fake_index = MagicMock()
+                fake_index.info.side_effect = RuntimeError("boom")
+                with patch("redisvl.cli.index.SearchIndex", return_value=fake_index):
+                    sys.argv = ["rvl", "index", "info", "-i", "test-idx"]
+                    try:
+                        from redisvl.cli.index import Index
+                        Index()
+                    except SystemExit as exc:
+                        sys.exit(exc.code)
+                """),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1, result.stderr
+    assert "boom" in result.stderr
+    assert "Traceback" not in result.stderr

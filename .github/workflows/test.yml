@@ -37,7 +37,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      # The canary saves the Python 3.11 uv cache and, when its tests pass, the
+      # The canary saves the PYTHON_VERSION uv cache and, when its tests pass, the
       # HuggingFace model cache. It finishes before the matrix starts, so the
       # matrix legs restore both and the notebooks restore the uv cache, and
       # none of them save these themselves. (The notebooks keep a model cache
@@ -49,6 +49,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           uv-version: ${{ env.UV_VERSION }}
           save-cache: "true"
+          pytest-args: --cov --cov-report=
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -78,6 +79,17 @@ jobs:
           LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
           LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
           LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
+          COVERAGE_FILE: .coverage.service
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-service
+          path: .coverage.service
+          include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          retention-days: 7
 
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
@@ -102,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         redis-py-version: ["6.x", "7.x", "8.x"]
         # `redis:latest` floats, so a failure on it is not reproducible from a
         # SHA; it is advisory below. Pinned tags carry the blocking coverage.
@@ -173,7 +185,7 @@ jobs:
           uv run python -c 'import redis; print("redis-py:", redis.__version__)'
 
       # One saver per Python version, so legs don't race to save the same key.
-      # service-tests saves 3.11; for the other versions the redis-py 8.x x
+      # service-tests saves PYTHON_VERSION; for the others the redis-py 8.x x
       # redis:latest leg saves (`redis:latest` is the image value that never
       # rotates; its continue-on-error doesn't matter because the save comes
       # before the tests). Saving here rather than after the tests keeps the
@@ -192,7 +204,253 @@ jobs:
 
       - name: Run tests
         run: |
-          make test
+          # One data file per leg; the coverage job combines them. Artifact
+          # names cannot contain ':', so `redis:8.4` becomes `redis-8.4`.
+          leg="core-py${{ matrix.python-version }}-redis-py-${REDIS_PY_VERSION}-${REDIS_IMAGE//:/-}"
+          echo "COVERAGE_LEG=$leg" >> "$GITHUB_ENV"
+          COVERAGE_FILE=".coverage.$leg" make test ARGS="--cov --cov-report="
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ env.COVERAGE_LEG }}
+          path: .coverage.${{ env.COVERAGE_LEG }}
+          include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          retention-days: 7
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04
+    # Runs whenever the test jobs finish, pass or fail: coverage from a red run
+    # is still a measurement. A skipped job (service-tests on fork PRs,
+    # cluster-tests on every PR and push) just leaves its segment out, and
+    # Codecov carries that segment forward.
+    needs: [test, service-tests, cluster-tests]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # No cache: this job installs only the dev group, without the project,
+      # so a cache would hold little.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+
+      - name: Install coverage
+        # The dev group pins coverage through pytest-cov, so this reads the
+        # data with the same coverage version that wrote it.
+        run: |
+          uv sync --frozen --only-group dev --no-install-project
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*   # not coverage-html from an earlier attempt
+          path: coverage-data
+          merge-multiple: true
+
+      - name: Combine coverage
+        id: combine
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cov() { uv run --no-sync coverage "$@"; }
+
+          {
+            echo "## Coverage"
+            echo
+            echo "| Segment | Data files | Total |"
+            echo "|---|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Segment data lives in its own directory: `patch = ["subprocess"]`
+          # turns on parallel mode, so reporting on ./.coverage would otherwise
+          # absorb any ./.coverage.* file beside it.
+          mkdir -p coverage-segments
+          segments=()
+          # A new segment also needs its job in `needs` above, an upload step
+          # below, and a carryforward entry in codecov.yml if PRs can skip it.
+          for seg in core service cluster; do
+            files=(coverage-data/.coverage."$seg"*)
+            if [ ${#files[@]} -eq 0 ]; then
+              echo "| $seg | 0 | not run |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            data="coverage-segments/$seg"
+            cov combine --keep --data-file="$data" "${files[@]}"
+            cov xml --data-file="$data" -o "coverage-$seg.xml"
+            echo "| $seg | ${#files[@]} | $(cov report --data-file="$data" --format=total)% |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$seg=true" >> "$GITHUB_OUTPUT"
+            segments+=("$data")
+          done
+
+          if [ ${#segments[@]} -eq 0 ]; then
+            echo "::warning title=No coverage data::No test job uploaded coverage data in this run."
+            exit 0
+          fi
+
+          cov combine --keep --data-file=.coverage "${segments[@]}"
+          cov html -d htmlcov
+          {
+            echo
+            echo "All segments combined: **$(cov report --format=total)%**"
+            echo
+            echo "<details><summary>Per-file report</summary>"
+            echo
+            cov report --format=markdown --skip-covered --sort=cover
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        if: ${{ hashFiles('htmlcov/index.html') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          path: htmlcov
+          retention-days: 14
+
+      # One upload per segment, each under its own flag. Codecov outages and
+      # tokenless refusals (Dependabot PRs) must never fail CI, hence
+      # fail_ci_if_error: false.
+      - name: Upload core coverage to Codecov
+        if: ${{ steps.combine.outputs.core == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-core.xml
+          flags: core
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload service coverage to Codecov
+        if: ${{ steps.combine.outputs.service == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-service.xml
+          flags: service
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload cluster coverage to Codecov
+        if: ${{ steps.combine.outputs.cluster == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-cluster.xml
+          flags: cluster
+          disable_search: true
+          fail_ci_if_error: false
+
+  cluster-tests:
+    name: Cluster Tests - redis-py ${{ matrix.redis-py-version }}
+    # Nightly and on demand only, to keep the cluster's setup time off PRs.
+    # No other job passes `--run-cluster-tests`, so this is the only one that
+    # runs `requires_cluster` tests.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+      REDIS_PY_VERSION: ${{ matrix.redis-py-version }}
+      # Required: without it `uv run` re-syncs the venv to uv.lock and reverts
+      # the redis-py pin set below.
+      UV_NO_SYNC: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cluster replies differ by redis-py version (8.x defaults to RESP3),
+        # so cover each major the `test` job does. The Redis image is pinned
+        # in tests/cluster-compose.yml.
+        redis-py-version: ["6.x", "7.x", "8.x"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      # Restore-only, like the uv cache below: service-tests saves both.
+      - name: Restore HuggingFace models
+        uses: actions/cache/restore@v5
+        with:
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache-v2
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+          cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+
+      - name: Restore uv cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/uv
+          key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          uv sync --all-extras --frozen
+
+          # Keep in sync with the `test` job's install rules.
+          case "$REDIS_PY_VERSION" in
+            "6.x") spec="redis>=6,<7" ;;
+            "7.x") spec="redis>=7,<8" ;;
+            "8.x") spec="redis>=8.1,<9" ;;
+            *)
+              echo "::error title=Unhandled redis-py-version::Matrix value '${REDIS_PY_VERSION}' has no install rule -- add a case branch in .github/workflows/test.yml."
+              exit 1
+              ;;
+          esac
+
+          uv pip install "$spec"
+          uv run python -c 'import redis; print("redis-py:", redis.__version__)'
+
+      - name: Resolve host.docker.internal on the runner
+        # The cluster nodes announce host.docker.internal (see
+        # tests/cluster-compose.yml), so MOVED redirects point the test client
+        # there. Linux runners do not resolve that name by default.
+        run: |
+          echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
+
+      - name: Run cluster tests
+        # -n 0: the cluster publishes fixed ports 7001-7006, so per-worker
+        # clusters under xdist would collide.
+        run: |
+          leg="cluster-redis-py-${REDIS_PY_VERSION}"
+          echo "COVERAGE_LEG=$leg" >> "$GITHUB_ENV"
+          COVERAGE_FILE=".coverage.$leg" uv run python -m pytest -n 0 --log-level=CRITICAL --run-cluster-tests -m requires_cluster --cov --cov-report= tests/
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ env.COVERAGE_LEG }}
+          path: .coverage.${{ env.COVERAGE_LEG }}
+          include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          retention-days: 7
 
   notebooks:
     name: Notebook Validation
@@ -328,8 +586,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # No cache: the docs install is small, and its cache used to claim the
-      # shared 3.11 key before the test jobs could save a useful one.
+      # No cache: the docs install is small.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:

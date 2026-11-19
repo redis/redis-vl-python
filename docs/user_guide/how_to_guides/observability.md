@@ -11,11 +11,13 @@ RedisVL can report what `SemanticCache` does through [OpenTelemetry](https://ope
 
 RedisVL depends only on the OpenTelemetry API. Your application owns the SDK and the exporters, and RedisVL emits nothing until you configure them. With no SDK configured, the instrumentation adds about 11 µs to a lookup that embeds, measured on an Apple M4 Pro.
 
+`LangCacheSemanticCache` emits the same operation spans and duration points for the operations it implements; it has no retrieval span and no distance, for the reasons under [LangCache](#langcache).
+
 See [Cache LLM Responses](../03_llmcache.ipynb) for how to use the cache itself.
 
 ## Install
 
-Install RedisVL with the `otel` extra, plus the SDK and an exporter of your choice:
+Install RedisVL with the `otel` extra, plus the SDK and an exporter of your choice (a `LangCacheSemanticCache` deployment adds the `langcache` extra too):
 
 ```bash
 pip install "redisvl[otel]" "opentelemetry-sdk>=1.32" opentelemetry-exporter-otlp-proto-http
@@ -100,6 +102,12 @@ There is no counter: the duration histogram's count is the number of operations.
 
 Names in the `gen_ai.*` namespace follow the OpenTelemetry GenAI conventions, which are still in Development status and may change in a future release.
 
+## LangCache
+
+`LangCacheSemanticCache` reports the operations it has: `check` and `acheck` carry `redisvl.cache.result`, `store` and `astore` record `store`, and the four `delete_by_*` methods record `drop`. `update` raises `NotImplementedError` for this backend, so no `update` point is recorded; filter on `redisvl.cache.name` to separate the two caches.
+
+Two signals are missing, both because the managed service runs the search: there is no `retrieval` span, since LangCache is one HTTP call with no separate vector search to time, and no `redisvl.semantic_cache.distance` point, since a miss returns no candidates to take a distance from. The tuning below needs `SemanticCache`.
+
 ## Tune the distance threshold
 
 The distance histogram, split by result, shows how close your lookups come to the threshold, which defaults to 0.1:
@@ -158,6 +166,36 @@ histogram_quantile(0.95, sum by (le, redisvl_cache_operation) (rate(redisvl_sema
 histogram_quantile(0.95, sum by (le, gen_ai_provider_name, gen_ai_request_model) (rate(gen_ai_client_operation_duration_seconds_bucket{gen_ai_operation_name="embeddings"}[5m])))
 ```
 
+## Explore with a local stack
+
+The repository includes a Docker Compose stack for trying all of this on your machine, in [`docs/user_guide/how_to_guides/observability-stack`](https://github.com/redis/redis-vl-python/tree/main/docs/user_guide/how_to_guides/observability-stack). It is for local use only: every port listens on `127.0.0.1`, and Grafana lets anyone who reaches it edit and save dashboards without signing in. Saved changes live in the Grafana container, so `docker compose down` discards them; to keep a customised dashboard, use the dashboard's **Export** > **Export as JSON**.
+
+```bash
+cd docs/user_guide/how_to_guides/observability-stack
+docker compose up -d
+```
+
+When you are done, `docker compose down -v` stops the stack and deletes the metrics it stored.
+
+| Service | Address | Role |
+|---|---|---|
+| Redis 8 | `localhost:6379`, or `REDIS_PORT` if you set it | The cache's database |
+| OpenTelemetry Collector | `localhost:4318` (HTTP) and `localhost:4317` (gRPC) | Receives OTLP from your application, and passes metrics to Prometheus and traces to Jaeger |
+| Prometheus | <http://localhost:9090> | Stores the metrics |
+| Jaeger | <http://localhost:16686> | Stores and shows the traces |
+| Grafana | <http://localhost:3000> | Opens on the starter dashboard |
+
+To fill it, run the [Tune the Semantic Cache with Telemetry](../15_semantic_cache_observability.ipynb) notebook with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` set. Its last cell sends three minutes of lookups.
+
+The starter dashboard, **RedisVL Semantic Cache**, has four rows:
+
+- **Hit rate**: per cache over the selected range and over time, and lookups per second by result.
+- **Threshold tuning**: heatmaps of the nearest distance on misses and on hits, and two "what if" panels. One shows the share of misses a looser threshold would have served, the other the share of hits a tighter one would have refused. Pick the candidate thresholds with the dashboard's **Looser threshold** and **Tighter threshold** variables, which offer only bucket boundaries.
+- **Latency**: operation and embedding percentiles, and redis-py's `FT.SEARCH` and `PIPELINE` latency, with the caveats in the next section.
+- **Traces**: links to the service's recent and slowest lookups in Jaeger.
+
+To use the dashboard elsewhere, import [`grafana/semantic-cache.json`](https://github.com/redis/redis-vl-python/blob/main/docs/user_guide/how_to_guides/observability-stack/grafana/semantic-cache.json) into your own Grafana, choose your Prometheus data source in its **Metrics** variable, and set **Jaeger URL** to your trace UI. Its queries expect the Collector's Prometheus exporter names and Prometheus's `honor_labels: true`, so that `job` is your application's `service.name`.
+
 ## Add redis-py's own metrics
 
 redis-py 7.4 and later ship their own OpenTelemetry metrics for connections and commands. RedisVL never initialises them, so turn them on yourself after setting the meter provider. Command latency is not in the default groups:
@@ -177,6 +215,10 @@ get_observability_instance().init(
 ```
 
 redis-py emits metrics only, not spans, which is why RedisVL traces the search itself as the `retrieval` span.
+
+Command latency arrives as `db.client.operation.duration`, labelled with `db.operation.name`. A lookup's search is `FT.SEARCH`. When the cache has a TTL, a hit's refresh goes out as one pipeline, recorded as `PIPELINE`, and so does every `store`. Neither carries the cache name, and both include every other search and pipeline the process sends.
+
+redis-py labels its metrics with the older `db.system` attribute, where RedisVL's spans use `db.system.name`, its replacement in current semantic conventions. Both carry the value `redis`, so match on the name each layer emits when you join them.
 
 If you also run a provider's own GenAI instrumentation, such as one for the OpenAI SDK, both can report the same embedding call: expect a nested client span, and a second set of `gen_ai.client.operation.duration` points under that library's instrumentation scope.
 
