@@ -223,6 +223,8 @@ class CohereTextVectorizer(BaseVectorizer):
         Returns:
             List of embedding type strings compatible with Cohere API
         """
+        # check_dtype accepts any case and keeps the value as given.
+        dtype = dtype.lower()
         if dtype == "int8":
             return ["int8"]
         elif dtype == "uint8":
