@@ -187,7 +187,7 @@ belonging to other workers and other pull requests' CI runs. See the module
 docstring in `tests/integration/test_langcache_semantic_cache_integration.py` for a
 worked example.
 
-**Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running.
+**Note:** Tests marked `requires_cluster` only run when you pass `--run-cluster-tests`. The cluster itself is provisioned for you by the `redis_cluster_container` fixture in `tests/conftest.py`, so Docker needs to be running. The nodes announce themselves as `host.docker.internal`, so the host running the tests must resolve that name too: add `127.0.0.1 host.docker.internal` to `/etc/hosts` if it doesn't already. CI runs these tests nightly, in the `cluster-tests` job of `.github/workflows/test.yml`, not on pull requests.
 
 ## Documentation
 

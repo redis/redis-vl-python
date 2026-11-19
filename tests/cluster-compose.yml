@@ -1,3 +1,11 @@
+# Every node announces host.docker.internal, which is the address it gossips to
+# its peers and hands to clients in MOVED redirects, so the name has to resolve
+# both inside the containers and on the host running the tests.
+# - Inside: Docker Desktop provides the name; Linux Docker Engine (GitHub's
+#   ubuntu runners) needs the `extra_hosts` mapping on every container below.
+# - On the host: add `127.0.0.1 host.docker.internal` to the hosts file, as the
+#   `cluster-tests` job in .github/workflows/test.yml does. macOS does not
+#   resolve the name by default either.
 services:
   redis-node-1:
     image: "redis:8.4"
@@ -12,6 +20,8 @@ services:
       - --cluster-announce-port 7001
       - --cluster-announce-bus-port 17001
       - --protected-mode no
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7001:7001"
       - "17001:17001"
@@ -31,6 +41,8 @@ services:
       - --cluster-announce-port 7002
       - --cluster-announce-bus-port 17002
       - --protected-mode no
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7002:7002"
       - "17002:17002"
@@ -50,6 +62,8 @@ services:
       - --cluster-announce-port 7003
       - --cluster-announce-bus-port 17003
       - --protected-mode no
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7003:7003"
       - "17003:17003"
@@ -69,6 +83,8 @@ services:
       - --cluster-announce-port 7004
       - --cluster-announce-bus-port 17004
       - --protected-mode no
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7004:7004"
       - "17004:17004"
@@ -88,6 +104,8 @@ services:
       - --cluster-announce-port 7005
       - --cluster-announce-bus-port 17005
       - --protected-mode no
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7005:7005"
       - "17005:17005"
@@ -107,6 +125,8 @@ services:
       - --cluster-announce-port 7006
       - --cluster-announce-bus-port 17006
       - --protected-mode no
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "7006:7006"
       - "17006:17006"
@@ -115,6 +135,10 @@ services:
 
   redis-cluster-setup:
     image: "redis:8.4"
+    # `redis-cli --cluster create` reconnects to every node at its announced
+    # address once the nodes have met, so this container needs the name too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis-node-1
       - redis-node-2

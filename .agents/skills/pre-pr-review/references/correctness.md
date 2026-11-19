@@ -18,7 +18,7 @@ Find changes that make the code behave wrongly for some input, state or environm
 - **Inputs the fix wasn't aimed at.** For each changed condition, try `None`, an empty string, `0`, `False` and an empty collection, and compare the result with the base (the PR's target branch). A key that is present with the value `None` is not a missing key, and a truthiness test treats a genuine zero as unset. Check also which error wins when two checks fail: moving a new check ahead of an old one changes the exception callers see.
 - **Redis replies.** The code has to handle RESP2 and RESP3 reply shapes, and both hash and JSON storage.
 - **Result limits.** Default result counts (`num_results`, `LIMIT`, `MAXSEARCHRESULTS`) silently truncate. Check any read that is meant to return everything.
-- **Cluster mode.** Multi-key operations, `SCAN` and pipelines behave differently on a cluster, and partial failures are possible. CI never runs cluster tests, so reason about these cases from the code. If you can't settle one that way, put it under "Not verified" in the Reviewer Brief.
+- **Cluster mode.** Multi-key operations, `SCAN` and pipelines behave differently on a cluster, and partial failures are possible. Pull-request CI never runs cluster tests (they run only nightly), so reason about these cases from the code. If you can't settle one that way, put it under "Not verified" in the Reviewer Brief.
 - **Client ownership.** Who creates, owns and closes a Redis client, and what happens on reconnect, especially for async clients reused across event loops.
 
 ## Depth
