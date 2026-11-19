@@ -101,10 +101,10 @@ Applications that require strict search read-after-write behavior can start Redi
 
 On Redis Cluster, index commands carry no key, so RedisVL sends them to the client's default node: a primary that redis-py picks when it connects. That covers `create()`, `delete()`, `exists()`, `info()`, `listall()` and queries. redis-py learns that a failover has happened only when a keyed command is redirected with `MOVED`, or when a connection fails. Until then, a client that has sent only index commands since the failover keeps sending them to the demoted node, which is now a replica:
 
-- `create()` and `delete()` fail with `ReadOnlyError`.
+- `create()` and `delete()` raise `RedisSearchError`, with the redis-py `ReadOnlyError` as its `__cause__`.
 - `exists()`, `info()`, `listall()` and queries are answered by the replica. Replication is asynchronous, so its copy can lag behind the new primary: a new index can be reported missing, or a dropped one still present.
 
-This lasts until the client sends any keyed command, such as `load()` or `fetch()`, or reconnects. Most applications send keyed commands constantly. A process that only manages indexes can recover from a `ReadOnlyError` by building a new client and retrying.
+This lasts until the client sends any keyed command, such as `load()` or `fetch()`, or reconnects. Most applications send keyed commands constantly. A process that only manages indexes can recover: if `create()` or `delete()` raises `RedisSearchError` caused by a `ReadOnlyError`, build a new cluster client and retry the call.
 
 ## Bulk Delete and Update
 
