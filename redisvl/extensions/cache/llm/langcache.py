@@ -7,6 +7,7 @@ managed service via the langcache Python SDK.
 from typing import Any, Literal
 from urllib.parse import quote, unquote
 
+from redisvl.extensions.cache.llm import _telemetry
 from redisvl.extensions.cache.llm.base import BaseLLMCache
 from redisvl.extensions.cache.llm.schema import CacheHit
 from redisvl.query.filter import FilterExpression
@@ -264,6 +265,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             metadata=attributes if attributes else None,
         )
 
+    @_telemetry.operation("check", lookup=True)
     def check(
         self,
         prompt: str | None = None,
@@ -345,6 +347,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Convert results to cache hits
         return self._hits_from_response(response, num_results)
 
+    @_telemetry.operation("check", lookup=True)
     async def acheck(
         self,
         prompt: str | None = None,
@@ -429,6 +432,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Convert results to cache hits
         return self._hits_from_response(response, num_results)
 
+    @_telemetry.operation("store")
     def store(
         self,
         prompt: str,
@@ -502,6 +506,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Result is a SetResponse Pydantic model with entry_id attribute
         return result.entry_id if hasattr(result, "entry_id") else ""
 
+    @_telemetry.operation("store")
     async def astore(
         self,
         prompt: str,
@@ -639,6 +644,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         """
         await self.adelete()
 
+    @_telemetry.operation("drop")
     def delete_by_id(self, entry_id: str) -> None:
         """Delete a single cache entry by ID.
 
@@ -647,6 +653,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         """
         self._client.delete_by_id(entry_id=entry_id)
 
+    @_telemetry.operation("drop")
     async def adelete_by_id(self, entry_id: str) -> None:
         """Async delete a single cache entry by ID.
 
@@ -655,6 +662,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         """
         await self._client.delete_by_id_async(entry_id=entry_id)
 
+    @_telemetry.operation("drop")
     def delete_by_attributes(self, attributes: dict[str, Any]) -> dict[str, Any]:
         """Delete cache entries matching the given attributes.
 
@@ -677,6 +685,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
 
+    @_telemetry.operation("drop")
     async def adelete_by_attributes(self, attributes: dict[str, Any]) -> dict[str, Any]:
         """Async delete cache entries matching the given attributes.
 

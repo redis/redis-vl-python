@@ -1,7 +1,7 @@
 [project]
 name = "redisvl"
 # NOTE: This version value is automatically incremented by the release workflow - do not manually adjust it.
-version = "0.32.0"
+version = "0.32.1"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
 requires-python = ">=3.11,<3.16"
@@ -135,6 +135,7 @@ dev = [
     "pylint>=3.1.0,<5",
     "pytest>=9.0.3,<10",
     "pytest-asyncio>=1,<2",
+    "pytest-cov>=7,<8",
     "pytest-xdist[psutil]>=3.6.1,<4",
     "pre-commit>=4.1.0,<5",
     "mypy>=1.11.0,<2",
@@ -189,6 +190,28 @@ exclude = '''
 log_cli = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+# source_pkgs, not source: the XML report writes paths relative to `source`,
+# so `redisvl/version.py` would appear as a bare `version.py` that Codecov
+# can't tell apart from `redisvl/cli/version.py`. With source_pkgs every path
+# is repo-relative (`redisvl/...`).
+source_pkgs = ["redisvl"]
+branch = true
+# Paths are stored relative to the checkout, so data from different CI
+# runners combines into one report.
+relative_files = true
+# The CLI tests run `python -m redisvl.cli.runner` in a subprocess; without
+# this, the CLI is measured as untested.
+patch = ["subprocess"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@overload",
+    "raise NotImplementedError",
+    "^\\s*\\.\\.\\.$",
+]
 
 [tool.mypy]
 warn_unused_configs = true

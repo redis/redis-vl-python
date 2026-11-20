@@ -20,9 +20,6 @@ from redisvl.redis.connection import (
 )
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema.schema import IndexSchema
-from redisvl.utils.log import get_logger
-
-logger = get_logger("[RedisVL]")
 
 # Exceptions commonly raised when loading or validating a schema path (-s).
 SCHEMA_INPUT_ERRORS = (
@@ -83,7 +80,6 @@ class Index:
         try:
             args.handler(args)
         except Exception as e:
-            logger.error(e, exc_info=True)
             print(str(e), file=sys.stderr)
             sys.exit(1)
 
