@@ -3,7 +3,7 @@ from typing import Any, NoReturn, Self
 
 import redis.commands.search.reducers as reducers
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, TypeAdapter
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
@@ -15,6 +15,7 @@ from redisvl.extensions.constants import (
 )
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
+    DistanceThreshold,
     Route,
     RouteMatch,
     RoutingConfig,
@@ -28,6 +29,7 @@ from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
+    cosine_distance_bound,
     deprecated_argument,
     match_pattern,
     model_to_dict,
@@ -37,6 +39,8 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger(__name__)
+
+_DISTANCE_THRESHOLD_ADAPTER = TypeAdapter(DistanceThreshold)
 
 
 class SemanticRouter(BaseModel):
@@ -300,7 +304,7 @@ class SemanticRouter(BaseModel):
         return [route.name for route in self.routes]
 
     @property
-    def route_thresholds(self) -> dict[str, float | None]:
+    def route_thresholds(self) -> dict[str, float]:
         """Get the distance thresholds for each route.
 
         Returns:
@@ -316,15 +320,24 @@ class SemanticRouter(BaseModel):
         """
         self.routing_config = routing_config
 
-    def update_route_thresholds(self, route_thresholds: dict[str, float | None]):
+    def update_route_thresholds(self, route_thresholds: dict[str, float]):
         """Update the distance thresholds for each route.
+
+        Thresholds follow the same rule as :class:`Route`: a real number in
+        (0, 2]. Every value is checked before any is applied, so an invalid
+        one leaves all thresholds unchanged.
 
         Args:
             route_thresholds (Dict[str, float]): Dictionary of route names and their distance thresholds.
+
+        Raises:
+            pydantic.ValidationError: If any threshold is not a real number in (0, 2].
         """
+        for threshold in route_thresholds.values():
+            _DISTANCE_THRESHOLD_ADAPTER.validate_python(threshold)
         for route in self.routes:
             if route.name in route_thresholds:
-                route.distance_threshold = route_thresholds[route.name]  # type: ignore
+                route.distance_threshold = route_thresholds[route.name]
 
     @staticmethod
     def _route_ref_key(index: SearchIndex, route_name: str, reference_hash: str) -> str:
@@ -411,11 +424,19 @@ class SemanticRouter(BaseModel):
             name=route_dict["route_name"], distance=float(route_dict["distance"])
         )
 
-    def _distance_threshold_filter(self) -> str:
+    def _distance_threshold_filter(
+        self, aggregation_method: DistanceAggregationMethod
+    ) -> str:
         """Apply distance threshold on a route by route basis."""
         filter = ""
         for i, route in enumerate(self.routes):
-            filter_str = f"(@route_name == '{route.name}' && @distance <= {route.distance_threshold})"
+            # A min or avg never exceeds one reference's distance, so it gets the
+            # same rounding allowance at 2; a sum can legitimately pass 2.
+            if aggregation_method == DistanceAggregationMethod.sum:
+                bound = route.distance_threshold
+            else:
+                bound = cosine_distance_bound(route.distance_threshold)
+            filter_str = f"(@route_name == '{route.name}' && @distance <= {bound})"
             if i > 0:
                 filter += " || "
             filter += filter_str
@@ -448,7 +469,7 @@ class SemanticRouter(BaseModel):
                 "@route_name",  # type: ignore
                 aggregation_func("vector_distance").alias("distance"),
             )
-            .filter(self._distance_threshold_filter())
+            .filter(self._distance_threshold_filter(aggregation_method))
             .sort_by("@distance", max=max_k)  # type: ignore
             .dialect(2)
         )
@@ -495,7 +516,7 @@ class SemanticRouter(BaseModel):
         vector_range_query = VectorRangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
-            distance_threshold=float(distance_threshold),
+            distance_threshold=cosine_distance_bound(float(distance_threshold)),
             return_fields=["route_name"],
         )
 
@@ -1254,7 +1275,9 @@ class SemanticRouter(BaseModel):
                 )
                 continue
             # Duplicate references share one hash, so every copy went with it.
-            route.references = [ref for ref in route.references if ref != reference]
+            # Edited in place: the list may empty here, which `Route` rejects on
+            # assignment, and emptied routes are dropped just below.
+            route.references[:] = [ref for ref in route.references if ref != reference]
 
         # A route whose last reference was just deleted has nothing left to match,
         # and `Route` rejects an empty reference list -- persisting one would write a

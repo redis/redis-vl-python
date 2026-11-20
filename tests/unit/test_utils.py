@@ -14,6 +14,7 @@ from redisvl.redis.utils import (
 )
 from redisvl.utils.utils import (
     assert_no_warnings,
+    cosine_distance_bound,
     denorm_cosine_distance,
     deprecated_argument,
     deprecated_class,
@@ -21,6 +22,7 @@ from redisvl.utils.utils import (
     lazy_import,
     match_pattern,
     norm_cosine_distance,
+    validate_cosine_distance_threshold,
 )
 
 
@@ -43,6 +45,41 @@ def test_denorm_cosine_distance():
     input = 0
     expected = 2
     assert denorm_cosine_distance(input) == expected
+
+
+@pytest.mark.parametrize(
+    ("threshold", "max_distance"),
+    [(0, 2), (2, 2), (np.float32(0.5), 2), (1, 1)],
+)
+def test_validate_cosine_distance_threshold_accepts_the_closed_range(
+    threshold, max_distance
+):
+    result = validate_cosine_distance_threshold(threshold, max_distance=max_distance)
+
+    assert result == float(threshold) and type(result) is float
+
+
+@pytest.mark.parametrize(
+    ("threshold", "max_distance", "error"),
+    [
+        (2 + 1e-9, 2, ValueError),
+        (-1e-9, 2, ValueError),
+        (float("nan"), 2, ValueError),
+        (1 + 1e-9, 1, ValueError),
+        # A bool is an int, and a numeric string is not a number.
+        (True, 2, TypeError),
+        ("0.5", 2, TypeError),
+    ],
+)
+def test_validate_cosine_distance_threshold_refuses(threshold, max_distance, error):
+    with pytest.raises(error):
+        validate_cosine_distance_threshold(threshold, max_distance=max_distance)
+
+
+def test_cosine_distance_bound_widens_only_the_largest_threshold():
+    assert cosine_distance_bound(1.5) == 1.5
+    # Past the largest overshoot measured on Redis 8.10.3, FLOAT16 at 2.0006.
+    assert cosine_distance_bound(2.0) > 2.001
 
 
 def test_norm_denorm_cosine():

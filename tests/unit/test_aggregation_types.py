@@ -471,11 +471,16 @@ def test_vector_object_validation():
         assert isinstance(vec, Vector)
 
     # max_distance is bounded to [0, 2.0]
-    for distance in [-0.1, 2.001, 35, -float("inf"), +float("inf")]:
+    for distance in [-0.1, 2.001, 35, -float("inf"), +float("inf"), True, "0.5"]:
         with pytest.raises(ValueError):
             vec = Vector(
                 vector=sample_vector, field_name="text embedding", max_distance=distance
             )
+
+    # Assignment is validated too, since max_distance is interpolated into the query.
+    vec = Vector(vector=sample_vector, field_name="text embedding")
+    with pytest.raises(ValueError):
+        vec.max_distance = "1) | @x:[0 inf]"
 
 
 def test_vector_object_handles_byte_conversion():

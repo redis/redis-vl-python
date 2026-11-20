@@ -1,6 +1,7 @@
+import numbers
 from typing import Any, Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 
 from redisvl.query.filter import FilterExpression, intersect_with_filter
@@ -31,6 +32,9 @@ class Vector(BaseModel):
     max_distance: The maximum distance for vector range search (default: 2.0, range: [0.0, 2.0])
     """
 
+    # Validate max_distance on assignment too: it is interpolated into the query.
+    model_config = ConfigDict(validate_assignment=True)
+
     vector: list[float] | bytes
     field_name: str
     dtype: str = "float32"
@@ -48,14 +52,17 @@ class Vector(BaseModel):
             )
         return dtype
 
-    @field_validator("max_distance")
+    @field_validator("max_distance", mode="before")
     @classmethod
-    def validate_max_distance(cls, max_distance: float) -> float:
-        if not isinstance(max_distance, (float, int)):
+    def validate_max_distance(cls, max_distance: Any) -> float:
+        # Before pydantic's own coercion, which would turn True or "0.5" into a float.
+        if isinstance(max_distance, bool) or not isinstance(max_distance, numbers.Real):
+            raise ValueError(
+                f"max_distance must be a real number, got {type(max_distance).__name__}"
+            )
+        if not 0.0 <= max_distance <= 2.0:
             raise ValueError("max_distance must be a value between 0.0 and 2.0")
-        if max_distance < 0.0 or max_distance > 2.0:
-            raise ValueError("max_distance must be a value between 0.0 and 2.0")
-        return max_distance
+        return float(max_distance)
 
     @model_validator(mode="after")
     def validate_vector(self) -> Self:
