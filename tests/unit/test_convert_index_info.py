@@ -328,6 +328,8 @@ def test_convert_index_info_resp2_unified_vector_flags():
                     24,
                     "ef_construction",
                     300,
+                    "ef_runtime",
+                    "invalid",  # Skip this value while recovering the rest of the field.
                     "INDEXMISSING",
                 ],
             }
