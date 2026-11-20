@@ -39,9 +39,10 @@ jobs:
 
       # The canary saves the PYTHON_VERSION uv cache and, when its tests pass, the
       # HuggingFace model cache. It finishes before the matrix starts, so the
-      # matrix legs and notebooks restore what it saved and never save these
-      # themselves. When it is skipped (fork and Dependabot PRs) they restore
-      # from the base branch instead.
+      # matrix legs restore both and the notebooks restore the uv cache, and
+      # none of them save these themselves. (The notebooks keep a model cache
+      # of their own.) When it is skipped (fork and Dependabot PRs) they
+      # restore from the base branch instead.
       - name: Run service tests
         uses: ./.github/actions/run-service-tests
         with:
@@ -454,7 +455,8 @@ jobs:
   notebooks:
     name: Notebook Validation
     runs-on: ubuntu-24.04
-    # Ordered after the HF cache is primed, not gated on it; see the `test` job.
+    # Ordered after service-tests so it restores the uv cache that job saves;
+    # not gated on it; see the `test` job.
     needs: service-tests
     # Needs API-key secrets, unavailable to fork PRs and Dependabot. Keep in
     # sync with service-tests.
@@ -465,12 +467,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      # Restore-only, like the uv cache below: service-tests saves both.
+      # Separate from the HF cache the test jobs share. service-tests saves that
+      # one under a static key after its tests, so it holds only the models the
+      # tests load, and models only the notebooks use were downloaded inside
+      # nbval cells on every run. This job is the only one that saves this key,
+      # and the key changes whenever the model list does. There is deliberately
+      # no restore-keys fallback: an older entry would still hold models since
+      # removed from the list, and nbval would pass offline on them.
       - name: Restore HuggingFace models
+        id: hf-cache
         uses: actions/cache/restore@v5
         with:
           path: hf_cache
-          key: ${{ runner.os }}-hf-cache-v2
+          key: ${{ runner.os }}-hf-notebooks-${{ hashFiles('.github/scripts/prefetch_notebook_models.py') }}
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -496,6 +505,21 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --all-extras --frozen
+
+      - name: Download HuggingFace models
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uv run --no-sync python .github/scripts/prefetch_notebook_models.py
+
+      # Saved here rather than in a post-job step, so a failing notebook does
+      # not stop the models from being cached.
+      - name: Save HuggingFace models
+        if: steps.hf-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: hf_cache
+          key: ${{ steps.hf-cache.outputs.cache-primary-key }}
 
       - name: Start Redis
         run: |
@@ -544,7 +568,10 @@ jobs:
           OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # Every model the notebooks load is downloaded above. A notebook that
+          # loads one not listed in .github/scripts/prefetch_notebook_models.py
+          # fails fast here rather than downloading against the cell timeout.
+          HF_HUB_OFFLINE: "1"
         run: |
           make test-notebooks
 
