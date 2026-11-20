@@ -266,7 +266,7 @@ class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
     """Max top candidates during search (default: 10) - primary tuning parameter"""
 
     rerank: bool | None = None
-    """Enable or disable disk HNSW reranking on Redis Flex. Omit to leave RERANK unset."""
+    """Enable or disable disk HNSW reranking in Flex databases. Omit to leave RERANK unset."""
 
     epsilon: float = Field(default=0.01)
     """Range search boundary factor (default: 0.01)"""

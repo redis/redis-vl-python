@@ -218,7 +218,7 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
     - ``ef_runtime``: Controls search accuracy (higher = better recall, slower search). Default: 10
     - ``epsilon``: Range search approximation factor for VectorRangeQuery. Default: 0.01
 
-For disk HNSW indexes on Redis Software Flex, set ``rerank`` explicitly on each
+For disk HNSW indexes in Flex databases, set ``rerank`` explicitly on each
 vector field. For example, use the following YAML field definition. RedisVL
 supplies the HNSW defaults for ``m``, ``ef_construction``, and ``ef_runtime``.
 Omitting ``rerank`` leaves the option out of the Redis command.
