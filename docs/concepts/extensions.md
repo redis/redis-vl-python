@@ -11,6 +11,26 @@ Extensions are opinionated, higher-level abstractions built on RedisVL's core pr
 
 You don't need to understand schemas, indexes, or queries to use extensions—they handle that complexity for you.
 
+## Choosing a Vectorizer
+
+`SemanticCache`, `SemanticMessageHistory` and `SemanticRouter` embed text, so each needs a {doc}`vectorizer </concepts/utilities>`. Pass one explicitly:
+
+```python
+from redisvl.extensions.cache.llm import SemanticCache
+from redisvl.utils.vectorize import HFTextVectorizer
+
+cache = SemanticCache(
+    name="llmcache",
+    vectorizer=HFTextVectorizer(model="redis/langcache-embed-v2"),
+)
+```
+
+`redis/langcache-embed-v2` is trained for matching cache prompts. Any vectorizer works, including hosted providers that need no local model.
+
+Leaving the argument out is deprecated. The extension still falls back to a local Hugging Face model, which needs the `sentence-transformers` extra and downloads the model on first use: `redis/langcache-embed-v1` for `SemanticCache`, and `sentence-transformers/all-mpnet-base-v2` for the other two. It also emits a `DeprecationWarning` naming the model. A future major release will require the argument.
+
+Stored data only matches queries embedded with the model that wrote it. If you relied on the fallback, pass that same model explicitly to keep using what you have stored. Two models with the same output size, such as `langcache-embed-v1` and `-v2`, fit the same index without an error, so a mismatch shows up only as wrong matches. To move a cache to a different model of the same output size, call `clear()` and let it refill; if the size differs, call `delete()` and construct the cache again with the new vectorizer. `overwrite=True` rebuilds the index but keeps the stored entries and their old vectors. Distances also differ between models, so check your distance threshold after switching.
+
 ## Semantic Cache
 
 LLM API calls are expensive and slow. If users ask similar questions, you're paying to generate similar answers repeatedly. Semantic caching solves this by storing responses and returning cached answers when similar prompts are seen again.
