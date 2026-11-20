@@ -293,6 +293,19 @@ def denorm_cosine_distance(value: float) -> float:
     return max(2 - 2 * value, 0)
 
 
+def cosine_distance_bound(distance_threshold: float) -> float:
+    """Return the bound to test a reported COSINE distance against.
+
+    A threshold of 2, the largest COSINE distance, is meant to match every
+    vector, but float rounding can report an exactly opposite vector a little
+    above 2: measured on Redis 8.10.3, 2.00000024 for FLOAT32 and up to 2.0006
+    for FLOAT16. At 2 this returns 3, past any such overshoot, so a client-side
+    comparison, a ``VECTOR_RANGE`` radius and an aggregate ``FILTER`` all treat 2
+    as matching everything. Below 2 it returns the threshold unchanged.
+    """
+    return 3.0 if distance_threshold >= 2 else distance_threshold
+
+
 def validate_cosine_distance_threshold(
     distance_threshold: float, max_distance: float = 2
 ) -> float:

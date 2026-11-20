@@ -28,6 +28,7 @@ from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import hashify
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
+    cosine_distance_bound,
     current_timestamp,
     deprecated_argument,
     serialize,
@@ -677,9 +678,7 @@ class SemanticCache(BaseLLMCache):
             candidate
             for candidate in candidates
             if (distance := candidate.get(VectorQuery.DISTANCE_ID)) is None
-            # Clamped as norm_cosine_distance is: float32 rounding can report an
-            # exactly opposite vector a little above 2, past the largest threshold.
-            or min(float(distance), 2.0) <= distance_threshold
+            or float(distance) <= cosine_distance_bound(distance_threshold)
         ]
 
     def _process_cache_results(

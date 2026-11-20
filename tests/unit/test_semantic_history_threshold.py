@@ -26,6 +26,15 @@ def history():
     return history
 
 
+def test_the_largest_threshold_widens_the_range_radius(history):
+    # The radius is applied by Redis, which can report an exactly opposite
+    # vector a little above 2, so 2 must not be sent as the radius itself.
+    history.get_relevant("prompt", distance_threshold=2)
+
+    (query,), _ = history._index.query.call_args
+    assert query.distance_threshold > 2.001
+
+
 def test_every_path_refuses_an_invalid_threshold(history, monkeypatch):
     # The constructor must refuse before it loads the default vectorizer.
     monkeypatch.setattr(

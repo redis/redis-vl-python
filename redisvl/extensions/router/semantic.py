@@ -29,6 +29,7 @@ from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
+    cosine_distance_bound,
     deprecated_argument,
     match_pattern,
     model_to_dict,
@@ -423,11 +424,19 @@ class SemanticRouter(BaseModel):
             name=route_dict["route_name"], distance=float(route_dict["distance"])
         )
 
-    def _distance_threshold_filter(self) -> str:
+    def _distance_threshold_filter(
+        self, aggregation_method: DistanceAggregationMethod
+    ) -> str:
         """Apply distance threshold on a route by route basis."""
         filter = ""
         for i, route in enumerate(self.routes):
-            filter_str = f"(@route_name == '{route.name}' && @distance <= {route.distance_threshold})"
+            # A min or avg never exceeds one reference's distance, so it gets the
+            # same rounding allowance at 2; a sum can legitimately pass 2.
+            if aggregation_method == DistanceAggregationMethod.sum:
+                bound = route.distance_threshold
+            else:
+                bound = cosine_distance_bound(route.distance_threshold)
+            filter_str = f"(@route_name == '{route.name}' && @distance <= {bound})"
             if i > 0:
                 filter += " || "
             filter += filter_str
@@ -460,7 +469,7 @@ class SemanticRouter(BaseModel):
                 "@route_name",  # type: ignore
                 aggregation_func("vector_distance").alias("distance"),
             )
-            .filter(self._distance_threshold_filter())
+            .filter(self._distance_threshold_filter(aggregation_method))
             .sort_by("@distance", max=max_k)  # type: ignore
             .dialect(2)
         )
@@ -507,7 +516,7 @@ class SemanticRouter(BaseModel):
         vector_range_query = VectorRangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
-            distance_threshold=float(distance_threshold),
+            distance_threshold=cosine_distance_bound(float(distance_threshold)),
             return_fields=["route_name"],
         )
 

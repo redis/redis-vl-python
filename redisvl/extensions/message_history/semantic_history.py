@@ -24,6 +24,7 @@ from redisvl.query import CountQuery, FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
+    cosine_distance_bound,
     deprecated_argument,
     serialize,
     validate_cosine_distance_threshold,
@@ -338,7 +339,7 @@ class SemanticMessageHistory(BaseMessageHistory):
             vector=self._vectorizer.embed(prompt),
             vector_field_name=MESSAGE_VECTOR_FIELD_NAME,
             return_fields=return_fields,
-            distance_threshold=distance_threshold,
+            distance_threshold=cosine_distance_bound(distance_threshold),
             num_results=top_k,
             return_score=True,
             filter_expression=filter_expression,
