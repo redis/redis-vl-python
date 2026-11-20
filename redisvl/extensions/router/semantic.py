@@ -1108,11 +1108,12 @@ class SemanticRouter(BaseModel):
 
         for id in ids:
             if not id:
-                # `Tag(...) == ""` renders as the match-all `*`, so an empty id
-                # would match every reference in the index. Callers take the
-                # first row of each query's results, which turns this into
-                # returning -- and, from delete_route_references, deleting -- an
-                # arbitrary reference the caller never named.
+                # `None` renders as the match-all `*` and would match every
+                # reference; `""` renders `@reference_id:{""}`, which this index
+                # cannot answer reliably without `INDEXEMPTY`. Callers take the
+                # first row of each query's results, so a match-all returns --
+                # and, from delete_route_references, deletes -- an arbitrary
+                # reference the caller never named.
                 raise ValueError(
                     "reference ids must be non-empty strings; received an empty id"
                 )
