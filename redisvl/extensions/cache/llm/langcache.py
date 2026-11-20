@@ -12,7 +12,11 @@ from redisvl.extensions.cache.llm.base import BaseLLMCache
 from redisvl.extensions.cache.llm.schema import CacheHit
 from redisvl.query.filter import FilterExpression
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
+from redisvl.utils.utils import (
+    denorm_cosine_distance,
+    norm_cosine_distance,
+    validate_cosine_distance_threshold,
+)
 
 logger = get_logger(__name__)
 
@@ -187,8 +191,12 @@ class LangCacheSemanticCache(BaseLLMCache):
         if distance_threshold is None:
             return None
         if self._distance_scale == "redis":
-            return norm_cosine_distance(distance_threshold)
-        return 1.0 - float(distance_threshold)
+            return norm_cosine_distance(
+                validate_cosine_distance_threshold(distance_threshold)
+            )
+        return 1.0 - validate_cosine_distance_threshold(
+            distance_threshold, max_distance=1
+        )
 
     def _build_search_kwargs(
         self,
@@ -300,6 +308,9 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Raises:
             ValueError: If prompt is not provided.
+            TypeError: If `distance_threshold` is not a real number, or is a bool.
+            ValueError: If `distance_threshold` is NaN or outside its scale's
+                range: [0, 1] for "normalized", [0, 2] for "redis".
         """
         if not prompt:
             raise ValueError("prompt is required for LangCache search")
@@ -382,6 +393,9 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Raises:
             ValueError: If prompt is not provided.
+            TypeError: If `distance_threshold` is not a real number, or is a bool.
+            ValueError: If `distance_threshold` is NaN or outside its scale's
+                range: [0, 1] for "normalized", [0, 2] for "redis".
         """
         if not prompt:
             raise ValueError("prompt is required for LangCache search")

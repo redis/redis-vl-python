@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import inspect
 import json
+import numbers
 import sys
 import warnings
 from contextlib import contextmanager
@@ -290,6 +291,49 @@ def denorm_cosine_distance(value: float) -> float:
     0 and 2.
     """
     return max(2 - 2 * value, 0)
+
+
+def cosine_distance_bound(distance_threshold: float) -> float:
+    """Return the bound to test a reported COSINE distance against.
+
+    A threshold of 2, the largest COSINE distance, is meant to match every
+    vector, but float rounding can report an exactly opposite vector a little
+    above 2: measured on Redis 8.10.3, 2.00000024 for FLOAT32 and up to 2.0006
+    for FLOAT16. At 2 this returns 3, past any such overshoot, so a client-side
+    comparison, a ``VECTOR_RANGE`` radius and an aggregate ``FILTER`` all treat 2
+    as matching everything. Below 2 it returns the threshold unchanged.
+    """
+    return 3.0 if distance_threshold >= 2 else distance_threshold
+
+
+def validate_cosine_distance_threshold(
+    distance_threshold: float, max_distance: float = 2
+) -> float:
+    """Validate a COSINE distance threshold and return it as a float.
+
+    A real number from 0 to ``max_distance`` inclusive: 2, the range of Redis
+    COSINE distance, or 1 for a distance normalized to [0, 1]. A bool is
+    refused even though it is an ``int``. NaN fails the range check; accepted,
+    it would make every lookup miss without an error, because every comparison
+    with NaN is false.
+
+    Raises:
+        TypeError: If the threshold is not a real number, or is a bool.
+        ValueError: If the threshold is not between 0 and ``max_distance``, or
+            is NaN.
+    """
+    if isinstance(distance_threshold, bool) or not isinstance(
+        distance_threshold, numbers.Real
+    ):
+        raise TypeError(
+            "distance_threshold must be a real number, got "
+            f"{type(distance_threshold).__name__}"
+        )
+    if not 0 <= distance_threshold <= max_distance:
+        raise ValueError(
+            f"Distance must be between 0 and {max_distance:g}, got {distance_threshold}"
+        )
+    return float(distance_threshold)
 
 
 def norm_l2_distance(value: float) -> float:

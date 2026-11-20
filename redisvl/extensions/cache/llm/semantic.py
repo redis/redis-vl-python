@@ -1,4 +1,3 @@
-import numbers
 from typing import Any
 from warnings import warn
 
@@ -31,9 +30,11 @@ from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import hashify
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
+    cosine_distance_bound,
     current_timestamp,
     deprecated_argument,
     serialize,
+    validate_cosine_distance_threshold,
     validate_vector_dims,
 )
 from redisvl.utils.vectorize.base import BaseVectorizer
@@ -143,6 +144,8 @@ class SemanticCache(BaseLLMCache):
         connection_kwargs = connection_kwargs or {}
         if not create_index and overwrite:
             raise ValueError(CREATE_INDEX_OVERWRITE_CONFLICT)
+        # Refuse a bad threshold before loading the default vectorizer.
+        validate_cosine_distance_threshold(distance_threshold)
 
         # Call parent class with all shared parameters
         super().__init__(
@@ -317,7 +320,9 @@ class SemanticCache(BaseLLMCache):
             ValueError: If the threshold is not between 0 and 2 (Redis COSINE
                 distance), or is NaN.
         """
-        self._distance_threshold = self._validate_distance_threshold(distance_threshold)
+        self._distance_threshold = validate_cosine_distance_threshold(
+            distance_threshold
+        )
 
     def delete(self) -> None:
         """Delete the cache and its index entirely.
@@ -509,7 +514,7 @@ class SemanticCache(BaseLLMCache):
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
         else:
-            distance_threshold = self._validate_distance_threshold(distance_threshold)
+            distance_threshold = validate_cosine_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -608,7 +613,7 @@ class SemanticCache(BaseLLMCache):
         if distance_threshold is None:
             distance_threshold = self._distance_threshold
         else:
-            distance_threshold = self._validate_distance_threshold(distance_threshold)
+            distance_threshold = validate_cosine_distance_threshold(distance_threshold)
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -678,35 +683,8 @@ class SemanticCache(BaseLLMCache):
             candidate
             for candidate in candidates
             if (distance := candidate.get(VectorQuery.DISTANCE_ID)) is None
-            or float(distance) <= distance_threshold
+            or float(distance) <= cosine_distance_bound(distance_threshold)
         ]
-
-    @staticmethod
-    def _validate_distance_threshold(distance_threshold: float) -> float:
-        """Validate a distance threshold and return it as a float.
-
-        One rule for the cache-wide threshold and for a per-call override: a
-        real number from 0 to 2 inclusive, the range of the COSINE distance the
-        cache schema uses. A bool is refused even though it is an ``int``, and
-        NaN fails the range check, which it would otherwise pass silently by
-        matching nothing.
-
-        Raises:
-            TypeError: If the threshold is not a real number, or is a bool.
-            ValueError: If the threshold is not between 0 and 2, or is NaN.
-        """
-        if isinstance(distance_threshold, bool) or not isinstance(
-            distance_threshold, numbers.Real
-        ):
-            raise TypeError(
-                "distance_threshold must be a real number, got "
-                f"{type(distance_threshold).__name__}"
-            )
-        if not 0 <= distance_threshold <= 2:
-            raise ValueError(
-                f"Distance must be between 0 and 2, got {distance_threshold}"
-            )
-        return float(distance_threshold)
 
     def _process_cache_results(
         self,

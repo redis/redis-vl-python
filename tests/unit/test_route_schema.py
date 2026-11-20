@@ -77,6 +77,30 @@ def test_route_invalid_threshold_zero():
     assert "Input should be greater than 0" in str(excinfo.value)
 
 
+def test_route_threshold_assignment_is_validated():
+    route = Route(name="Test Route", references=["reference1"])
+    with pytest.raises(ValidationError):
+        route.distance_threshold = float("nan")
+    assert route.distance_threshold == 0.5
+
+
+def test_update_route_thresholds_applies_nothing_when_any_value_is_invalid():
+    from redisvl.extensions.router.semantic import SemanticRouter
+
+    # update_route_thresholds touches only `routes`, so skip the index setup;
+    # vectorizer=None keeps model_construct from loading the default model.
+    router = SemanticRouter.model_construct(
+        routes=[
+            Route(name="greeting", references=["hello"]),
+            Route(name="farewell", references=["bye"]),
+        ],
+        vectorizer=None,
+    )
+    with pytest.raises(ValidationError):
+        router.update_route_thresholds({"greeting": 0.9, "farewell": float("nan")})
+    assert router.route_thresholds == {"greeting": 0.5, "farewell": 0.5}
+
+
 def test_route_invalid_threshold_negative():
     with pytest.raises(ValidationError) as excinfo:
         Route(
