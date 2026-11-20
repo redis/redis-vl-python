@@ -376,6 +376,7 @@ The migration wizard (`rvl migrate wizard`) supports updating field attributes o
 | Attribute | Notes |
 |-----------|-------|
 | `withsuffixtrie` | Suffix/contains search optimization |
+| `rerank` | Set to `true` or `false` for disk HNSW fields in Flex databases |
 
 *Note: `phonetic_matcher` is supported by the wizard for text fields.*
 

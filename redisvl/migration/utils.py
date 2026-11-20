@@ -152,11 +152,9 @@ def get_schema_field_path(schema: Dict[str, Any], field_name: str) -> Optional[s
     return None
 
 
-# Attributes excluded from schema validation comparison.
-# These are query-time or creation-hint parameters that FT.INFO does not return
-# and are not relevant for index structure validation (confirmed by RediSearch team).
-# - ef_runtime, epsilon: query-time tuning knobs, not index definition attributes
-# - initial_cap: creation-time memory pre-allocation hint, diverges after indexing
+# Compare vector index structure independently of query defaults and creation hints.
+# Flex can report ef_runtime in FT.INFO. Queries can override this default.
+# epsilon tunes range queries and initial_cap hints at initial allocation.
 EXCLUDED_VECTOR_ATTRS = {"ef_runtime", "epsilon", "initial_cap"}
 # phonetic_matcher: the matcher string (e.g. "dm:en") is not stored server-side,
 #   only a boolean flag is kept, so it cannot be read back.
