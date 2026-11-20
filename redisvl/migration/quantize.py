@@ -4,7 +4,7 @@ Provides pipeline-read, convert, and pipeline-write functions that replace
 the per-key HGET loop with batched pipeline operations.
 
 Also provides multi-worker orchestration for parallel quantization
-using ThreadPoolExecutor (sync) or asyncio.gather (async).
+using ThreadPoolExecutor (sync) or asyncio.TaskGroup (async).
 """
 
 import hashlib
@@ -538,9 +538,19 @@ async def async_multi_worker_quantize(
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
     worker_backup_paths: Optional[List[str]] = None,
 ) -> MultiWorkerResult:
-    """Orchestrate async multi-worker quantization via asyncio.gather.
+    """Orchestrate async multi-worker quantization via asyncio.TaskGroup.
 
     Each worker gets its own async Redis connection and backup file shard.
+    If a worker fails, its siblings are cancelled, and each closes its
+    connection, before the failure is raised, so no worker is still writing
+    once the caller sees the error. A cancelled worker's shard records only
+    whole batches, so a later run resumes it like any interrupted shard.
+
+    Raises:
+        Exception: The failing worker's own exception, not an
+            ``ExceptionGroup``. If several workers fail before the
+            cancellation reaches them, the first is raised and the rest
+            are logged.
     """
     import asyncio
 
@@ -562,22 +572,34 @@ async def async_multi_worker_quantize(
             f"({len(worker_backup_paths)} != {actual_workers})"
         )
 
-    coroutines = [
-        _async_worker_quantize(
-            worker_id=i,
-            redis_url=redis_url,
-            keys=slices[i],
-            datatype_changes=datatype_changes,
-            backup_path=worker_backup_paths[i],
-            index_name=index_name,
-            batch_size=batch_size,
-            progress_callback=progress_callback,
-        )
-        for i in range(actual_workers)
-    ]
+    failure: Exception | None = None
+    try:
+        async with asyncio.TaskGroup() as group:
+            tasks = [
+                group.create_task(
+                    _async_worker_quantize(
+                        worker_id=i,
+                        redis_url=redis_url,
+                        keys=slices[i],
+                        datatype_changes=datatype_changes,
+                        backup_path=worker_backup_paths[i],
+                        index_name=index_name,
+                        batch_size=batch_size,
+                        progress_callback=progress_callback,
+                    )
+                )
+                for i in range(actual_workers)
+            ]
+    except ExceptionGroup as group_error:
+        failure = group_error.exceptions[0]
+        for other in group_error.exceptions[1:]:
+            logger.error("Another quantization worker also failed", exc_info=other)
+    if failure is not None:
+        # Raised outside the except block so the worker's traceback and cause
+        # reach the caller unchanged, as they did under asyncio.gather.
+        raise failure
 
-    results = await asyncio.gather(*coroutines)
-    worker_results = list(results)
+    worker_results = [task.result() for task in tasks]
     total_docs = sum(r["docs"] for r in worker_results)
 
     return MultiWorkerResult(
