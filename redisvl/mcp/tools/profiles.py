@@ -136,7 +136,7 @@ def validate_profile_against_schema(
                 f"vector field '{field_name}'"
             )
 
-    _validate_locked_exists_fields(profile, schema, vector_field_names)
+    _validate_locked_exists_fields(profile, schema)
 
     # Raises RedisVLMCPError(INVALID_FILTER) naming the offending field.
     resolve_locked_filter(profile, schema)
@@ -150,16 +150,15 @@ def validate_profile_against_schema(
 def _validate_locked_exists_fields(
     profile: MCPCustomToolConfig,
     schema: IndexSchema,
-    vector_field_names: set[str],
 ) -> None:
     """Reject a locked ``exists`` clause the index cannot actually answer.
 
     ``exists`` compiles to ``ismissing``, which Redis refuses unless the field was
-    declared with ``INDEXMISSING``. The DSL also lets ``exists`` through for vector
-    fields, which no other operator allows. Either way the profile parses fine and
-    then fails every single call as a *retryable* backend error, so a model retries
-    a permanently broken tool forever. Catching it here turns that into a startup
-    failure the operator sees once.
+    declared with ``INDEXMISSING``. That holds for vector fields too, so a vector
+    field passes only when it declares ``index_missing``. Otherwise the profile
+    parses fine and then fails every single call as a *retryable* backend error, so
+    a model retries a permanently broken tool forever. Catching it here turns that
+    into a startup failure the operator sees once.
     """
     if profile.lock.filter is None:
         return
@@ -172,11 +171,6 @@ def _validate_locked_exists_fields(
         if field is None:
             continue  # resolve_locked_filter reports unknown fields.
 
-        if field_name in vector_field_names:
-            raise ValueError(
-                f"custom_tools '{profile.name}' lock.filter cannot use 'exists' on "
-                f"vector field '{field_name}'"
-            )
         if not getattr(field.attrs, "index_missing", False):
             raise ValueError(
                 f"custom_tools '{profile.name}' lock.filter uses 'exists' on field "
