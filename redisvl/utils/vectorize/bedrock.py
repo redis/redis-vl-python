@@ -164,9 +164,15 @@ class BedrockVectorizer(BaseVectorizer):
         aws_secret_access_key = api_config.get(
             "aws_secret_access_key", os.getenv("AWS_SECRET_ACCESS_KEY")
         )
-        aws_session_token = api_config.get(
-            "aws_session_token", os.getenv("AWS_SESSION_TOKEN")
+        # An environment session token only pairs with environment keys; explicit
+        # keys from api_config must not inherit a leftover AWS_SESSION_TOKEN.
+        keys_from_api_config = bool(
+            api_config.get("aws_access_key_id")
+            or api_config.get("aws_secret_access_key")
         )
+        aws_session_token = api_config.get("aws_session_token")
+        if aws_session_token is None and not keys_from_api_config:
+            aws_session_token = os.getenv("AWS_SESSION_TOKEN")
         aws_region = api_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
 
         # Static keys must be supplied as a pair. When neither is given, fall back

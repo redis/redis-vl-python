@@ -58,3 +58,16 @@ def test_default_credential_chain_when_no_keys(boto3_mock):
 def test_partial_static_keys_raise(boto3_mock):
     with pytest.raises(ValueError, match="together"):
         _make(api_config={"aws_access_key_id": "AKIA"})
+
+
+def test_env_session_token_not_mixed_with_explicit_keys(boto3_mock, monkeypatch):
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "leftover")
+    _make(
+        api_config={
+            "aws_access_key_id": "AKIA",
+            "aws_secret_access_key": "secret",
+        }
+    )
+    kwargs = boto3_mock.client.call_args.kwargs
+    assert kwargs["aws_access_key_id"] == "AKIA"
+    assert "aws_session_token" not in kwargs
