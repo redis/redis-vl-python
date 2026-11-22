@@ -31,6 +31,7 @@ class BedrockVectorizer(BaseVectorizer):
     directly in the `api_config` dictionary or through environment variables:
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
+    - AWS_SESSION_TOKEN (optional, for temporary credentials)
     - AWS_REGION (defaults to us-east-1)
 
     The vectorizer supports synchronous operations with batch processing and
@@ -104,8 +105,9 @@ class BedrockVectorizer(BaseVectorizer):
         Args:
             model (str): The Bedrock model ID to use. Defaults to amazon.titan-embed-text-v2:0
             api_config (Optional[Dict[str, str]]): AWS credentials and config.
-                Can include: aws_access_key_id, aws_secret_access_key, aws_region
-                If not provided, will use environment variables.
+                Can include: aws_access_key_id, aws_secret_access_key,
+                aws_session_token, aws_region. If not provided, will use
+                environment variables, then boto3's default credential chain.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
@@ -113,7 +115,7 @@ class BedrockVectorizer(BaseVectorizer):
                 better performance with repeated texts. Defaults to None.
 
         Raises:
-            ValueError: If credentials are not provided in config or environment.
+            ValueError: If only one of the access key / secret key is provided.
             ImportError: If boto3 is not installed.
             ValueError: If an invalid dtype is provided.
         """
@@ -143,7 +145,7 @@ class BedrockVectorizer(BaseVectorizer):
 
         Raises:
             ImportError: If boto3 is not installed
-            ValueError: If AWS credentials are not provided
+            ValueError: If only one of the access key / secret key is provided
         """
         try:
             import boto3  # type: ignore
@@ -162,22 +164,31 @@ class BedrockVectorizer(BaseVectorizer):
         aws_secret_access_key = api_config.get(
             "aws_secret_access_key", os.getenv("AWS_SECRET_ACCESS_KEY")
         )
+        aws_session_token = api_config.get(
+            "aws_session_token", os.getenv("AWS_SESSION_TOKEN")
+        )
         aws_region = api_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
 
-        if not aws_access_key_id or not aws_secret_access_key:
+        # Static keys must be supplied as a pair. When neither is given, fall back
+        # to boto3's default credential chain (SSO, IAM roles, shared profiles...).
+        if bool(aws_access_key_id) != bool(aws_secret_access_key):
             raise ValueError(
-                "AWS credentials required. Provide via api_config or environment variables "
-                "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+                "Both aws_access_key_id and aws_secret_access_key must be provided "
+                "together (via api_config or the AWS_ACCESS_KEY_ID and "
+                "AWS_SECRET_ACCESS_KEY environment variables), or neither to use "
+                "the default AWS credential chain."
             )
 
+        client_kwargs: dict[str, Any] = {"region_name": aws_region}
+        if aws_access_key_id and aws_secret_access_key:
+            client_kwargs["aws_access_key_id"] = aws_access_key_id
+            client_kwargs["aws_secret_access_key"] = aws_secret_access_key
+            if aws_session_token:
+                client_kwargs["aws_session_token"] = aws_session_token
+        client_kwargs.update(kwargs)
+
         # Store client as a regular attribute instead of PrivateAttr
-        self._client = boto3.client(
-            "bedrock-runtime",
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            region_name=aws_region,
-            **kwargs,
-        )
+        self._client = boto3.client("bedrock-runtime", **client_kwargs)
 
     def _set_model_dims(self) -> int:
         """
