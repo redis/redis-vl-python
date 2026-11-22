@@ -108,12 +108,18 @@ class VoyageAIReranker(BaseReranker):
         if not isinstance(docs, list):
             raise ValueError("Docs to rerank should either be a list of str or dict.")
 
-        if all(isinstance(doc, dict) and "content" in doc for doc in docs):
-            texts = [
-                str(doc["content"])
-                for doc in docs
-                if isinstance(doc, dict) and "content" in doc
-            ]
+        rank_by = kwargs.get("rank_by", self.rank_by) or []
+        rank_by = [rank_by] if isinstance(rank_by, str) else rank_by
+
+        if rank_by and all(isinstance(doc, dict) for doc in docs):
+            texts = []
+            for doc in docs:
+                missing = [key for key in rank_by if key not in doc]
+                if missing:
+                    raise ValueError(f"Document is missing rank_by field(s): {missing}")
+                texts.append(" ".join(str(doc[key]) for key in rank_by))
+        elif all(isinstance(doc, dict) and "content" in doc for doc in docs):
+            texts = [str(doc["content"]) for doc in docs]
         else:
             texts = [str(doc) for doc in docs]
 
