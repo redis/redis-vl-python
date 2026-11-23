@@ -1830,7 +1830,10 @@ class SearchIndex(BaseSearchIndex):
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
+                # Expired matched documents produce an empty row with no __key.
+                keys = _dedupe_keys(
+                    (_agg_row_to_key(row) for row in result.rows if row), seen
+                )
                 if keys:
                     yield keys
                 if not cid or result.cursor is None:
@@ -3159,7 +3162,10 @@ class AsyncSearchIndex(BaseSearchIndex):
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
+                # Expired matched documents produce an empty row with no __key.
+                keys = _dedupe_keys(
+                    (_agg_row_to_key(row) for row in result.rows if row), seen
+                )
                 if keys:
                     yield keys
                 if not cid or result.cursor is None:

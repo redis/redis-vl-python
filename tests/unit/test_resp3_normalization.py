@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from redis.commands.search.aggregation import AggregateResult, Cursor
 from redis.exceptions import ResponseError
@@ -7,8 +9,11 @@ try:
 except ImportError:
     HybridResult = None  # type: ignore[misc, assignment]
 
+from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.index.index import process_aggregate_results
+from redisvl.query.filter import Tag
 from redisvl.redis.utils import to_aggregate_result, to_hybrid_result
+from redisvl.schema import IndexSchema
 
 
 def test_passthrough():
@@ -224,3 +229,61 @@ def test_hybrid_search_resp3():
     }
     with pytest.raises(ResponseError, match="Failed hybrid search sub-query"):
         to_hybrid_result(raw_hybrid_err)
+
+
+def test_iter_keys_by_filter_skips_expired_null_extra_attributes():
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test_idx", "prefix": "test_idx"},
+            "fields": [{"name": "cat", "type": "tag"}],
+        }
+    )
+    client = MagicMock()
+    reply = [
+        {
+            "total_results": 2,
+            "results": [
+                {"extra_attributes": {"__key": "doc:1"}},
+                {"extra_attributes": None},
+            ],
+            "warning": [],
+        },
+        0,
+    ]
+    client.ft.return_value.aggregate.return_value = reply
+    index = SearchIndex(schema=schema, redis_client=client)
+
+    batches = list(index._iter_keys_by_filter(Tag("cat") == "a", batch_size=2))
+    assert batches == [["doc:1"]]
+
+
+@pytest.mark.asyncio
+async def test_async_iter_keys_by_filter_skips_expired_null_extra_attributes():
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test_idx", "prefix": "test_idx"},
+            "fields": [{"name": "cat", "type": "tag"}],
+        }
+    )
+    client = MagicMock()
+    reply = [
+        {
+            "total_results": 2,
+            "results": [
+                {"extra_attributes": {"__key": "doc:1"}},
+                {"extra_attributes": None},
+            ],
+            "warning": [],
+        },
+        0,
+    ]
+    ft_mock = MagicMock()
+    ft_mock.aggregate = AsyncMock(return_value=reply)
+    client.ft.return_value = ft_mock
+    index = AsyncSearchIndex(schema=schema, redis_client=client)
+
+    batches = [
+        batch
+        async for batch in index._iter_keys_by_filter(Tag("cat") == "a", batch_size=2)
+    ]
+    assert batches == [["doc:1"]]
