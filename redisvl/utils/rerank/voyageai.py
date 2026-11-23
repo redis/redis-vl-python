@@ -119,7 +119,10 @@ class VoyageAIReranker(BaseReranker):
                     raise ValueError(f"Document is missing rank_by field(s): {missing}")
                 texts.append(" ".join(str(doc[key]) for key in rank_by))
         elif all(isinstance(doc, dict) and "content" in doc for doc in docs):
-            texts = [str(doc["content"]) for doc in docs]
+            texts = [
+                str(doc["content"]) if isinstance(doc, dict) else str(doc)
+                for doc in docs
+            ]
         else:
             texts = [str(doc) for doc in docs]
 
