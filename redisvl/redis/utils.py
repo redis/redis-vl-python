@@ -1,7 +1,7 @@
 import hashlib
 import itertools
 import time
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from redis import RedisCluster
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
@@ -39,103 +39,138 @@ try:
 except ImportError:
     HybridResult = None  # type: ignore[misc, assignment]
 
-T = TypeVar("T")
-
 
 def value(mapping: dict[Any, Any], key: str, default: Any = None) -> Any:
     """Safely get a key from a mapping supporting both string and bytes keys."""
     return mapping.get(key, mapping.get(key.encode(), default))
 
 
-def normalize_resp3_result(reply: Any, target_type: type[T]) -> T:
-    """Normalize a raw RESP3 reply into AggregateResult or HybridResult.
+def to_aggregate_result(reply: Any, request: Any = None) -> AggregateResult:
+    """Return a parsed FT.AGGREGATE reply as an AggregateResult on any protocol.
 
-    Detects raw RESP3 responses via isinstance(reply, (dict, list)).
-    Passes through responses already matching target_type or unrecognized types.
+    A RESP3 client gets the reply back as a dict or list rather than an
+    AggregateResult; it is converted here. Anything else, such as the
+    AggregateResult redis-py builds from a RESP2 reply, is returned unchanged.
+
+    Args:
+        reply: The raw reply from Redis or redis-py.
+        request: The original request (AggregateRequest or Cursor). When request is
+            a Cursor, its cid is mutated in place and the same object is returned
+            as result.cursor, preserving its count.
     """
-    if isinstance(reply, target_type):
+    if isinstance(reply, AggregateResult):
         return reply
 
     if not isinstance(reply, (dict, list)):
-        return cast(T, reply)
+        return cast(AggregateResult, reply)
 
-    if target_type is AggregateResult:
-        has_cursor = False
-        cursor_id = 0
-        if isinstance(reply, list):
-            data = reply[0] if len(reply) > 0 else {}
-            cursor_id = reply[1] if len(reply) > 1 else 0
-            has_cursor = True
-        elif isinstance(reply, dict):
-            data = reply
-        else:
-            return cast(T, reply)
+    has_cursor = False
+    cursor_id = 0
+    if isinstance(reply, list):
+        data = reply[0] if len(reply) > 0 else {}
+        cursor_id = int(reply[1]) if len(reply) > 1 else 0
+        has_cursor = True
+    elif isinstance(reply, dict):
+        data = reply
+    else:
+        return cast(AggregateResult, reply)
 
-        if not isinstance(data, dict):
-            return cast(T, reply)
+    if not isinstance(data, dict):
+        return cast(AggregateResult, reply)
 
-        err = value(data, "error")
-        if err:
-            if isinstance(err, bytes):
-                err = err.decode("utf-8", errors="replace")
-            raise ResponseError(str(err))
+    err = value(data, "error")
+    if err:
+        if isinstance(err, bytes):
+            err = err.decode("utf-8", errors="replace")
+        raise ResponseError(str(err))
 
-        total = value(data, "total_results", 0)
-        raw_warnings = value(data, "warning")
-        if raw_warnings is None:
-            raw_warnings = value(data, "warnings", [])
-        warnings = (
-            [
-                w.decode("utf-8", errors="replace") if isinstance(w, bytes) else str(w)
-                for w in raw_warnings
-            ]
-            if raw_warnings
-            else []
-        )
+    total = value(data, "total_results", 0)
+    raw_warnings = value(data, "warning")
+    if raw_warnings is None:
+        raw_warnings = value(data, "warnings", [])
+    warnings = (
+        [
+            w.decode("utf-8", errors="replace") if isinstance(w, bytes) else str(w)
+            for w in raw_warnings
+        ]
+        if raw_warnings
+        else []
+    )
 
-        raw_results = value(data, "results", [])
-        rows: list[list[Any]] = []
+    raw_results = value(data, "results", [])
+    rows: list[list[Any]] = []
+    if isinstance(raw_results, list):
         for item in raw_results:
             if isinstance(item, dict):
-                attrs = value(item, "extra_attributes", {})
+                attrs = value(item, "extra_attributes")
                 if isinstance(attrs, dict):
                     flat: list[Any] = []
                     for k, v in attrs.items():
                         flat.append(k)
                         flat.append(v)
                     rows.append(flat)
+                else:
+                    rows.append([])
             elif isinstance(item, list):
                 rows.append(list(item))
+            else:
+                rows.append([])
 
-        cursor = Cursor(cursor_id) if has_cursor else None
-        res = AggregateResult(rows, cursor, None)  # type: ignore[arg-type]
-        res.total = total or 0
-        res.warnings = warnings
-        return res  # type: ignore[return-value]
+    cursor: Cursor | None = None
+    if has_cursor:
+        if isinstance(request, Cursor):
+            request.cid = cursor_id
+            cursor = request
+        else:
+            cursor = Cursor(cursor_id)
 
-    if HybridResult is not None and issubclass(target_type, HybridResult):
-        if not isinstance(reply, dict):
-            return cast(T, reply)
+    res = AggregateResult(rows, cursor, None)  # type: ignore[arg-type]
+    res.total = total or 0
+    res.warnings = warnings
+    return res
 
-        err = value(reply, "error")
-        if err:
-            if isinstance(err, bytes):
-                err = err.decode("utf-8", errors="replace")
-            raise ResponseError(str(err))
 
-        total = value(reply, "total_results", 0)
-        results = value(reply, "results", [])
-        warnings = value(reply, "warnings", [])
-        execution_time = value(reply, "execution_time", 0.0)
+def to_hybrid_result(reply: Any, request: Any = None) -> Any:
+    """Return a parsed FT.HYBRID reply as a HybridResult on any protocol.
 
-        return HybridResult(  # type: ignore[return-value]
-            total_results=int(total or 0),
-            results=list(results) if isinstance(results, list) else [],
-            warnings=list(warnings) if isinstance(warnings, list) else [],
-            execution_time=float(execution_time or 0.0),
-        )
+    A RESP3 client gets the reply back as a dict rather than a HybridResult;
+    it is converted here. Anything else, such as the HybridResult redis-py
+    builds from a RESP2 reply, is returned unchanged.
+    """
+    if HybridResult is None:
+        return reply
 
-    return cast(T, reply)
+    if isinstance(reply, HybridResult):
+        return reply
+
+    if not isinstance(reply, dict):
+        return reply
+
+    err = value(reply, "error")
+    if err:
+        if isinstance(err, bytes):
+            err = err.decode("utf-8", errors="replace")
+        raise ResponseError(str(err))
+
+    total = value(reply, "total_results", 0)
+    results = value(reply, "results", [])
+    warnings = value(reply, "warnings", [])
+    execution_time = value(reply, "execution_time", 0.0)
+
+    parsed_results: list[dict[Any, Any]] = []
+    if isinstance(results, list):
+        for item in results:
+            if isinstance(item, dict):
+                parsed_results.append(item)
+            elif isinstance(item, (list, tuple)):
+                parsed_results.append(make_dict(list(item)))
+
+    return HybridResult(
+        total_results=int(total or 0),
+        results=parsed_results,
+        warnings=list(warnings) if isinstance(warnings, list) else [],
+        execution_time=float(execution_time or 0.0),
+    )
 
 
 def make_dict(values: list[Any]) -> dict[Any, Any]:

@@ -7,25 +7,25 @@ try:
 except ImportError:
     HybridResult = None  # type: ignore[misc, assignment]
 
-from redisvl.redis.utils import normalize_resp3_result
+from redisvl.index.index import process_aggregate_results
+from redisvl.redis.utils import to_aggregate_result, to_hybrid_result
 
 
 def test_passthrough():
     # Pass-through for AggregateResult
     agg = AggregateResult([], None, None)
-    assert normalize_resp3_result(agg, target_type=AggregateResult) is agg
+    assert to_aggregate_result(agg) is agg
 
     # Pass-through for HybridResult
     if HybridResult is not None:
         hyb = HybridResult(total_results=0, results=[], warnings=[], execution_time=0.0)
-        assert normalize_resp3_result(hyb, target_type=HybridResult) is hyb
+        assert to_hybrid_result(hyb) is hyb
 
     # Pass-through for non-dict/non-list
-    assert (
-        normalize_resp3_result("some_string", target_type=AggregateResult)
-        == "some_string"
-    )
-    assert normalize_resp3_result(12345, target_type=AggregateResult) == 12345
+    assert to_aggregate_result("some_string") == "some_string"
+    assert to_aggregate_result(12345) == 12345
+    assert to_hybrid_result("some_string") == "some_string"
+    assert to_hybrid_result(12345) == 12345
 
 
 def test_aggregate_resp3_decode_responses_true():
@@ -39,7 +39,7 @@ def test_aggregate_resp3_decode_responses_true():
         "format": "STRING",
         "attributes": [],
     }
-    res = normalize_resp3_result(raw_wire, target_type=AggregateResult)
+    res = to_aggregate_result(raw_wire)
     assert isinstance(res, AggregateResult)
     assert res.cursor is None
     assert len(res.rows) == 2
@@ -59,7 +59,7 @@ def test_aggregate_resp3_decode_responses_false():
         b"format": b"STRING",
         b"attributes": [],
     }
-    res = normalize_resp3_result(raw_wire, target_type=AggregateResult)
+    res = to_aggregate_result(raw_wire)
     assert isinstance(res, AggregateResult)
     assert res.cursor is None
     assert len(res.rows) == 1
@@ -69,6 +69,9 @@ def test_aggregate_resp3_decode_responses_false():
 
 
 def test_aggregate_resp3_cursor_batch_and_final():
+    cursor = Cursor(11111)
+    cursor.count = 5
+
     # Initial / Intermediate cursor read
     raw_cursor_1 = [
         {
@@ -81,10 +84,11 @@ def test_aggregate_resp3_cursor_batch_and_final():
         },
         987654321,
     ]
-    res1 = normalize_resp3_result(raw_cursor_1, target_type=AggregateResult)
+    res1 = to_aggregate_result(raw_cursor_1, cursor)
     assert isinstance(res1, AggregateResult)
-    assert res1.cursor is not None
-    assert res1.cursor.cid == 987654321
+    assert res1.cursor is cursor
+    assert cursor.cid == 987654321
+    assert cursor.count == 5
     assert len(res1.rows) == 2
     assert res1.rows[0] == ["__key", "doc:0"]
 
@@ -99,10 +103,11 @@ def test_aggregate_resp3_cursor_batch_and_final():
         },
         0,
     ]
-    res_final = normalize_resp3_result(raw_cursor_final, target_type=AggregateResult)
+    res_final = to_aggregate_result(raw_cursor_final, cursor)
     assert isinstance(res_final, AggregateResult)
-    assert res_final.cursor is not None
-    assert res_final.cursor.cid == 0
+    assert res_final.cursor is cursor
+    assert cursor.cid == 0
+    assert cursor.count == 5
     assert len(res_final.rows) == 1
     assert res_final.rows[0] == ["__key", "doc:2"]
 
@@ -115,7 +120,7 @@ def test_aggregate_empty_results():
         "format": "STRING",
         "attributes": [],
     }
-    res = normalize_resp3_result(raw_empty, target_type=AggregateResult)
+    res = to_aggregate_result(raw_empty)
     assert isinstance(res, AggregateResult)
     assert res.rows == []
     assert getattr(res, "total", None) == 0
@@ -135,12 +140,35 @@ def test_aggregate_rows_empty_or_missing_extra_attributes():
         ],
         "warning": [],
     }
-    res = normalize_resp3_result(raw_rows, target_type=AggregateResult)
+    res = to_aggregate_result(raw_rows)
     assert isinstance(res, AggregateResult)
     assert len(res.rows) == 3
     assert res.rows[0] == []
     assert res.rows[1] == []
     assert res.rows[2] == ["title", "item 3"]
+
+
+def test_aggregate_rows_extra_attributes_none_with_process_aggregate_results():
+    # When an indexed document expires during execution (Redis 8.8+ race),
+    # extra_attributes arrives explicitly None. The adapter must emit an empty row []
+    # so that process_aggregate_results detects the dropped document and reports
+    # dropped_count == 1 and complete == False.
+    raw_none = {
+        "total_results": 1,
+        "results": [
+            {"extra_attributes": None, "values": []},
+        ],
+        "warning": [],
+    }
+    res = to_aggregate_result(raw_none)
+    assert isinstance(res, AggregateResult)
+    assert len(res.rows) == 1
+    assert res.rows[0] == []
+
+    processed = process_aggregate_results(res, None, None)  # type: ignore[arg-type]
+    assert processed.dropped_count == 1
+    assert processed.complete is False
+    assert len(processed) == 0
 
 
 def test_error_handling():
@@ -151,7 +179,7 @@ def test_error_handling():
         "total_results": 0,
     }
     with pytest.raises(ResponseError, match="Syntax error in aggregation"):
-        normalize_resp3_result(raw_with_error, target_type=AggregateResult)
+        to_aggregate_result(raw_with_error)
 
     # Byte error in aggregate map raises ResponseError
     raw_with_byte_error = {
@@ -159,7 +187,7 @@ def test_error_handling():
         b"results": [],
     }
     with pytest.raises(ResponseError, match="Unknown function"):
-        normalize_resp3_result(raw_with_byte_error, target_type=AggregateResult)
+        to_aggregate_result(raw_with_byte_error)
 
     # Empty error does NOT raise
     raw_with_empty_error = {
@@ -167,7 +195,7 @@ def test_error_handling():
         "results": [],
         "total_results": 0,
     }
-    res = normalize_resp3_result(raw_with_empty_error, target_type=AggregateResult)
+    res = to_aggregate_result(raw_with_empty_error)
     assert isinstance(res, AggregateResult)
 
 
@@ -182,7 +210,7 @@ def test_hybrid_search_resp3():
         "warnings": ["warning 1"],
         "execution_time": 0.123,
     }
-    res = normalize_resp3_result(raw_hybrid, target_type=HybridResult)
+    res = to_hybrid_result(raw_hybrid)
     assert isinstance(res, HybridResult)
     assert res.total_results == 2
     assert len(res.results) == 2
@@ -195,4 +223,4 @@ def test_hybrid_search_resp3():
         "error": "Failed hybrid search sub-query",
     }
     with pytest.raises(ResponseError, match="Failed hybrid search sub-query"):
-        normalize_resp3_result(raw_hybrid_err, target_type=HybridResult)
+        to_hybrid_result(raw_hybrid_err)

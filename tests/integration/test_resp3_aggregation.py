@@ -318,23 +318,24 @@ class MockVectorizer(BaseVectorizer):
     model: str = "mock"
     dims: int = 3
 
+    def _get_vec(self, text: str):
+        t = text.lower()
+        if any(w in t for w in ["football", "soccer", "basketball", "game", "sports"]):
+            return [0.0, 0.0, 1.0]
+        return [1.0, 0.0, 0.0]
+
     def embed(self, text: str, as_buffer: bool = False, **kwargs):
-        vec = [0.1, 0.2, 0.3]
+        vec = self._get_vec(text)
         return array_to_buffer(vec, "float32") if as_buffer else vec
 
     def embed_many(self, texts: list[str], as_buffer: bool = False, **kwargs):
-        vec = [0.1, 0.2, 0.3]
-        v = array_to_buffer(vec, "float32") if as_buffer else vec
-        return [v for _ in texts]
+        return [self.embed(t, as_buffer=as_buffer) for t in texts]
 
     async def aembed(self, text: str, as_buffer: bool = False, **kwargs):
-        vec = [0.1, 0.2, 0.3]
-        return array_to_buffer(vec, "float32") if as_buffer else vec
+        return self.embed(text, as_buffer=as_buffer)
 
     async def aembed_many(self, texts: list[str], as_buffer: bool = False, **kwargs):
-        vec = [0.1, 0.2, 0.3]
-        v = array_to_buffer(vec, "float32") if as_buffer else vec
-        return [v for _ in texts]
+        return self.embed_many(texts, as_buffer=as_buffer)
 
 
 def test_semantic_router_route_match(redis_url, redis_test_name):
@@ -369,9 +370,288 @@ def test_semantic_router_route_match(redis_url, redis_test_name):
     match2 = router2("software development and computers")
     match3 = router3("software development and computers")
 
+    assert match2 is not None
     assert match3 is not None
-    assert match2.name == match3.name
+    assert match2.name == "tech"
+    assert match3.name == "tech"
     assert pytest.approx(match2.distance, rel=1e-3) == match3.distance
 
     router2.delete()
     router3.delete()
+
+
+@pytest.mark.parametrize("protocol", [2, 3])
+def test_aggregate_cursor_loop(redis_url, test_schema, test_docs, protocol):
+    client = Redis.from_url(redis_url, protocol=protocol)
+    index = SearchIndex(schema=test_schema, redis_client=client)
+    index.create(overwrite=True, drop=True)
+
+    def hash_preprocess(item: dict) -> dict:
+        return {**item, "v": array_to_buffer(item["v"], "float32")}
+
+    index.load(test_docs, preprocess=hash_preprocess)
+
+    try:
+        req = AggregateRequest("*").load("@txt").cursor(count=1)
+        res = index.aggregate(req)
+        assert res.cursor is not None
+        assert res.cursor.cid != 0
+        cursor = res.cursor
+        initial_count = cursor.count
+
+        iterations = 0
+        while cursor.cid:
+            prev_cursor = cursor
+            res = index.aggregate(cursor)
+            assert res.cursor is cursor
+            assert res.cursor is prev_cursor
+            assert cursor.count == initial_count
+            iterations += 1
+            if iterations > 20:
+                pytest.fail("Cursor loop did not terminate (infinite loop)")
+
+        assert iterations > 0
+        assert cursor.cid == 0
+        assert cursor.count == initial_count
+    finally:
+        index.delete(drop=True)
+
+
+@pytest.mark.parametrize("protocol", [2, 3])
+@pytest.mark.asyncio
+async def test_aggregate_cursor_loop_async(redis_url, test_schema, test_docs, protocol):
+    aclient = AsyncRedis.from_url(redis_url, protocol=protocol)
+    aindex = AsyncSearchIndex(schema=test_schema, redis_client=aclient)
+    await aindex.create(overwrite=True, drop=True)
+
+    def hash_preprocess(item: dict) -> dict:
+        return {**item, "v": array_to_buffer(item["v"], "float32")}
+
+    await aindex.load(test_docs, preprocess=hash_preprocess)
+
+    try:
+        req = AggregateRequest("*").load("@txt").cursor(count=1)
+        res = await aindex.aggregate(req)
+        assert res.cursor is not None
+        assert res.cursor.cid != 0
+        cursor = res.cursor
+        initial_count = cursor.count
+
+        iterations = 0
+        while cursor.cid:
+            prev_cursor = cursor
+            res = await aindex.aggregate(cursor)
+            assert res.cursor is cursor
+            assert res.cursor is prev_cursor
+            assert cursor.count == initial_count
+            iterations += 1
+            if iterations > 20:
+                pytest.fail("Cursor loop did not terminate (infinite loop)")
+
+        assert iterations > 0
+        assert cursor.cid == 0
+        assert cursor.count == initial_count
+    finally:
+        await aindex.delete(drop=True)
+
+
+def test_update_by_filter_protocol_3(redis_url, redis_test_name):
+    name = redis_test_name("upd_flt_p3")
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": name, "prefix": f"{name}:", "storage_type": "hash"},
+            "fields": [
+                {"name": "tag", "type": "tag"},
+                {"name": "txt", "type": "text"},
+                {"name": "num", "type": "numeric"},
+            ],
+        }
+    )
+    r3 = Redis.from_url(redis_url, protocol=3)
+    idx = SearchIndex(schema=schema, redis_client=r3)
+    idx.create(overwrite=True, drop=True)
+
+    docs = [
+        {"id": "doc1", "tag": "news", "txt": "first news", "num": 10},
+        {"id": "doc2", "tag": "news", "txt": "second news", "num": 20},
+        {"id": "doc3", "tag": "sports", "txt": "sports news", "num": 30},
+        {"id": "doc4", "tag": "tech", "txt": "tech article", "num": 40},
+    ]
+    idx.load(docs, id_field="id")
+
+    from redisvl.query.filter import Tag
+
+    try:
+        filter_expr = Tag("tag") == "news"
+        res = idx.update_by_filter(filter_expr, values={"num": 999}, batch_size=1)
+        assert res.matched == 2
+        assert res.processed == 2
+        assert res.completed is True
+
+        d1 = idx.fetch("doc1")
+        d2 = idx.fetch("doc2")
+        assert d1 is not None and int(d1["num"]) == 999
+        assert d2 is not None and int(d2["num"]) == 999
+
+        d3 = idx.fetch("doc3")
+        d4 = idx.fetch("doc4")
+        assert (
+            d3 is not None
+            and int(d3["num"]) == 30
+            and (d3["tag"] in ("sports", b"sports"))
+        )
+        assert (
+            d4 is not None and int(d4["num"]) == 40 and (d4["tag"] in ("tech", b"tech"))
+        )
+    finally:
+        idx.delete(drop=True)
+
+
+def test_drop_by_filter_protocol_3(redis_url, redis_test_name):
+    name = redis_test_name("drop_flt_p3")
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": name, "prefix": f"{name}:", "storage_type": "hash"},
+            "fields": [
+                {"name": "tag", "type": "tag"},
+                {"name": "txt", "type": "text"},
+                {"name": "num", "type": "numeric"},
+            ],
+        }
+    )
+    r3 = Redis.from_url(redis_url, protocol=3)
+    idx = SearchIndex(schema=schema, redis_client=r3)
+    idx.create(overwrite=True, drop=True)
+
+    docs = [
+        {"id": "doc1", "tag": "news", "txt": "first news", "num": 10},
+        {"id": "doc2", "tag": "news", "txt": "second news", "num": 20},
+        {"id": "doc3", "tag": "sports", "txt": "sports news", "num": 30},
+        {"id": "doc4", "tag": "tech", "txt": "tech article", "num": 40},
+    ]
+    idx.load(docs, id_field="id")
+
+    from redisvl.query.filter import Tag
+
+    try:
+        filter_expr = Tag("tag") == "news"
+        res = idx.drop_by_filter(filter_expr, batch_size=1)
+        assert res.matched == 2
+        assert res.processed == 2
+        assert res.completed is True
+
+        # Assert matching documents were actually deleted
+        assert not idx.fetch("doc1")
+        assert not idx.fetch("doc2")
+        assert idx.client.exists(idx.key("doc1")) == 0
+        assert idx.client.exists(idx.key("doc2")) == 0
+
+        d3 = idx.fetch("doc3")
+        d4 = idx.fetch("doc4")
+        assert d3 is not None and int(d3["num"]) == 30
+        assert d4 is not None and int(d4["num"]) == 40
+    finally:
+        idx.delete(drop=True)
+
+
+@pytest.mark.asyncio
+async def test_update_by_filter_protocol_3_async(redis_url, redis_test_name):
+    name = redis_test_name("upd_flt_p3_a")
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": name, "prefix": f"{name}:", "storage_type": "hash"},
+            "fields": [
+                {"name": "tag", "type": "tag"},
+                {"name": "txt", "type": "text"},
+                {"name": "num", "type": "numeric"},
+            ],
+        }
+    )
+    ar3 = AsyncRedis.from_url(redis_url, protocol=3)
+    aidx = AsyncSearchIndex(schema=schema, redis_client=ar3)
+    await aidx.create(overwrite=True, drop=True)
+
+    docs = [
+        {"id": "doc1", "tag": "news", "txt": "first news", "num": 10},
+        {"id": "doc2", "tag": "news", "txt": "second news", "num": 20},
+        {"id": "doc3", "tag": "sports", "txt": "sports news", "num": 30},
+        {"id": "doc4", "tag": "tech", "txt": "tech article", "num": 40},
+    ]
+    await aidx.load(docs, id_field="id")
+
+    from redisvl.query.filter import Tag
+
+    try:
+        filter_expr = Tag("tag") == "news"
+        res = await aidx.update_by_filter(
+            filter_expr, values={"num": 999}, batch_size=1
+        )
+        assert res.matched == 2
+        assert res.processed == 2
+        assert res.completed is True
+
+        d1 = await aidx.fetch("doc1")
+        d2 = await aidx.fetch("doc2")
+        assert d1 is not None and int(d1["num"]) == 999
+        assert d2 is not None and int(d2["num"]) == 999
+
+        d3 = await aidx.fetch("doc3")
+        d4 = await aidx.fetch("doc4")
+        assert (
+            d3 is not None
+            and int(d3["num"]) == 30
+            and (d3["tag"] in ("sports", b"sports"))
+        )
+        assert (
+            d4 is not None and int(d4["num"]) == 40 and (d4["tag"] in ("tech", b"tech"))
+        )
+    finally:
+        await aidx.delete(drop=True)
+
+
+@pytest.mark.asyncio
+async def test_drop_by_filter_protocol_3_async(redis_url, redis_test_name):
+    name = redis_test_name("drop_flt_p3_a")
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": name, "prefix": f"{name}:", "storage_type": "hash"},
+            "fields": [
+                {"name": "tag", "type": "tag"},
+                {"name": "txt", "type": "text"},
+                {"name": "num", "type": "numeric"},
+            ],
+        }
+    )
+    ar3 = AsyncRedis.from_url(redis_url, protocol=3)
+    aidx = AsyncSearchIndex(schema=schema, redis_client=ar3)
+    await aidx.create(overwrite=True, drop=True)
+
+    docs = [
+        {"id": "doc1", "tag": "news", "txt": "first news", "num": 10},
+        {"id": "doc2", "tag": "news", "txt": "second news", "num": 20},
+        {"id": "doc3", "tag": "sports", "txt": "sports news", "num": 30},
+        {"id": "doc4", "tag": "tech", "txt": "tech article", "num": 40},
+    ]
+    await aidx.load(docs, id_field="id")
+
+    from redisvl.query.filter import Tag
+
+    try:
+        filter_expr = Tag("tag") == "news"
+        res = await aidx.drop_by_filter(filter_expr, batch_size=1)
+        assert res.matched == 2
+        assert res.processed == 2
+        assert res.completed is True
+
+        # Assert matching documents were actually deleted
+        assert not (await aidx.fetch("doc1"))
+        assert not (await aidx.fetch("doc2"))
+        assert await aidx.client.exists(aidx.key("doc1")) == 0
+        assert await aidx.client.exists(aidx.key("doc2")) == 0
+
+        d3 = await aidx.fetch("doc3")
+        d4 = await aidx.fetch("doc4")
+        assert d3 is not None and int(d3["num"]) == 30
+        assert d4 is not None and int(d4["num"]) == 40
+    finally:
+        await aidx.delete(drop=True)
