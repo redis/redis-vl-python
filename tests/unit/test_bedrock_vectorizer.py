@@ -38,12 +38,17 @@ def test_session_token_is_forwarded(boto3_mock):
     assert kwargs["aws_access_key_id"] == "AKIA"
 
 
-def test_session_token_from_env(boto3_mock, monkeypatch):
+def test_env_credentials_left_to_boto3(boto3_mock, monkeypatch):
+    # Environment credentials (incl. the session token) are resolved by boto3
+    # itself so botocore keeps its refresh support; we must not copy them.
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
     monkeypatch.setenv("AWS_SESSION_TOKEN", "token")
     _make()
-    assert boto3_mock.client.call_args.kwargs["aws_session_token"] == "token"
+    kwargs = boto3_mock.client.call_args.kwargs
+    assert "aws_access_key_id" not in kwargs
+    assert "aws_secret_access_key" not in kwargs
+    assert "aws_session_token" not in kwargs
 
 
 def test_default_credential_chain_when_no_keys(boto3_mock):
@@ -71,3 +76,56 @@ def test_env_session_token_not_mixed_with_explicit_keys(boto3_mock, monkeypatch)
     kwargs = boto3_mock.client.call_args.kwargs
     assert kwargs["aws_access_key_id"] == "AKIA"
     assert "aws_session_token" not in kwargs
+
+
+def test_session_token_without_keys_raises(boto3_mock):
+    with pytest.raises(ValueError, match="aws_session_token requires"):
+        _make(api_config={"aws_session_token": "token"})
+    boto3_mock.client.assert_not_called()
+
+
+def test_conflicting_credentials_raise(boto3_mock):
+    with pytest.raises(ValueError, match="Conflicting"):
+        _make(
+            api_config={
+                "aws_access_key_id": "AKIA",
+                "aws_secret_access_key": "secret",
+            },
+            aws_access_key_id="OTHER",
+        )
+    boto3_mock.client.assert_not_called()
+
+
+def test_unrelated_boto3_kwargs_forwarded(boto3_mock):
+    _make(
+        api_config={
+            "aws_access_key_id": "AKIA",
+            "aws_secret_access_key": "secret",
+        },
+        endpoint_url="http://localhost:4566",
+    )
+    kwargs = boto3_mock.client.call_args.kwargs
+    assert kwargs["endpoint_url"] == "http://localhost:4566"
+    assert kwargs["aws_access_key_id"] == "AKIA"
+
+
+def test_no_credentials_error_not_retried(boto3_mock):
+    from botocore.exceptions import NoCredentialsError
+
+    vec = _make()
+    vec._client.invoke_model.side_effect = NoCredentialsError()
+    with pytest.raises(NoCredentialsError):
+        vec._embed("hello")
+    assert vec._client.invoke_model.call_count == 1
+    with pytest.raises(NoCredentialsError):
+        vec._embed_many(["hello"])
+    assert vec._client.invoke_model.call_count == 2
+
+
+def test_missing_credentials_surface_from_constructor(boto3_mock):
+    from botocore.exceptions import NoCredentialsError
+
+    boto3_mock.client.return_value.invoke_model.side_effect = NoCredentialsError()
+    with pytest.raises(NoCredentialsError):
+        BedrockVectorizer()
+    assert boto3_mock.client.return_value.invoke_model.call_count == 1
