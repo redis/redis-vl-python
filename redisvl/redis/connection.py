@@ -117,9 +117,10 @@ def _strip_cluster_from_url_and_kwargs(
     """Remove 'cluster' parameter from URL query string and kwargs.
 
     Only RedisVL reads 'cluster', to choose a cluster client; redis-py's
-    Redis, AsyncRedis and AsyncRedisCluster reject it. The other query
-    parameters are kept as written: rebuilding the URL with urlunparse would
-    turn ``unix:///path`` into ``unix:/path``, which the sync client rejects.
+    Redis, AsyncRedis and AsyncRedisCluster reject it. The rest of the URL,
+    including any fragment, is kept as written: rebuilding it with urlunparse
+    would turn ``unix:///path`` into ``unix:/path``, which the sync client
+    rejects.
 
     Args:
         url: Redis URL that might contain cluster parameter
@@ -129,12 +130,16 @@ def _strip_cluster_from_url_and_kwargs(
         Tuple of (cleaned_url, cleaned_kwargs)
     """
     cleaned_url = url
-    base, has_query, query = url.partition("?")
+    # The fragment comes off first, so that nothing in it is read as a
+    # query parameter.
+    rest, has_fragment, fragment = url.partition("#")
+    base, has_query, query = rest.partition("?")
     params = query.split("&") if has_query else []
     # Decode each key as parse_qs does, so redis-py sees the same parameters.
     kept = [p for p in params if unquote_plus(p.split("=", 1)[0]) != "cluster"]
     if len(kept) != len(params):
         cleaned_url = f"{base}?{'&'.join(kept)}" if kept else base
+        cleaned_url += has_fragment + fragment
 
     # Remove 'cluster' from kwargs if present
     cleaned_kwargs = kwargs.copy()

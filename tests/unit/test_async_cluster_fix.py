@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from redis import Redis
 
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -88,20 +89,29 @@ class TestAsyncClusterParameterStripping:
         assert cleaned_kwargs == {}
 
     @pytest.mark.parametrize(
-        "url, expected",
+        "url, expected, db",
         [
-            ("unix:///tmp/redis.sock", "unix:///tmp/redis.sock"),
+            ("unix:///tmp/redis.sock", "unix:///tmp/redis.sock", 0),
             (
                 "unix:///tmp/redis.sock?cluster=false&db=1",
                 "unix:///tmp/redis.sock?db=1",
+                1,
+            ),
+            (
+                "redis://localhost:6379/0?cluster=false#local&db=1",
+                "redis://localhost:6379/0#local&db=1",
+                0,
             ),
         ],
     )
-    def test_unix_socket_url_keeps_its_scheme(self, url, expected):
-        """The sync client rejects unix:/path, so unix:/// must survive."""
+    def test_only_the_cluster_parameter_is_removed(self, url, expected, db):
+        """The unix:/// scheme and the fragment survive, and so does the database."""
         cleaned_url, _ = _strip_cluster_from_url_and_kwargs(url)
 
         assert cleaned_url == expected
+        # The sync client rejects unix:/path, and selects the db it parses here.
+        pool = Redis.from_url(cleaned_url).connection_pool
+        assert pool.connection_kwargs.get("db", 0) == db
 
 
 def test_sync_connection_strips_cluster_parameter():
