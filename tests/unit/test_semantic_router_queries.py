@@ -37,25 +37,51 @@ def test_one_empty_id_rejects_the_whole_batch():
         SemanticRouter._make_filter_queries(["abc123", "", "def456"])
 
 
-@pytest.mark.parametrize(
-    "aggregation_method, filter_widened",
-    [(DistanceAggregationMethod.min, True), (DistanceAggregationMethod.sum, False)],
-)
-def test_a_route_threshold_of_2_allows_for_rounding(aggregation_method, filter_widened):
-    # Redis can report an exactly opposite vector a little above 2. The range
-    # radius always allows for that; the FILTER does too, except for a sum,
-    # which can legitimately pass 2.
+def _router(*routes):
     router = SemanticRouter.model_construct(
         name="router",
-        routes=[Route(name="a", references=["x"], distance_threshold=2)],
+        routes=list(routes),
         vectorizer=None,
         routing_config=RoutingConfig(),
     )
     router._index = Mock(aggregate=Mock(return_value=Mock(rows=[])))
+    return router
 
+
+def _sent(router, aggregation_method):
     router(vector=[0.1, 0.2], aggregation_method=aggregation_method)
-
     request, params = router._index.aggregate.call_args.args
-    (filter_bound,) = re.findall(r"@distance <= ([\d.]+)", str(request.build_args()))
-    assert params["distance_threshold"] > 2.001
-    assert (float(filter_bound) > 2.001) is filter_widened
+    return " ".join(map(str, request.build_args())), params["distance_threshold"]
+
+
+@pytest.mark.parametrize(
+    "aggregation_method, widened",
+    [(DistanceAggregationMethod.min, True), (DistanceAggregationMethod.sum, False)],
+)
+def test_a_route_threshold_of_2_allows_for_rounding(aggregation_method, widened):
+    # Redis can report an exactly opposite vector a little above 2. A min or avg
+    # allows for that; a sum keeps its radius and FILTER, because references the
+    # wider radius admitted could only raise it.
+    args, radius = _sent(
+        _router(Route(name="a", references=["x"], distance_threshold=2)),
+        aggregation_method,
+    )
+
+    (filter_bound,) = re.findall(r"@distance <= ([\d.]+)", args)
+    assert (radius > 2.001) is widened
+    assert (float(filter_bound) > 2.001) is widened
+
+
+def test_rounded_references_count_only_toward_routes_at_2():
+    # The radius is applied before GROUPBY, so widening it for the route at 2
+    # must not add references to the average of the route at 0.5.
+    router = _router(
+        Route(name="low", references=["x"], distance_threshold=0.5),
+        Route(name="high", references=["y"], distance_threshold=2),
+    )
+
+    args, radius = _sent(router, DistanceAggregationMethod.avg)
+
+    assert radius > 2.001
+    before_group = args.split("GROUPBY")[0]
+    assert "FILTER @vector_distance <= 2 || @route_name == 'high'" in before_group
