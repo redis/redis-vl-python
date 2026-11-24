@@ -1,4 +1,4 @@
-<!-- Describe the change, not the work behind it: "This PR adds", not "I added". Leave out test-plan checklists and review history; the diff and the Reviewer Brief carry those. A trivial PR, such as a typo fix or a dependency bump, can replace the other sections with one paragraph, but keeps the Reviewer Brief if its author is expected to include one. -->
+<!-- Describe the change, not the work behind it: "This PR adds", not "I added". Leave out test-plan checklists and review history; the diff and the Reviewer Brief carry those. A trivial PR, such as a typo fix or a dependency bump, can replace the other sections with one paragraph, but keeps the AI Assistance section, and the Reviewer Brief if that section calls for one. -->
 
 ## Motivation
 
@@ -20,6 +20,15 @@ Something a reviewer can't read off the diff: a trade-off made on purpose, a def
 
 <!-- One or two sentences for a user deciding whether to upgrade: what changed from their point of view, and what breaks. They're copied into the release notes as they are, so don't write "this PR", don't name a version number, and don't add a line saying nothing breaks. Delete this section for refactors and for test, CI and docs changes. -->
 
+## AI Assistance
+
+<!-- Tick exactly one box and keep this section in every PR. "AI-assisted" means an AI tool wrote or rewrote any of the code, tests, docs or this description; single-line editor autocomplete doesn't count. See CONTRIBUTING.md. -->
+
+- [ ] No AI assistance was used for this PR.
+- [ ] This PR is AI-assisted. I have reviewed and understood everything in it, and I take responsibility for it.
+
+<!-- If AI-assisted, say which tool and model, and what it did: for example "Claude Code (claude-opus-5-5): implementation, tests and description". -->
+
 ## Reviewer Brief
 
-<!-- Maintainers and agent-assisted PRs: run the pre-PR review described in AGENTS.md and put its Reviewer Brief here. It tells the reviewer where to start, where the change could fail, and what wasn't verified. Other contributors may delete this section. -->
+<!-- Required for AI-assisted PRs and for maintainer PRs: run the pre-PR review described in AGENTS.md and put its Reviewer Brief here. It tells the reviewer where to start, where the change could fail, and what wasn't verified. A PR that needs a brief and has none isn't assigned a reviewer. If you ticked "No AI assistance" and aren't a maintainer, delete this section. -->

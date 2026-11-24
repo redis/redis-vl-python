@@ -429,8 +429,11 @@ def process_results(
 
     This function processes results from Redis, handling different storage
     types and query types. For JSON storage with empty return fields, it
-    unpacks the JSON object while retaining the document ID. The 'payload'
-    field is also removed from all resulting documents for consistency.
+    unpacks the JSON object. In every case a result's ``id`` is the record's
+    full Redis key; a JSON document's own ``id`` field is dropped from the
+    unpacked result, as redis-py already does for a hash field named ``id``.
+    The 'payload' field is also removed from all resulting documents for
+    consistency.
 
     Where it can be detected, a matched document whose field payload came back
     missing is silently dropped (and logged at WARNING level). On Redis 8.8+ the
@@ -504,6 +507,11 @@ def process_results(
             if isinstance(json_data, str):
                 json_data = json.loads(json_data)
             if isinstance(json_data, dict):
+                # The Redis key always wins as "id", matching hash results
+                # (redis-py drops a hash field literally named "id") and every
+                # query that sets return_fields. A document's own "id" field
+                # is dropped rather than shadowing the key.
+                json_data.pop("id", None)
                 return {"id": doc_dict.get("id"), **json_data}
             raise ValueError(f"Unable to parse json data from Redis {json_data}")
 
@@ -1056,6 +1064,40 @@ class SearchIndex(BaseSearchIndex):
         if self.__redis_client:
             self.__redis_client.close()
         self.__redis_client = None
+
+    def _to_async(self) -> "AsyncSearchIndex":
+        """Build an AsyncSearchIndex over the same Redis index.
+
+        An index that manages its own connection builds the copy from the
+        same address, its URL or the ``REDIS_URL`` environment variable, so
+        URL-only setups such as Sentinel keep working. Otherwise the sync
+        client is converted with ``RedisConnectionFactory.sync_to_async_redis``.
+        Either way the new index owns a fresh client and shares this index's
+        schema object; the caller must ``disconnect()`` it.
+
+        Raises:
+            ValueError: If the client cannot be converted (see
+                ``sync_to_async_redis``).
+        """
+        if self._owns_redis_client and (
+            self._redis_url or not self._client_was_injected
+        ):
+            return AsyncSearchIndex(
+                schema=self.schema,
+                redis_url=self._redis_url,
+                connection_kwargs=self._connection_kwargs or None,
+                validate_on_load=self._validate_on_load,
+                lib_name=self._lib_name,
+            )
+        return AsyncSearchIndex(
+            schema=self.schema,
+            redis_client=RedisConnectionFactory.sync_to_async_redis(
+                self._redis_client  # type: ignore[arg-type]
+            ),
+            owns_client=True,
+            validate_on_load=self._validate_on_load,
+            lib_name=self._lib_name,
+        )
 
     @classmethod
     def from_existing(
@@ -2324,6 +2366,13 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             List[str]: The list of indices in the database.
         """
+        if isinstance(self._redis_client, SyncRedisCluster):
+            # redis-py 7+ cannot route a keyless FT._LIST on a cluster, and a
+            # replica may lag behind, so ask the default node, as in _info().
+            node = self._redis_client.get_default_node()
+            return convert_bytes(
+                self._redis_client.execute_command("FT._LIST", target_nodes=node)
+            )
         return convert_bytes(self._redis_client.execute_command("FT._LIST"))
 
     def exists(self) -> bool:
@@ -2354,11 +2403,14 @@ class SearchIndex(BaseSearchIndex):
         """Run FT.INFO to fetch information about the index."""
         try:
             if isinstance(redis_client, SyncRedisCluster):
-                node = redis_client.get_random_node()
+                # Ask the node FT.CREATE and FT.DROPINDEX go to. A replica
+                # learns of a new index only once replication catches up.
+                node = redis_client.get_default_node()
                 values = redis_client.execute_command(
                     "FT.INFO", name, target_nodes=node
                 )
-                info = make_dict(values)
+                # A raw reply is a flat list on RESP2 and a map on RESP3.
+                info = values if isinstance(values, dict) else make_dict(values)
             else:
                 info = redis_client.ft(name).info()
             return convert_bytes(info)
@@ -2631,17 +2683,28 @@ class AsyncSearchIndex(BaseSearchIndex):
                 self._lib_name,
             )
             self._validated_client = True
+        if isinstance(self._redis_client, AsyncRedisCluster):
+            # The async cluster client discovers its nodes on first use, so
+            # get_default_node() returns None on a fresh client. This is a
+            # no-op once the client is initialised.
+            await self._redis_client.initialize()
         return self._redis_client
 
     @staticmethod
     async def _info(name: str, redis_client: AsyncRedisClient) -> dict[str, Any]:
         try:
             if isinstance(redis_client, AsyncRedisCluster):
-                node = redis_client.get_random_node()
+                # Callers such as from_existing() pass a client that has not
+                # been through _get_client(), so initialise it here too.
+                await redis_client.initialize()
+                # Ask the node FT.CREATE and FT.DROPINDEX go to. A replica
+                # learns of a new index only once replication catches up.
+                node = redis_client.get_default_node()
                 values = await redis_client.execute_command(
                     "FT.INFO", name, target_nodes=node
                 )
-                info = make_dict(values)
+                # A raw reply is a flat list on RESP2 and a map on RESP3.
+                info = values if isinstance(values, dict) else make_dict(values)
             else:
                 info = await redis_client.ft(name).info()
             return convert_bytes(info)
@@ -3688,8 +3751,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         client = await self._get_client()
         if isinstance(client, AsyncRedisCluster):
-            target_nodes = client.get_random_node()
-            return convert_bytes(await target_nodes.execute_command("FT._LIST"))
+            # The default node, as in _info(): a replica may lag behind.
+            node = client.get_default_node()
+            return convert_bytes(await node.execute_command("FT._LIST"))
         else:
             return convert_bytes(await client.execute_command("FT._LIST"))
 

@@ -109,7 +109,9 @@ class VertexAIVectorizer(BaseVectorizer):
             model (str): Model to use for embedding. Defaults to
                 'textembedding-gecko'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API config details. Defaults to None.
+                API config details. ``project_id`` and ``location`` fall back
+                to the ``GCP_PROJECT_ID`` and ``GCP_LOCATION`` environment
+                variables when missing or empty. Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
@@ -181,12 +183,8 @@ class VertexAIVectorizer(BaseVectorizer):
             ValueError: If required parameters are not provided
         """
         # Fetch the project_id and location from api_config or environment variables
-        project_id = (
-            api_config.get("project_id") if api_config else os.getenv("GCP_PROJECT_ID")
-        )
-        location = (
-            api_config.get("location") if api_config else os.getenv("GCP_LOCATION")
-        )
+        project_id = (api_config or {}).get("project_id") or os.getenv("GCP_PROJECT_ID")
+        location = (api_config or {}).get("location") or os.getenv("GCP_LOCATION")
 
         if not project_id:
             raise ValueError(

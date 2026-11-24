@@ -967,6 +967,26 @@ def test_hybrid_query_combination_method_none():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_query_yield_combined_score_as_without_combination_method():
+    """yield_combined_score_as must not be dropped when no method is given."""
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        yield_combined_score_as="combined",
+    )
+
+    assert hybrid_query.combination_method is not None
+    args = get_query_pieces(hybrid_query)
+    assert "COMBINE" in args
+    assert args[args.index("COMBINE") + 1] == "RRF"
+    combine_args = args[args.index("COMBINE") :]
+    assert "YIELD_SCORE_AS" in combine_args
+    assert combine_args[combine_args.index("YIELD_SCORE_AS") + 1] == "combined"
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_build_combination_method_invalid_method():
     """Test build_combination_method static method with invalid combination method."""
     with pytest.raises(ValueError, match="Unknown combination method"):

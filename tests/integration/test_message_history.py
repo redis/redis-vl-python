@@ -5,7 +5,11 @@ import pytest
 from redis.exceptions import ConnectionError, NoPermissionError
 
 from redisvl.extensions.constants import ID_FIELD_NAME
-from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
+from redisvl.extensions.message_history import (
+    ChatRole,
+    MessageHistory,
+    SemanticMessageHistory,
+)
 from tests.conftest import skip_if_no_redis_search
 
 
@@ -304,6 +308,25 @@ def test_standard_get_raw(standard_history):
     assert raw[0]["content"] == "first prompt"
     assert raw[1]["role"] == "llm"
     assert raw[1]["content"] == "first response"
+
+
+def test_standard_chat_role_members_round_trip(standard_history, client):
+    standard_history.add_messages(
+        [
+            {"role": ChatRole.USER, "content": "prompt"},
+            {"role": ChatRole.TOOL, "content": "tool output", "tool_call_id": "t1"},
+            {"role": ChatRole.ASSISTANT, "content": "response"},
+        ]
+    )
+
+    raw = standard_history.get_recent(raw=True)
+    stored = [
+        client.hget(standard_history._index.key(m[ID_FIELD_NAME]), "role") for m in raw
+    ]
+    assert stored == [b"user", b"tool", b"assistant"]
+
+    by_role = standard_history.get_recent(role=[ChatRole.USER, ChatRole.TOOL])
+    assert [m["role"] for m in by_role] == ["user", "tool"]
 
 
 def test_standard_drop(standard_history):

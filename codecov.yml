@@ -1,0 +1,37 @@
+# Coverage is reported, not enforced: both statuses are informational until
+# we have enough history to choose a target.
+#
+# Each CI segment uploads under its own flag (see the `coverage` job in
+# .github/workflows/test.yml):
+#   core     every leg of the PR test matrix; skips the API-key tests
+#   service  the full suite plus the API-key tests (`make test-all` on
+#            Python 3.11); fork PRs skip it, and Dependabot PRs upload
+#            nothing because they get no token
+#   cluster  the `requires_cluster` tests, on the nightly schedule and manual
+#            runs only
+# `service` and `cluster` are carried forward (individual_flags below): on a
+# run that skips one, Codecov copies that flag from the nearest ancestor
+# commit with a report for it. A new segment that PRs can skip needs its own
+# entry there, plus a loop entry and an upload step in the `coverage` job in
+# .github/workflows/test.yml.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+flag_management:
+  default_rules:
+    carryforward: false
+  individual_flags:
+    - name: service
+      carryforward: true
+    - name: cluster
+      carryforward: true
+
+comment:
+  layout: "condensed_header, diff, flags"
+  require_changes: true

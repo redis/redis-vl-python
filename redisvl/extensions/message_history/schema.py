@@ -1,5 +1,5 @@
 import warnings
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
@@ -20,7 +20,7 @@ from redisvl.schema import IndexSchema
 from redisvl.utils.utils import current_timestamp
 
 
-class ChatRole(str, Enum):
+class ChatRole(StrEnum):
     """Enumeration of valid roles for a chat message."""
 
     USER = "user"

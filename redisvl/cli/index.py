@@ -13,16 +13,10 @@ from redisvl.cli.utils import (
 )
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
-from redisvl.redis.connection import (
-    RedisConnectionFactory,
-    normalize_index_definition,
-    normalize_index_fields,
-)
+from redisvl.migration.utils import list_indexes
+from redisvl.redis.connection import normalize_index_definition, normalize_index_fields
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema.schema import IndexSchema
-from redisvl.utils.log import get_logger
-
-logger = get_logger("[RedisVL]")
 
 # Exceptions commonly raised when loading or validating a schema path (-s).
 SCHEMA_INPUT_ERRORS = (
@@ -83,7 +77,6 @@ class Index:
         try:
             args.handler(args)
         except Exception as e:
-            logger.error(e, exc_info=True)
             print(str(e), file=sys.stderr)
             sys.exit(1)
 
@@ -227,8 +220,7 @@ class Index:
             rvl index listall [--json]
         """
         redis_url = create_redis_url(args)
-        conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
-        indices = convert_bytes(conn.execute_command("FT._LIST"))
+        indices = list_indexes(redis_url=redis_url)
         if args.json:
             cli_print_json({"indices": indices})
         else:
