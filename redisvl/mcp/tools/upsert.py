@@ -237,16 +237,26 @@ def _prepare_record_for_storage(
     vector_field_name = rt.binding.runtime.vector_field_name
     _validate_record(prepared, index=index, vector_field_name=vector_field_name)
 
-    if vector_field_name is None:
+    if index.schema.index.storage_type != StorageType.HASH:
         return prepared
 
-    vector_value = prepared.get(vector_field_name)
-
-    if index.schema.index.storage_type == StorageType.HASH:
-        if isinstance(vector_value, list):
-            prepared[vector_field_name] = array_to_buffer(
-                vector_value,
-                _vector_dtype(rt),
+    if vector_field_name is not None and isinstance(
+        prepared.get(vector_field_name), list
+    ):
+        prepared[vector_field_name] = array_to_buffer(
+            prepared[vector_field_name],
+            _vector_dtype(rt),
+        )
+    # A hash stores only scalars. Rejecting anything else here, before load,
+    # makes it the caller's invalid_request rather than a TypeError that load
+    # raises while it builds the write pipeline.
+    for field_name, value in prepared.items():
+        if not isinstance(value, (bytes, str, int, float)):
+            raise RedisVLMCPError(
+                f"field '{field_name}' must be a string or a number on a hash "
+                f"index, not {type(value).__name__}",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
             )
     return prepared
 

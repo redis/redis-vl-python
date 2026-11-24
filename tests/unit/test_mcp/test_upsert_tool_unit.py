@@ -455,6 +455,18 @@ async def test_upsert_records_validates_non_vector_fields_before_embedding():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("value", [None, {"nested": 1}])
+async def test_upsert_records_rejects_non_scalar_hash_values_before_load(value):
+    server = FakeServer(storage_type="hash")
+
+    with pytest.raises(RedisVLMCPError, match="note") as exc_info:
+        await upsert_records(server, records=[{"content": "alpha doc", "note": value}])
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert server.index.load_calls == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("id_field", [None, "id"])
 async def test_upsert_records_surfaces_partial_write_possible_on_backend_failures(
     id_field,
