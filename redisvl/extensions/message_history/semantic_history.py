@@ -128,7 +128,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         else:
             warn(
                 implicit_vectorizer_deprecation(
-                    "SemanticMessageHistory", DEFAULT_VECTORIZER_MODEL, dtype
+                    "SemanticMessageHistory", DEFAULT_VECTORIZER_MODEL, dtype, kwargs
                 ),
                 DeprecationWarning,
                 stacklevel=3,

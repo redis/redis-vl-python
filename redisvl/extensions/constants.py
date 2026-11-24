@@ -4,6 +4,8 @@ MessageHistory, SemanticMessageHistory and SemanticRouter.
 These constants are also used within these classes' corresponding schemas.
 """
 
+from collections.abc import Iterable
+
 # BaseMessageHistory
 ID_FIELD_NAME: str = "entry_id"
 ROLE_FIELD_NAME: str = "role"
@@ -62,13 +64,26 @@ IMPLICIT_VECTORIZER_DEPRECATED: str = (
 )
 
 
-def implicit_vectorizer_deprecation(owner: str, model: str, dtype: str | None) -> str:
+def implicit_vectorizer_deprecation(
+    owner: str, model: str, dtype: str | None, options: Iterable[str] = ()
+) -> str:
     """Format IMPLICIT_VECTORIZER_DEPRECATED with the exact fallback call.
 
     ``dtype`` is included when the caller set it, because a replacement that
     drops it embeds at a different width than the data already stored.
+    ``options`` names the other keyword arguments the extension forwarded to
+    the fallback, such as ``truncate_dim``; they are named rather than
+    rendered, since their values need not have a pasteable repr.
     """
     args = f"model='{model}'" + (f", dtype='{dtype}'" if dtype else "")
-    return IMPLICIT_VECTORIZER_DEPRECATED.format(
+    message = IMPLICIT_VECTORIZER_DEPRECATED.format(
         owner=owner, call=f"HFTextVectorizer({args})"
     )
+    names = ", ".join(sorted(options))
+    if names:
+        message += (
+            f" Carry over the other Hugging Face options you passed to {owner} "
+            f"as well ({names}): they were forwarded to the fallback and can "
+            "change the vectors it produces."
+        )
+    return message

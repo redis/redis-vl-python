@@ -173,7 +173,7 @@ class SemanticCache(BaseLLMCache):
         else:
             warn(
                 implicit_vectorizer_deprecation(
-                    "SemanticCache", DEFAULT_VECTORIZER_MODEL, dtype
+                    "SemanticCache", DEFAULT_VECTORIZER_MODEL, dtype, kwargs
                 ),
                 DeprecationWarning,
                 stacklevel=3,

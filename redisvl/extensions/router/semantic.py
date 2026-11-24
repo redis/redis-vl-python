@@ -134,7 +134,7 @@ class SemanticRouter(BaseModel):
         else:
             warn(
                 implicit_vectorizer_deprecation(
-                    "SemanticRouter", DEFAULT_VECTORIZER_MODEL, dtype
+                    "SemanticRouter", DEFAULT_VECTORIZER_MODEL, dtype, kwargs
                 ),
                 DeprecationWarning,
                 stacklevel=3,

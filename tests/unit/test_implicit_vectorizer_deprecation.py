@@ -99,15 +99,20 @@ def test_an_explicit_vectorizer_does_not_warn(case):
     assert _deprecations(caught) == []
 
 
-def test_the_suggested_replacement_keeps_the_dtype(case):
-    # A replacement that drops dtype embeds at a different width than the
-    # data already stored, so the warning must carry it over.
-    _, model, build, _ = case
+def test_the_warning_carries_over_dtype_and_forwarded_options(case):
+    # A replacement that drops dtype, or an option such as truncate_dim that
+    # was forwarded to the fallback, embeds differently from the data already
+    # stored, so the warning must carry them over.
+    owner, model, build, _ = case
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        build(dtype="float16")
+        build(dtype="float16", truncate_dim=256)
 
-    messages = [str(w.message) for w in _deprecations(caught)]
-    expected = f"vectorizer=HFTextVectorizer(model='{model}', dtype='float16')"
-    assert any(expected in message for message in messages)
+    [message] = [
+        str(w.message)
+        for w in _deprecations(caught)
+        if "fell back to" in str(w.message)
+    ]
+    assert f"vectorizer=HFTextVectorizer(model='{model}', dtype='float16')" in message
+    assert f"options you passed to {owner} as well (truncate_dim)" in message
