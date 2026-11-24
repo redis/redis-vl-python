@@ -29,7 +29,6 @@ from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
-    cosine_distance_bound,
     deprecated_argument,
     match_pattern,
     model_to_dict,
@@ -91,8 +90,9 @@ class SemanticRouter(BaseModel):
                 for the redis client. Defaults to empty {}.
             create_index (bool, optional): Whether RedisVL creates and validates
                 the index. When False the constructor issues no index command at
-                all and writes nothing: the index must already exist, already
-                hold the reference vectors for ``routes``, and already have its
+                all and writes nothing: the index must already exist with a
+                COSINE vector field, since route thresholds are COSINE distances,
+                already hold the reference vectors for ``routes``, and already have its
                 stored config, since none of that is written or verified.
                 ``routes`` must match what is indexed, because each route's
                 distance threshold is applied from this local list -- and
@@ -424,33 +424,11 @@ class SemanticRouter(BaseModel):
             name=route_dict["route_name"], distance=float(route_dict["distance"])
         )
 
-    def _rounded_references_filter(self) -> str | None:
-        """Keep references reported above 2 for the routes whose threshold is 2.
-
-        Float rounding can report an exactly opposite reference a little above
-        2, which the widened range radius admits. Only a route at 2 should count
-        it; every other route aggregates the references it would without the
-        allowance. Returns None when no route needs the filter.
-        """
-        at_two = [route.name for route in self.routes if route.distance_threshold >= 2]
-        if not at_two or len(at_two) == len(self.routes):
-            return None
-        keep = " || ".join(f"@route_name == '{name}'" for name in at_two)
-        return f"@vector_distance <= 2 || {keep}"
-
-    def _distance_threshold_filter(
-        self, aggregation_method: DistanceAggregationMethod
-    ) -> str:
+    def _distance_threshold_filter(self) -> str:
         """Apply distance threshold on a route by route basis."""
         filter = ""
         for i, route in enumerate(self.routes):
-            # A min or avg never exceeds one reference's distance, so it gets the
-            # same rounding allowance at 2; a sum can legitimately pass 2.
-            if aggregation_method == DistanceAggregationMethod.sum:
-                bound = route.distance_threshold
-            else:
-                bound = cosine_distance_bound(route.distance_threshold)
-            filter_str = f"(@route_name == '{route.name}' && @distance <= {bound})"
+            filter_str = f"(@route_name == '{route.name}' && @distance <= {route.distance_threshold})"
             if i > 0:
                 filter += " || "
             filter += filter_str
@@ -477,18 +455,13 @@ class SemanticRouter(BaseModel):
         # FT.AGGREGATE runs its steps in the order given, and redis-py emits them
         # in call order. FILTER must precede SORTBY ... MAX, or the max_k closest
         # routes are kept before their thresholds are checked.
-        request = AggregateRequest(aggregate_query)
-        if aggregation_method != DistanceAggregationMethod.sum and (
-            rounded_filter := self._rounded_references_filter()
-        ):
-            # A FILTER before GROUPBY sees only loaded fields.
-            request = request.load("@route_name").filter(rounded_filter)
         return (
-            request.group_by(
+            AggregateRequest(aggregate_query)
+            .group_by(
                 "@route_name",  # type: ignore
                 aggregation_func("vector_distance").alias("distance"),
             )
-            .filter(self._distance_threshold_filter(aggregation_method))
+            .filter(self._distance_threshold_filter())
             .sort_by("@distance", max=max_k)  # type: ignore
             .dialect(2)
         )
@@ -530,21 +503,12 @@ class SemanticRouter(BaseModel):
 
         # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
         # therefore you might take the max_threshold and further refine from there.
-        distance_threshold = float(
-            max(route.distance_threshold for route in self.routes)
-        )
-        # The radius is applied before GROUPBY, so a wider one changes which
-        # references every route aggregates. A sum keeps the plain radius: extra
-        # references can only raise it. For min and avg the radius allows for
-        # rounding at 2, and _rounded_references_filter keeps the references it
-        # adds away from routes below 2.
-        if aggregation_method != DistanceAggregationMethod.sum:
-            distance_threshold = cosine_distance_bound(distance_threshold)
+        distance_threshold = max(route.distance_threshold for route in self.routes)
 
         vector_range_query = VectorRangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
-            distance_threshold=distance_threshold,
+            distance_threshold=float(distance_threshold),
             return_fields=["route_name"],
         )
 

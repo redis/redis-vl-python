@@ -24,7 +24,6 @@ from redisvl.query import CountQuery, FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
-    cosine_distance_bound,
     deprecated_argument,
     serialize,
     validate_cosine_distance_threshold,
@@ -67,8 +66,10 @@ class SemanticMessageHistory(BaseMessageHistory):
                 Defaults to None and will be replaced with the index name.
             vectorizer (Optional[BaseVectorizer]): The vectorizer used to create embeddings.
             distance_threshold (float): The maximum semantic distance to be
-                included in the context, in Redis COSINE units [0-2]. Defaults
-                to 0.3.
+                included in the context, in Redis COSINE units [0-2]. The threshold is compared with the
+                distance Redis reports, which on FLOAT16 and BFLOAT16 vectors can
+                fall a little outside [0-2], so 0 and 2 are not exact at the edges.
+                Defaults to 0.3.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
@@ -78,7 +79,8 @@ class SemanticMessageHistory(BaseMessageHistory):
                 the semantic message index. Defaults to false.
             create_index (bool): Whether RedisVL creates and validates the index.
                 When False the constructor issues no index command at all: the
-                index must already exist with a compatible schema, and a live
+                index must already exist with a compatible schema, including a
+                COSINE vector field, since thresholds are COSINE distances, and a live
                 index whose prefix or storage type differs is not detected --
                 which produces empty results rather than an error. See
                 :class:`~redisvl.extensions.cache.llm.SemanticCache` for a worked
@@ -339,7 +341,7 @@ class SemanticMessageHistory(BaseMessageHistory):
             vector=self._vectorizer.embed(prompt),
             vector_field_name=MESSAGE_VECTOR_FIELD_NAME,
             return_fields=return_fields,
-            distance_threshold=cosine_distance_bound(distance_threshold),
+            distance_threshold=distance_threshold,
             num_results=top_k,
             return_score=True,
             filter_expression=filter_expression,

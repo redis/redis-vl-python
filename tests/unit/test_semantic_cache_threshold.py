@@ -1,8 +1,7 @@
 """SemanticCache applies its distance-threshold rule on every path.
 
 The rule itself is tested in tests/unit/test_utils.py; these check that the
-constructor, ``set_threshold``, ``check`` and ``acheck`` all apply it, and that
-a lookup keeps a candidate that float32 rounding reports just above 2.
+constructor, ``set_threshold``, ``check`` and ``acheck`` all apply it.
 Hermetic: Redis and the vectorizer are stubbed out.
 """
 
@@ -48,23 +47,3 @@ async def test_every_path_refuses_an_invalid_threshold(cache, monkeypatch):
     with pytest.raises(ValueError, match="between 0 and 2"):
         await cache.acheck(vector=[0.1], distance_threshold=float("nan"))
     assert cache.distance_threshold == 0.1
-
-
-def test_the_largest_threshold_keeps_a_rounded_opposite_vector(cache):
-    # Measured on Redis 8.10.3: FLOAT32 COSINE, 1536 dims, a query against its
-    # own negation comes back just above 2.
-    cache._index.query.return_value = [
-        {
-            "id": "llmcache:1",
-            "entry_id": "1",
-            "prompt": "p",
-            "response": "r",
-            "vector_distance": "2.00000023842",
-            "inserted_at": 1.0,
-            "updated_at": 1.0,
-        }
-    ]
-
-    hits = cache.check(vector=[0.1], distance_threshold=2)
-
-    assert [hit["entry_id"] for hit in hits] == ["1"]

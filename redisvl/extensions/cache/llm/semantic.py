@@ -28,7 +28,6 @@ from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import hashify
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
-    cosine_distance_bound,
     current_timestamp,
     deprecated_argument,
     serialize,
@@ -82,7 +81,9 @@ class SemanticCache(BaseLLMCache):
                 Defaults to "llmcache".
             distance_threshold (float, optional): Semantic distance threshold for the
                 cache in Redis COSINE units [0-2], where lower values indicate stricter
-                matching. Defaults to 0.1.
+                matching. The threshold is compared with the
+                distance Redis reports, which on FLOAT16 and BFLOAT16 vectors can
+                fall a little outside [0-2], so 0 and 2 are not exact at the edges. Defaults to 0.1.
             ttl (Optional[int], optional): The time-to-live for records cached
                 in Redis. Defaults to None.
             vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
@@ -101,7 +102,8 @@ class SemanticCache(BaseLLMCache):
                 index exists, compares the live schema against this one, and runs
                 ``FT.CREATE`` if it is absent. When False it does none of these
                 and issues no index command at all: the index must already exist
-                with a compatible schema. A live index whose prefix or storage
+                with a compatible schema, including a COSINE vector field, since
+                thresholds are COSINE distances. A live index whose prefix or storage
                 type differs from this schema is not detected and produces empty
                 results rather than an error. Use this when the index is managed
                 externally, or when the credential cannot run ``FT.INFO``. See
@@ -678,7 +680,7 @@ class SemanticCache(BaseLLMCache):
             candidate
             for candidate in candidates
             if (distance := candidate.get(VectorQuery.DISTANCE_ID)) is None
-            or float(distance) <= cosine_distance_bound(distance_threshold)
+            or float(distance) <= distance_threshold
         ]
 
     def _process_cache_results(

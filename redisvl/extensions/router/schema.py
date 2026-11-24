@@ -23,7 +23,9 @@ class Route(BaseModel):
     metadata: dict[str, Any] = Field(default={})
     """Metadata associated with the route."""
     distance_threshold: DistanceThreshold = 0.5
-    """Maximum distance for matching the route, inclusive."""
+    """Maximum COSINE distance for matching the route, inclusive. It is compared
+    with the distance Redis reports, which on FLOAT16 and BFLOAT16 vectors can fall
+    a little outside [0, 2], so 2 is not exact at the edge."""
 
     @field_validator("name")
     @classmethod
