@@ -1,8 +1,13 @@
-"""Unit tests for AsyncRedisCluster cluster parameter stripping fix (issue #346)."""
+"""Unit tests for stripping the cluster parameter before redis-py sees it (issue #346)."""
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from redisvl.redis.connection import _strip_cluster_from_url_and_kwargs
+from redisvl.redis.connection import (
+    RedisConnectionFactory,
+    _strip_cluster_from_url_and_kwargs,
+)
 
 
 class TestAsyncClusterParameterStripping:
@@ -81,3 +86,31 @@ class TestAsyncClusterParameterStripping:
 
         assert cleaned_url == "redis://localhost:7001"
         assert cleaned_kwargs == {}
+
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            ("unix:///tmp/redis.sock", "unix:///tmp/redis.sock"),
+            (
+                "unix:///tmp/redis.sock?cluster=false&db=1",
+                "unix:///tmp/redis.sock?db=1",
+            ),
+        ],
+    )
+    def test_unix_socket_url_keeps_its_scheme(self, url, expected):
+        """The sync client rejects unix:/path, so unix:/// must survive."""
+        cleaned_url, _ = _strip_cluster_from_url_and_kwargs(url)
+
+        assert cleaned_url == expected
+
+
+def test_sync_connection_strips_cluster_parameter():
+    """Redis rejects 'cluster', so cluster=False must not reach it."""
+    with patch(
+        "redisvl.redis.connection.Redis.from_url", return_value=MagicMock()
+    ) as from_url:
+        RedisConnectionFactory.get_redis_connection(
+            "redis://localhost:6379?cluster=false", cluster=False
+        )
+
+    from_url.assert_called_once_with("redis://localhost:6379", protocol=2)

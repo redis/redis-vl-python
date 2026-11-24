@@ -2,7 +2,7 @@ import inspect
 import os
 from collections.abc import Mapping
 from typing import Any, TypeVar, overload
-from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
+from urllib.parse import unquote, unquote_plus, urlparse
 from warnings import warn
 
 from redis import Redis, RedisCluster
@@ -116,8 +116,10 @@ def _strip_cluster_from_url_and_kwargs(
 ) -> tuple[str, dict[str, Any]]:
     """Remove 'cluster' parameter from URL query string and kwargs.
 
-    AsyncRedisCluster doesn't accept 'cluster' parameter, but it might be
-    present in the URL or kwargs for compatibility with other Redis clients.
+    Only RedisVL reads 'cluster', to choose a cluster client; redis-py's
+    Redis, AsyncRedis and AsyncRedisCluster reject it. The other query
+    parameters are kept as written: rebuilding the URL with urlunparse would
+    turn ``unix:///path`` into ``unix:/path``, which the sync client rejects.
 
     Args:
         url: Redis URL that might contain cluster parameter
@@ -126,29 +128,13 @@ def _strip_cluster_from_url_and_kwargs(
     Returns:
         Tuple of (cleaned_url, cleaned_kwargs)
     """
-    # Parse the URL
-    parsed = urlparse(url)
-
-    # Parse query parameters
-    query_params = parse_qs(parsed.query)
-
-    # Remove 'cluster' parameter if present
-    query_params.pop("cluster", None)
-
-    # Reconstruct the query string
-    new_query = urlencode(query_params, doseq=True)
-
-    # Reconstruct the URL
-    cleaned_url = urlunparse(
-        (
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            parsed.params,
-            new_query,
-            parsed.fragment,
-        )
-    )
+    cleaned_url = url
+    base, has_query, query = url.partition("?")
+    params = query.split("&") if has_query else []
+    # Decode each key as parse_qs does, so redis-py sees the same parameters.
+    kept = [p for p in params if unquote_plus(p.split("=", 1)[0]) != "cluster"]
+    if len(kept) != len(params):
+        cleaned_url = f"{base}?{'&'.join(kept)}" if kept else base
 
     # Remove 'cluster' from kwargs if present
     cleaned_kwargs = kwargs.copy()
@@ -865,7 +851,11 @@ class RedisConnectionFactory:
         elif is_cluster_url(url, **kwargs):
             client = RedisCluster.from_url(url, **kwargs)
         else:
-            client = Redis.from_url(url, **kwargs)
+            # Strip 'cluster' parameter as Redis doesn't accept it
+            cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(
+                url, **kwargs
+            )
+            client = Redis.from_url(cleaned_url, **cleaned_kwargs)
         _identify_client(client, kwargs.get("lib_name"))
         return client
 
