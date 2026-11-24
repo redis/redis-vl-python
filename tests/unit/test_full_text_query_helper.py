@@ -6,8 +6,12 @@ from redisvl.query.aggregate import AggregateHybridQuery
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
 
 try:
+    # redisvl.query.hybrid imports on any redis-py; building a HybridQuery
+    # needs redis-py>=7.1.0, which provides this module.
+    import redis.commands.search.hybrid_query  # noqa: F401
+
     from redisvl.query.hybrid import HybridQuery
-except (ImportError, ModuleNotFoundError):
+except ImportError:
     HybridQuery = None  # type: ignore
 
 
