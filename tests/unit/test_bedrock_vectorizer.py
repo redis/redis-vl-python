@@ -110,7 +110,7 @@ def test_unrelated_boto3_kwargs_forwarded(boto3_mock):
 
 
 def test_no_credentials_error_not_retried(boto3_mock):
-    from botocore.exceptions import NoCredentialsError
+    NoCredentialsError = pytest.importorskip("botocore.exceptions").NoCredentialsError
 
     vec = _make()
     vec._client.invoke_model.side_effect = NoCredentialsError()
@@ -123,9 +123,32 @@ def test_no_credentials_error_not_retried(boto3_mock):
 
 
 def test_missing_credentials_surface_from_constructor(boto3_mock):
-    from botocore.exceptions import NoCredentialsError
+    NoCredentialsError = pytest.importorskip("botocore.exceptions").NoCredentialsError
 
     boto3_mock.client.return_value.invoke_model.side_effect = NoCredentialsError()
     with pytest.raises(NoCredentialsError):
         BedrockVectorizer()
     assert boto3_mock.client.return_value.invoke_model.call_count == 1
+
+
+def test_missing_sso_login_not_retried(boto3_mock):
+    SSOTokenLoadError = pytest.importorskip("botocore.exceptions").SSOTokenLoadError
+
+    vec = _make()
+    vec._client.invoke_model.side_effect = SSOTokenLoadError(error_msg="no token")
+    with pytest.raises(SSOTokenLoadError):
+        vec._embed("hello")
+    assert vec._client.invoke_model.call_count == 1
+    with pytest.raises(SSOTokenLoadError):
+        vec._embed_many(["hello"])
+    assert vec._client.invoke_model.call_count == 2
+
+
+def test_missing_sso_login_surfaces_from_constructor(boto3_mock):
+    SSOTokenLoadError = pytest.importorskip("botocore.exceptions").SSOTokenLoadError
+
+    invoke_model = boto3_mock.client.return_value.invoke_model
+    invoke_model.side_effect = SSOTokenLoadError(error_msg="no token")
+    with pytest.raises(SSOTokenLoadError):
+        BedrockVectorizer()
+    assert invoke_model.call_count == 1
