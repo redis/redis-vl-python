@@ -152,3 +152,36 @@ def test_missing_sso_login_surfaces_from_constructor(boto3_mock):
     with pytest.raises(SSOTokenLoadError):
         BedrockVectorizer()
     assert invoke_model.call_count == 1
+
+
+def test_partial_credentials_on_refresh_not_retried(boto3_mock):
+    # botocore raises this from invoke_model when refreshing expiring env
+    # credentials and one of the variables has gone missing.
+    PartialCredentialsError = pytest.importorskip(
+        "botocore.exceptions"
+    ).PartialCredentialsError
+
+    vec = _make()
+    vec._client.invoke_model.side_effect = PartialCredentialsError(
+        provider="env", cred_var="AWS_SECRET_ACCESS_KEY"
+    )
+    with pytest.raises(PartialCredentialsError):
+        vec._embed("hello")
+    assert vec._client.invoke_model.call_count == 1
+    with pytest.raises(PartialCredentialsError):
+        vec._embed_many(["hello"])
+    assert vec._client.invoke_model.call_count == 2
+
+
+def test_partial_credentials_surface_from_constructor(boto3_mock):
+    PartialCredentialsError = pytest.importorskip(
+        "botocore.exceptions"
+    ).PartialCredentialsError
+
+    invoke_model = boto3_mock.client.return_value.invoke_model
+    invoke_model.side_effect = PartialCredentialsError(
+        provider="env", cred_var="AWS_SECRET_ACCESS_KEY"
+    )
+    with pytest.raises(PartialCredentialsError):
+        BedrockVectorizer()
+    assert invoke_model.call_count == 1

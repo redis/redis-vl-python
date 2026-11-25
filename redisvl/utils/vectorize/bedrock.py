@@ -23,14 +23,20 @@ else:
 
 
 def _is_retryable(exc: BaseException) -> bool:
-    """Do not retry programming errors, missing credentials or missing SSO login."""
+    """Do not retry programming errors, credential errors or missing SSO login."""
     if isinstance(exc, TypeError):
         return False
     try:
-        from botocore.exceptions import NoCredentialsError, SSOTokenLoadError
+        from botocore.exceptions import (
+            NoCredentialsError,
+            PartialCredentialsError,
+            SSOTokenLoadError,
+        )
     except ImportError:
         return True
-    return not isinstance(exc, (NoCredentialsError, SSOTokenLoadError))
+    return not isinstance(
+        exc, (NoCredentialsError, PartialCredentialsError, SSOTokenLoadError)
+    )
 
 
 class BedrockVectorizer(BaseVectorizer):
@@ -225,7 +231,11 @@ class BedrockVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
-        from botocore.exceptions import NoCredentialsError, SSOTokenLoadError
+        from botocore.exceptions import (
+            NoCredentialsError,
+            PartialCredentialsError,
+            SSOTokenLoadError,
+        )
 
         try:
             # Call the protected _embed method to avoid caching this test embedding
@@ -233,7 +243,7 @@ class BedrockVectorizer(BaseVectorizer):
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the Bedrock API: {str(ke)}")
-        except (NoCredentialsError, SSOTokenLoadError):
+        except (NoCredentialsError, PartialCredentialsError, SSOTokenLoadError):
             raise
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
@@ -262,6 +272,7 @@ class BedrockVectorizer(BaseVectorizer):
         """
         from botocore.exceptions import (
             NoCredentialsError,
+            PartialCredentialsError,
             SSOTokenLoadError,
             ValidationError,
         )
@@ -278,7 +289,7 @@ class BedrockVectorizer(BaseVectorizer):
             if "Malformed input request" in str(e) and "inputImage" in body:
                 raise ValueError("Attempted to embed image with text model.") from e
             raise ValueError(f"Embedding text failed: {e}")
-        except (NoCredentialsError, SSOTokenLoadError):
+        except (NoCredentialsError, PartialCredentialsError, SSOTokenLoadError):
             raise
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
@@ -310,6 +321,7 @@ class BedrockVectorizer(BaseVectorizer):
         """
         from botocore.exceptions import (
             NoCredentialsError,
+            PartialCredentialsError,
             SSOTokenLoadError,
             ValidationError,
         )
@@ -346,7 +358,7 @@ class BedrockVectorizer(BaseVectorizer):
                 embeddings.extend(batch_embeddings)
 
             return embeddings
-        except (NoCredentialsError, SSOTokenLoadError):
+        except (NoCredentialsError, PartialCredentialsError, SSOTokenLoadError):
             raise
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
