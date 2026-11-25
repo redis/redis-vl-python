@@ -2,10 +2,12 @@ import json
 import re
 import subprocess
 import sys
+import textwrap
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from redis.cluster import RedisCluster
 
 from redisvl.cli.index import Index, _display_in_table, _index_info_for_json
 from redisvl.exceptions import RedisSearchError
@@ -169,6 +171,30 @@ def test_listall_json(monkeypatch, capsys, redis_url, cli_index):
     # The command reflects the real Redis index created by the test fixture.
     assert cli_index.schema.index.name in payload["indices"]
     # JSON success path is silent on stderr.
+    assert captured.err == ""
+
+
+def test_listall_cluster_targets_default_node(monkeypatch, capsys):
+    """On a Redis Cluster, the CLI lists indices through the default node."""
+    conn = MagicMock(spec=RedisCluster)
+    node = MagicMock()
+    conn.get_default_node.return_value = node
+    conn.execute_command.return_value = [b"idx"]
+    monkeypatch.setattr(
+        "redisvl.migration.utils.RedisConnectionFactory.get_redis_connection",
+        MagicMock(return_value=conn),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["rvl", "index", "listall", "--json", "--url", "redis://localhost:6379"],
+    )
+
+    Index()
+    captured = capsys.readouterr()
+
+    conn.execute_command.assert_called_once_with("FT._LIST", target_nodes=node)
+    assert json.loads(captured.out.strip()) == {"indices": ["idx"]}
     assert captured.err == ""
 
 
@@ -445,7 +471,7 @@ def test_index_runtime_errors(
         )
     elif patch_target == "listall":
         monkeypatch.setattr(
-            "redisvl.cli.index.RedisConnectionFactory.get_redis_connection",
+            "redisvl.migration.utils.RedisConnectionFactory.get_redis_connection",
             MagicMock(side_effect=error),
         )
     elif patch_target == "info":
@@ -459,3 +485,33 @@ def test_index_runtime_errors(
     assert exc_info.value.code == 1
     assert captured.out == ""
     assert captured.err != ""
+
+
+def test_index_failure_stderr_subprocess_has_no_traceback():
+    """Unconfigured logging: ``rvl index`` failures print one line, no traceback."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent("""
+                import sys
+                from unittest.mock import MagicMock, patch
+
+                fake_index = MagicMock()
+                fake_index.info.side_effect = RuntimeError("boom")
+                with patch("redisvl.cli.index.SearchIndex", return_value=fake_index):
+                    sys.argv = ["rvl", "index", "info", "-i", "test-idx"]
+                    try:
+                        from redisvl.cli.index import Index
+                        Index()
+                    except SystemExit as exc:
+                        sys.exit(exc.code)
+                """),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1, result.stderr
+    assert "boom" in result.stderr
+    assert "Traceback" not in result.stderr

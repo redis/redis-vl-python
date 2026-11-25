@@ -12,14 +12,24 @@ on:
 
   workflow_dispatch:
 
+# A new push to a PR cancels that PR's previous run. Every other event gets a
+# group of its own (the run ID), so pushes to main, the nightly schedule and
+# manual dispatches are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.12"
   UV_VERSION: "0.13.1"
+  # The uv cache keys below hard-code the runner OS, so every job pins
+  # `runs-on: ubuntu-24.04` rather than following ubuntu-latest. Change both
+  # together.
 
 jobs:
   service-tests:
     name: Service Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Needs API-key secrets. Fork PRs and Dependabot-triggered runs get none, so
     # they skip here; a maintainer runs them via test-fork-pr.yml instead.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
@@ -27,11 +37,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      # The canary saves the PYTHON_VERSION uv cache and, when its tests pass, the
+      # HuggingFace model cache. It finishes before the matrix starts, so the
+      # matrix legs restore both and the notebooks restore the uv cache, and
+      # none of them save these themselves. (The notebooks keep a model cache
+      # of their own.) When it is skipped (fork and Dependabot PRs) they
+      # restore from the base branch instead.
       - name: Run service tests
         uses: ./.github/actions/run-service-tests
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           uv-version: ${{ env.UV_VERSION }}
+          save-cache: "true"
+          pytest-args: --cov --cov-report=
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -61,10 +79,21 @@ jobs:
           LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
           LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
           LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
+          COVERAGE_FILE: .coverage.service
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-service
+          path: .coverage.service
+          include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          retention-days: 7
 
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # `needs` is here to order this job after the HF model cache is primed, not
     # to gate it on the service suite passing (it was `needs: prime-cache` when
     # it was introduced in #306). Without a status check function, `needs` also
@@ -89,6 +118,8 @@ jobs:
         redis-py-version: ["6.x", "7.x", "8.x"]
         # `redis:latest` floats, so a failure on it is not reproducible from a
         # SHA; it is advisory below. Pinned tags carry the blocking coverage.
+        # The uv cache saver below matches redis-py-version 8.x and
+        # redis:latest; update it if either value goes.
         redis-image: ["redis:8.2", "redis:8.4", "redis:latest"]
         include:
           - redis-image: "redis:latest"
@@ -97,32 +128,47 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Cache HuggingFace Models
-        uses: actions/cache@v4
+      # Restore-only: service-tests is the one job that saves this cache.
+      - name: Restore HuggingFace models
+        uses: actions/cache/restore@v5
         with:
           path: hf_cache
-          key: ${{ runner.os }}-hf-cache
+          key: ${{ runner.os }}-hf-cache-v2
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
+      # setup-uv's own cache has no restore-keys fallback, so any uv.lock change
+      # (the release bot's version bump included) would start every leg cold.
+      # The restore and save steps around the install do the caching instead.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
+          cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
           python-version: ${{ matrix.python-version }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+
+      # Key format is shared with lint.yml and the run-service-tests action;
+      # keep all three in sync.
+      - name: Restore uv cache
+        id: uv-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/uv
+          key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ matrix.python-version }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ matrix.python-version }}-pruned-
 
       - name: Install dependencies
         run: |
           set -euo pipefail
 
-          uv sync --all-extras --frozen
+          # The docs group (Sphinx and friends) is only for building docs;
+          # no test imports it.
+          uv sync --all-extras --no-group docs --frozen
 
           # Must cover every redis-py-version matrix value; unhandled values fail.
           case "$REDIS_PY_VERSION" in
@@ -138,14 +184,279 @@ jobs:
           uv pip install "$spec"
           uv run python -c 'import redis; print("redis-py:", redis.__version__)'
 
+      # One saver per Python version, so legs don't race to save the same key.
+      # service-tests saves PYTHON_VERSION; for the others the redis-py 8.x x
+      # redis:latest leg saves (`redis:latest` is the image value that never
+      # rotates; its continue-on-error doesn't matter because the save comes
+      # before the tests). Saving here rather than after the tests keeps the
+      # cache when a test fails. `prune --ci` keeps only wheels built from
+      # source; pre-built wheels download faster than they restore.
+      - name: Prune uv cache
+        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:latest' && steps.uv-cache.outputs.cache-hit != 'true' }}
+        run: uv cache prune --ci
+
+      - name: Save uv cache
+        if: ${{ matrix.python-version != env.PYTHON_VERSION && matrix.redis-py-version == '8.x' && matrix.redis-image == 'redis:latest' && steps.uv-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/uv
+          key: ${{ steps.uv-cache.outputs.cache-primary-key }}
+
       - name: Run tests
         run: |
-          make test
+          # One data file per leg; the coverage job combines them. Artifact
+          # names cannot contain ':', so `redis:8.4` becomes `redis-8.4`.
+          leg="core-py${{ matrix.python-version }}-redis-py-${REDIS_PY_VERSION}-${REDIS_IMAGE//:/-}"
+          echo "COVERAGE_LEG=$leg" >> "$GITHUB_ENV"
+          COVERAGE_FILE=".coverage.$leg" make test ARGS="--cov --cov-report="
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ env.COVERAGE_LEG }}
+          path: .coverage.${{ env.COVERAGE_LEG }}
+          include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          retention-days: 7
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04
+    # Runs whenever the test jobs finish, pass or fail: coverage from a red run
+    # is still a measurement. A skipped job (service-tests on fork PRs,
+    # cluster-tests on every PR and push) just leaves its segment out, and
+    # Codecov carries that segment forward.
+    needs: [test, service-tests, cluster-tests]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # No cache: this job installs only the dev group, without the project,
+      # so a cache would hold little.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+
+      - name: Install coverage
+        # The dev group pins coverage through pytest-cov, so this reads the
+        # data with the same coverage version that wrote it.
+        run: |
+          uv sync --frozen --only-group dev --no-install-project
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*   # not coverage-html from an earlier attempt
+          path: coverage-data
+          merge-multiple: true
+
+      - name: Combine coverage
+        id: combine
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cov() { uv run --no-sync coverage "$@"; }
+
+          {
+            echo "## Coverage"
+            echo
+            echo "| Segment | Data files | Total |"
+            echo "|---|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Segment data lives in its own directory: `patch = ["subprocess"]`
+          # turns on parallel mode, so reporting on ./.coverage would otherwise
+          # absorb any ./.coverage.* file beside it.
+          mkdir -p coverage-segments
+          segments=()
+          # A new segment also needs its job in `needs` above, an upload step
+          # below, and a carryforward entry in codecov.yml if PRs can skip it.
+          for seg in core service cluster; do
+            files=(coverage-data/.coverage."$seg"*)
+            if [ ${#files[@]} -eq 0 ]; then
+              echo "| $seg | 0 | not run |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            data="coverage-segments/$seg"
+            cov combine --keep --data-file="$data" "${files[@]}"
+            cov xml --data-file="$data" -o "coverage-$seg.xml"
+            echo "| $seg | ${#files[@]} | $(cov report --data-file="$data" --format=total)% |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$seg=true" >> "$GITHUB_OUTPUT"
+            segments+=("$data")
+          done
+
+          if [ ${#segments[@]} -eq 0 ]; then
+            echo "::warning title=No coverage data::No test job uploaded coverage data in this run."
+            exit 0
+          fi
+
+          cov combine --keep --data-file=.coverage "${segments[@]}"
+          cov html -d htmlcov
+          {
+            echo
+            echo "All segments combined: **$(cov report --format=total)%**"
+            echo
+            echo "<details><summary>Per-file report</summary>"
+            echo
+            cov report --format=markdown --skip-covered --sort=cover
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        if: ${{ hashFiles('htmlcov/index.html') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          path: htmlcov
+          retention-days: 14
+
+      # One upload per segment, each under its own flag. Codecov outages and
+      # tokenless refusals (Dependabot PRs) must never fail CI, hence
+      # fail_ci_if_error: false.
+      - name: Upload core coverage to Codecov
+        if: ${{ steps.combine.outputs.core == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-core.xml
+          flags: core
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload service coverage to Codecov
+        if: ${{ steps.combine.outputs.service == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-service.xml
+          flags: service
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload cluster coverage to Codecov
+        if: ${{ steps.combine.outputs.cluster == 'true' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-cluster.xml
+          flags: cluster
+          disable_search: true
+          fail_ci_if_error: false
+
+  cluster-tests:
+    name: Cluster Tests - redis-py ${{ matrix.redis-py-version }}
+    # Nightly and on demand only, to keep the cluster's setup time off PRs.
+    # No other job passes `--run-cluster-tests`, so this is the only one that
+    # runs `requires_cluster` tests.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+      REDIS_PY_VERSION: ${{ matrix.redis-py-version }}
+      # Required: without it `uv run` re-syncs the venv to uv.lock and reverts
+      # the redis-py pin set below.
+      UV_NO_SYNC: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cluster replies differ by redis-py version (8.x defaults to RESP3),
+        # so cover each major the `test` job does. The Redis image is pinned
+        # in tests/cluster-compose.yml.
+        redis-py-version: ["6.x", "7.x", "8.x"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      # Restore-only, like the uv cache below: service-tests saves both.
+      - name: Restore HuggingFace models
+        uses: actions/cache/restore@v5
+        with:
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache-v2
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+          cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+
+      - name: Restore uv cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/uv
+          key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          uv sync --all-extras --frozen
+
+          # Keep in sync with the `test` job's install rules.
+          case "$REDIS_PY_VERSION" in
+            "6.x") spec="redis>=6,<7" ;;
+            "7.x") spec="redis>=7,<8" ;;
+            "8.x") spec="redis>=8.1,<9" ;;
+            *)
+              echo "::error title=Unhandled redis-py-version::Matrix value '${REDIS_PY_VERSION}' has no install rule -- add a case branch in .github/workflows/test.yml."
+              exit 1
+              ;;
+          esac
+
+          uv pip install "$spec"
+          uv run python -c 'import redis; print("redis-py:", redis.__version__)'
+
+      - name: Resolve host.docker.internal on the runner
+        # The cluster nodes announce host.docker.internal (see
+        # tests/cluster-compose.yml), so MOVED redirects point the test client
+        # there. Linux runners do not resolve that name by default.
+        run: |
+          echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
+
+      - name: Run cluster tests
+        # -n 0: the cluster publishes fixed ports 7001-7006, so per-worker
+        # clusters under xdist would collide.
+        run: |
+          leg="cluster-redis-py-${REDIS_PY_VERSION}"
+          echo "COVERAGE_LEG=$leg" >> "$GITHUB_ENV"
+          COVERAGE_FILE=".coverage.$leg" uv run python -m pytest -n 0 --log-level=CRITICAL --run-cluster-tests -m requires_cluster --cov --cov-report= tests/
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() && env.COVERAGE_LEG != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ env.COVERAGE_LEG }}
+          path: .coverage.${{ env.COVERAGE_LEG }}
+          include-hidden-files: true   # the data file is a dotfile
+          overwrite: true   # a re-run attempt replaces its earlier upload
+          retention-days: 7
 
   notebooks:
     name: Notebook Validation
-    runs-on: ubuntu-latest
-    # Ordered after the HF cache is primed, not gated on it; see the `test` job.
+    runs-on: ubuntu-24.04
+    # Ordered after service-tests so it restores the uv cache that job saves;
+    # not gated on it; see the `test` job.
     needs: service-tests
     # Needs API-key secrets, unavailable to fork PRs and Dependabot. Keep in
     # sync with service-tests.
@@ -156,14 +467,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Cache HuggingFace Models
-        uses: actions/cache@v4
+      # Separate from the HF cache the test jobs share. service-tests saves that
+      # one under a static key after its tests, so it holds only the models the
+      # tests load, and models only the notebooks use were downloaded inside
+      # nbval cells on every run. This job is the only one that saves this key,
+      # and the key changes whenever the model list does. There is deliberately
+      # no restore-keys fallback: an older entry would still hold models since
+      # removed from the list, and nbval would pass offline on them.
+      - name: Restore HuggingFace models
+        id: hf-cache
+        uses: actions/cache/restore@v5
         with:
           path: hf_cache
-          key: ${{ runner.os }}-hf-cache
+          key: ${{ runner.os }}-hf-notebooks-${{ hashFiles('.github/scripts/prefetch_notebook_models.py') }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -171,15 +490,36 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
+          cache-local-path: ~/.cache/uv   # sets UV_CACHE_DIR
           python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+
+      - name: Restore uv cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/uv
+          key: uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-v1-ubuntu-24.04-${{ runner.arch }}-py${{ env.PYTHON_VERSION }}-pruned-
 
       - name: Install dependencies
         run: |
           uv sync --all-extras --frozen
+
+      - name: Download HuggingFace models
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uv run --no-sync python .github/scripts/prefetch_notebook_models.py
+
+      # Saved here rather than in a post-job step, so a failing notebook does
+      # not stop the models from being cached.
+      - name: Save HuggingFace models
+        if: steps.hf-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: hf_cache
+          key: ${{ steps.hf-cache.outputs.cache-primary-key }}
 
       - name: Start Redis
         run: |
@@ -228,31 +568,32 @@ jobs:
           OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # Every model the notebooks load is downloaded above. A notebook that
+          # loads one not listed in .github/scripts/prefetch_notebook_models.py
+          # fails fast here rather than downloading against the cell timeout.
+          HF_HUB_OFFLINE: "1"
         run: |
           make test-notebooks
 
   docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      # No cache: the docs install is small.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
-  
+
       - name: Install dependencies
         run: |
           uv sync --group docs --frozen

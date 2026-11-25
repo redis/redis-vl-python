@@ -5,7 +5,7 @@ specific cache types such as LLM caches and embedding caches.
 """
 
 import asyncio
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
@@ -75,6 +75,7 @@ class BaseCache:
 
         # Initialize Redis clients
         self._async_redis_client = async_redis_client
+        self._owns_async_redis_client = False
         self._redis_client = redis_client
         # Guards lazy async client creation, which suspends on an await and so
         # cannot rely on a bare check-then-set. Rebuilt whenever the running
@@ -188,6 +189,7 @@ class BaseCache:
                             redis_url=url, **kwargs
                         )
                     self._async_redis_client = client
+                    self._owns_async_redis_client = True
         return client
 
     def _resolve_ttl(self, ttl: int | None = None) -> int | None:
@@ -331,28 +333,33 @@ class BaseCache:
         if batch:
             await client.delete(*batch)
 
+    def _release_owned_async_client(self) -> Optional[Any]:
+        """Clear the async client if this cache created it; return it."""
+        if not self._owns_async_redis_client:
+            return None
+        client, self._async_redis_client = self._async_redis_client, None
+        self._owns_async_redis_client = False
+        return client
+
     def disconnect(self) -> None:
         """Disconnect from Redis."""
+        # A sync method cannot await aclose(); drop the loop-bound client.
+        self._release_owned_async_client()
         if self._owns_redis_client is False:
             return
 
         if self._redis_client:
             self._redis_client.close()
             self._redis_client = None
-            # Async clients don't have a sync close method, so we just
-            # zero them out to allow garbage collection.
-            self._async_redis_client = None
 
     async def adisconnect(self) -> None:
         """Async disconnect from Redis."""
+        client = self._release_owned_async_client()
+        if client is not None:
+            await client.aclose()
         if self._owns_redis_client is False:
             return
 
         if self._redis_client:
             self._redis_client.close()
             self._redis_client = None
-
-        if hasattr(self, "_async_redis_client") and self._async_redis_client:
-            # Use proper async close method
-            await self._async_redis_client.aclose()
-            self._async_redis_client = None

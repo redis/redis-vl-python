@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.12"
   UV_VERSION: "0.13.1"
   AUTO_VERSION: "11.3.6"
   RELEASE_BOT_NAME: "applied-ai-releases[bot]"
@@ -111,11 +111,11 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          # No cache: a release job must not run anything restored from the
+          # shared cache, and its saves would only compete with the test
+          # jobs' caches for the repository's 10 GB.
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -194,11 +194,11 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          # No cache: a release job must not run anything restored from the
+          # shared cache, and its saves would only compete with the test
+          # jobs' caches for the repository's 10 GB.
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
 
       - name: Apply release version to pyproject.toml and uv.lock
         run: |
@@ -320,11 +320,11 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.0
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
+          # No cache: a release job must not run anything restored from the
+          # shared cache, and its saves would only compete with the test
+          # jobs' caches for the repository's 10 GB.
+          enable-cache: false
           python-version: ${{ env.PYTHON_VERSION }}
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
 
       - name: Install dependencies
         run: uv sync --frozen

@@ -62,7 +62,8 @@ class VoyageAIReranker(BaseReranker):
             return_score (bool): Whether to return scores alongside the
                 reranked results.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+                Missing or empty keys fall back to the
+                ``VOYAGE_API_KEY`` environment variable. Defaults to None.
 
         Raises:
             ImportError: If the voyageai library is not installed.
@@ -86,9 +87,7 @@ class VoyageAIReranker(BaseReranker):
                     Please install with `pip install voyageai`")
 
         # Fetch the API key from api_config or environment variable
-        api_key = (
-            api_config.get("api_key") if api_config else os.getenv("VOYAGE_API_KEY")
-        )
+        api_key = (api_config or {}).get("api_key") or os.getenv("VOYAGE_API_KEY")
         if not api_key:
             raise ValueError(
                 "VoyageAI API key is required. "
@@ -109,11 +108,20 @@ class VoyageAIReranker(BaseReranker):
         if not isinstance(docs, list):
             raise ValueError("Docs to rerank should either be a list of str or dict.")
 
-        if all(isinstance(doc, dict) and "content" in doc for doc in docs):
+        rank_by = kwargs.get("rank_by", self.rank_by) or []
+        rank_by = [rank_by] if isinstance(rank_by, str) else rank_by
+
+        if rank_by and all(isinstance(doc, dict) for doc in docs):
+            texts = []
+            for doc in docs:
+                missing = [key for key in rank_by if key not in doc]
+                if missing:
+                    raise ValueError(f"Document is missing rank_by field(s): {missing}")
+                texts.append(" ".join(str(doc[key]) for key in rank_by))
+        elif all(isinstance(doc, dict) and "content" in doc for doc in docs):
             texts = [
-                str(doc["content"])
+                str(doc["content"]) if isinstance(doc, dict) else str(doc)
                 for doc in docs
-                if isinstance(doc, dict) and "content" in doc
             ]
         else:
             texts = [str(doc) for doc in docs]

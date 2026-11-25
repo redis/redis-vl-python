@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Self
 
 from redis.commands.search.query import Query as RedisQuery
@@ -428,7 +428,7 @@ class BaseVectorQuery:
     _normalize_vector_distance: bool = False
 
 
-class HybridPolicy(str, Enum):
+class HybridPolicy(StrEnum):
     """Enum for valid hybrid policy options in vector queries."""
 
     BATCHES = "BATCHES"
@@ -591,7 +591,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
         # Add hybrid policy parameters if specified
         if self._hybrid_policy:
-            knn_query += f" HYBRID_POLICY {self._hybrid_policy.value}"
+            knn_query += f" HYBRID_POLICY {self._hybrid_policy}"
 
             # Add batch size if specified and using BATCHES policy
             if self._hybrid_policy == HybridPolicy.BATCHES and self._batch_size:
