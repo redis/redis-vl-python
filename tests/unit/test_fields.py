@@ -164,6 +164,7 @@ def test_hnsw_vector_field_optional_params_not_set():
     assert field_exported.args[field_exported.args.index("EF_CONSTRUCTION") + 1] == 200
     assert field_exported.args[field_exported.args.index("EF_RUNTIME") + 1] == 10
     assert field_exported.args[field_exported.args.index("EPSILON") + 1] == 0.01
+    assert "RERANK" not in field_exported.args
 
 
 def test_flat_vector_field_block_size_not_set():
@@ -950,3 +951,12 @@ def test_multiple_warnings(caplog):
     assert any("LeanVec compression" in msg for msg in messages)
     assert any("graph_max_degree=20" in msg for msg in messages)
     assert any("search_window_size=120" in msg for msg in messages)
+
+
+@pytest.mark.parametrize("rerank, expected", [(True, "TRUE"), (False, "FALSE")])
+def test_hnsw_rerank(rerank, expected):
+    field = HNSWVectorField(
+        name="emb", attrs={"algorithm": "hnsw", "dims": 4, "rerank": rerank}
+    )
+    args = field.as_redis_field().redis_args()
+    assert args[args.index("RERANK") + 1] == expected

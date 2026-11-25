@@ -92,6 +92,13 @@ This runs Redis 8+ with built-in vector search capabilities.
 </details>
 
 <details>
+<summary><b>Flex databases</b> - Datasets that extend beyond RAM</summary>
+
+Flex databases use both RAM and flash storage. [Redis Search on Flex](https://redis.io/docs/latest/operate/rs/flex/search/) is in preview and can store HNSW vector indexes on flash. In your RedisVL schema, set `rerank` explicitly on each disk HNSW vector field.
+
+</details>
+
+<details>
 <summary><b>Redis Sentinel</b> - High availability with automatic failover</summary>
 
 Configure Redis Sentinel for high availability:

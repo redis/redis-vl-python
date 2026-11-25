@@ -447,6 +447,7 @@ _VECTOR_PARAM_KEYS = frozenset(
         "m",
         "ef_construction",
         "ef_runtime",
+        "rerank",
         "epsilon",
         "compression",
         "reduce",
@@ -574,7 +575,7 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             try:
                 normalized["dims"] = int(raw_dims)
             except (ValueError, TypeError):
-                # Unparseable dims: fall through to the required-dims check
+                # Invalid dims: fall through to the required-dims check
                 # below, which skips the field with a warning.
                 pass
         else:
@@ -615,17 +616,15 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             normalized["datatype"] = "float32"
 
         # Handle HNSW-specific parameters
-        if "m" in vector_attrs:
-            try:
-                normalized["m"] = int(vector_attrs["m"])
-            except (ValueError, TypeError):
-                pass
+        for key in ("m", "ef_construction", "ef_runtime"):
+            if key in vector_attrs:
+                try:
+                    normalized[key] = int(vector_attrs[key])
+                except (ValueError, TypeError):
+                    pass
 
-        if "ef_construction" in vector_attrs:
-            try:
-                normalized["ef_construction"] = int(vector_attrs["ef_construction"])
-            except (ValueError, TypeError):
-                pass
+        if "rerank" in vector_attrs:
+            normalized["rerank"] = vector_attrs["rerank"]
 
         # Handle SVS-VAMANA specific parameters
         # Compression - Redis uses different internal names, so we need to map them

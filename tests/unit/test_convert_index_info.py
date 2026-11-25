@@ -328,6 +328,8 @@ def test_convert_index_info_resp2_unified_vector_flags():
                     24,
                     "ef_construction",
                     300,
+                    "ef_runtime",
+                    "invalid",  # Skip this value while recovering the rest of the field.
                     "INDEXMISSING",
                 ],
             }
@@ -421,3 +423,33 @@ def test_convert_index_info_skips_vector_field_with_unparseable_dims(caplog):
 
     assert result["fields"] == []
     assert "'emb'" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "shape, rerank", [("pairs", None), ("mapping", "TRUE"), ("flags", "FALSE")]
+)
+def test_hnsw_info_round_trip(shape, rerank):
+    field = {"identifier": "emb", "attribute": "emb", "type": "VECTOR"}
+    params = {"algorithm": "HNSW", "dim": 4, "ef_runtime": 47}
+    if rerank is not None:
+        params["rerank"] = rerank
+    pairs = [item for pair in params.items() for item in pair]
+    if shape == "flags":
+        field["flags"] = pairs
+    elif shape == "mapping":
+        field.update(params)
+    else:
+        field = [item for pair in field.items() for item in pair] + pairs
+
+    info = {
+        "index_name": "idx",
+        "index_definition": ["key_type", "HASH", "prefixes", ["idx"]],
+        "attributes": [field],
+    }
+    schema = IndexSchema.from_dict(convert_index_info_to_schema(info))
+    args = schema.redis_fields[0].redis_args()
+    assert args[args.index("EF_RUNTIME") + 1] == 47
+    if rerank is None:
+        assert "RERANK" not in args
+    else:
+        assert args[args.index("RERANK") + 1] == rerank
