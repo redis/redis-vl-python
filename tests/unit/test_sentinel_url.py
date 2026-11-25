@@ -14,13 +14,98 @@ Related: GitHub Issue #465 - Async Sentinel connections were incorrectly using
 the sync SentinelConnectionPool, causing runtime failures.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import quote
 
 import pytest
 from redis.exceptions import ConnectionError
 
 from redisvl.redis.connection import RedisConnectionFactory
+
+
+@pytest.mark.parametrize(
+    "hosts, expected",
+    [
+        ("localhost:26380", [("localhost", 26380)]),
+        ("127.0.0.1,host2:26380", [("127.0.0.1", 26379), ("host2", 26380)]),
+        ("[::1]:26380", [("::1", 26380)]),
+        ("[2001:db8::1]", [("2001:db8::1", 26379)]),
+        (
+            "[2001:db8::1]:26380,[::1]:26381",
+            [("2001:db8::1", 26380), ("::1", 26381)],
+        ),
+        ("host1:26380,[::1]", [("host1", 26380), ("::1", 26379)]),
+        ("[::1],127.0.0.1:26380", [("::1", 26379), ("127.0.0.1", 26380)]),
+        ("host1,[::1]:0", [("host1", 26379), ("::1", 0)]),
+        ("[fe80::1%25lo0]", [("fe80::1%lo0", 26379)]),
+        ("[fe80::1%lo0]", [("fe80::1%lo0", 26379)]),
+    ],
+)
+def test_parse_sentinel_hosts(hosts, expected):
+    assert RedisConnectionFactory._parse_sentinel_url(
+        f"redis+sentinel://{hosts}/service/2"
+    ) == (expected, "service", "2", None, None)
+
+
+def test_sentinel_query_and_fragment_do_not_become_hosts_or_path():
+    assert RedisConnectionFactory._parse_sentinel_url(
+        "redis+sentinel://host1,[::1]?ignored=/wrong/9#x@other"
+    ) == ([("host1", 26379), ("::1", 26379)], "mymaster", None, None, None)
+
+
+@pytest.mark.parametrize(
+    "hosts",
+    [
+        "[::1",
+        "host1,[::1",
+        "[::1]suffix:26380",
+        "[::1]:not-a-port",
+        "[::1]:65536",
+        "[::1]:-1",
+        "[::1]:",
+        "::1",
+        "host1,",
+        ",host1",
+        ":26379",
+        "",
+    ],
+)
+def test_parse_invalid_sentinel_hosts(hosts):
+    with pytest.raises(ValueError):
+        RedisConnectionFactory._parse_sentinel_url(f"redis+sentinel://{hosts}/mymaster")
+
+
+@pytest.mark.parametrize("factory", ["sync", "async", "legacy_async"])
+async def test_sentinel_ipv6_factory_preserves_url_components(factory):
+    username, password = "user@name", "pass:,/#?word"
+    sentinel_url = (
+        f"redis+sentinel://{quote(username, safe='')}:"
+        f"{quote(password, safe='')}@host1:26380,[::1]/service/2"
+    )
+    target = "Sentinel" if factory == "sync" else "AsyncSentinel"
+    client = MagicMock() if factory == "sync" else AsyncMock()
+    with patch(f"redisvl.redis.connection.{target}") as sentinel:
+        sentinel.return_value.master_for.return_value = client
+        if factory == "sync":
+            result = RedisConnectionFactory.get_redis_connection(sentinel_url)
+        elif factory == "async":
+            result = await RedisConnectionFactory._get_aredis_connection(sentinel_url)
+        else:
+            with pytest.warns(DeprecationWarning):
+                result = RedisConnectionFactory.get_async_redis_connection(sentinel_url)
+
+        assert result is client
+        assert sentinel.call_args.args[0] == [("host1", 26380), ("::1", 26379)]
+        assert sentinel.call_args.kwargs["sentinel_kwargs"] == {
+            "username": username,
+            "password": password,
+        }
+        master_call = sentinel.return_value.master_for.call_args
+        assert master_call.args == ("service",)
+        assert master_call.kwargs["db"] == "2"
+        assert master_call.kwargs["username"] == username
+        assert master_call.kwargs["password"] == password
+        assert master_call.kwargs["protocol"] == 2
 
 
 @pytest.mark.parametrize("use_async", [False, True])
