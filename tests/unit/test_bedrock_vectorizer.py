@@ -185,3 +185,64 @@ def test_partial_credentials_surface_from_constructor(boto3_mock):
     with pytest.raises(PartialCredentialsError):
         BedrockVectorizer()
     assert invoke_model.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("session_profile", "error_name"),
+    [(True, "TokenRetrievalError"), (False, "UnauthorizedSSOTokenError")],
+    ids=["sso-session", "legacy-sso"],
+)
+def test_expired_sso_login_surfaces_from_constructor(
+    tmp_path, monkeypatch, session_profile, error_name
+):
+    boto3 = pytest.importorskip("boto3")
+    exceptions = pytest.importorskip("botocore.exceptions")
+    from botocore.credentials import SSOProvider
+    from botocore.stub import Stubber
+    from botocore.tokens import SSOTokenProvider
+    from botocore.utils import JSONFileCache, SSOTokenLoader
+    from tenacity import wait_none
+
+    start_url = "https://example.awsapps.com/start"
+    sso_config = f"sso_start_url = {start_url}\nsso_region = us-east-1\n"
+    profile = (
+        "[profile expired]\n"
+        "sso_account_id = 123456789012\n"
+        "sso_role_name = TestRole\n"
+    )
+    if session_profile:
+        profile += f"sso_session = expired\n\n[sso-session expired]\n{sso_config}"
+    else:
+        profile += sso_config
+
+    config_file = tmp_path / "config"
+    config_file.write_text(profile)
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "credentials"))
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    for provider in (SSOProvider, SSOTokenProvider):
+        monkeypatch.setattr(provider, "_SSO_TOKEN_CACHE_DIR", str(tmp_path))
+    SSOTokenLoader(JSONFileCache(str(tmp_path))).save_token(
+        start_url,
+        {"accessToken": "expired", "expiresAt": "2000-01-01T00:00:00Z"},
+        session_name="expired" if session_profile else None,
+    )
+
+    session = boto3.Session(profile_name="expired")
+    bedrock = session.client("bedrock-runtime", region_name="us-east-1")
+    sso = session.client("sso", region_name="us-east-1")
+    # Older botocore versions let the SSO service reject an expired legacy token.
+    stubber = Stubber(sso)
+    for _ in range(6):
+        stubber.add_client_error("get_role_credentials", "UnauthorizedException")
+
+    with (
+        stubber,
+        patch.object(session._session, "create_client", return_value=sso),
+        patch.object(boto3, "client", return_value=bedrock),
+        patch.object(bedrock, "invoke_model", wraps=bedrock.invoke_model) as invoke,
+        patch.object(BedrockVectorizer._embed.retry, "wait", wait_none()),
+        pytest.raises(getattr(exceptions, error_name)),
+    ):
+        BedrockVectorizer()
+    invoke.assert_called_once()
