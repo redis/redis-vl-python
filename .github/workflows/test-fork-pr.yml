@@ -17,7 +17,7 @@ permissions:
 # below stuck at in_progress on the fork PR.
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.12"
   UV_VERSION: "0.13.1"
 
 jobs:

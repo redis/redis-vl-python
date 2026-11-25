@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.12"
   UV_VERSION: "0.13.1"
   # The uv cache keys below hard-code the runner OS, so every job pins
   # `runs-on: ubuntu-24.04` rather than following ubuntu-latest. Change both
