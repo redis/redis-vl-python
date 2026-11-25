@@ -40,6 +40,8 @@ from redisvl.redis.utils import (
     cluster_search,
     convert_bytes,
     make_dict,
+    to_aggregate_result,
+    to_hybrid_result,
     to_search_result,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
@@ -52,7 +54,7 @@ if TYPE_CHECKING:
     from redisvl.query.query import BaseQuery
 
 from redis.client import NEVER_DECODE
-from redis.commands.search.aggregation import AggregateRequest, Cursor
+from redis.commands.search.aggregation import AggregateRequest
 from redis.commands.search.index_definition import IndexDefinition
 from redis.commands.search.query import Query
 
@@ -1864,18 +1866,22 @@ class SearchIndex(BaseSearchIndex):
         cid = 0
         seen: set[str] = set()
         try:
-            result = ft.aggregate(request)
+            result = to_aggregate_result(ft.aggregate(request), request)
             while True:
                 # Capture the cursor id BEFORE parsing rows, so the finally
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
+                # Expired matched documents produce an empty row with no __key.
+                keys = _dedupe_keys(
+                    (_agg_row_to_key(row) for row in result.rows if row), seen
+                )
                 if keys:
                     yield keys
-                if not cid:
+                if not cid or result.cursor is None:
                     break
-                result = ft.aggregate(Cursor(cid))
+                cursor = result.cursor
+                result = to_aggregate_result(ft.aggregate(cursor), cursor)
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Error while iterating documents by filter: {str(e)}"
@@ -2045,10 +2051,12 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             Result: Raw Redis aggregation results.
         """
+        request = args[0] if args else kwargs.get("query")
         try:
-            return self._redis_client.ft(self.schema.index.name).aggregate(
+            raw = self._redis_client.ft(self.schema.index.name).aggregate(
                 *args, **kwargs
             )
+            return to_aggregate_result(raw, request)
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(
@@ -2214,7 +2222,8 @@ class SearchIndex(BaseSearchIndex):
             params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
-        return _convert_and_drop_empty_rows(results.results, "hybrid")  # type: ignore[union-attr]
+        normalized = to_hybrid_result(results, query)
+        return _convert_and_drop_empty_rows(normalized.results, "hybrid")  # type: ignore[union-attr]
 
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10
@@ -3208,18 +3217,24 @@ class AsyncSearchIndex(BaseSearchIndex):
         cid = 0
         seen: set[str] = set()
         try:
-            result = await ft.aggregate(request)  # type: ignore[arg-type]
+            result = to_aggregate_result(
+                await ft.aggregate(request), request  # type: ignore[arg-type]
+            )
             while True:
                 # Capture the cursor id BEFORE parsing rows, so the finally
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
+                # Expired matched documents produce an empty row with no __key.
+                keys = _dedupe_keys(
+                    (_agg_row_to_key(row) for row in result.rows if row), seen
+                )
                 if keys:
                     yield keys
-                if not cid:
+                if not cid or result.cursor is None:
                     break
-                result = await ft.aggregate(Cursor(cid))
+                cursor = result.cursor
+                result = to_aggregate_result(await ft.aggregate(cursor), cursor)
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Error while iterating documents by filter: {str(e)}"
@@ -3377,9 +3392,11 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             Result: Raw Redis aggregation results.
         """
+        request = args[0] if args else kwargs.get("query")
         client = await self._get_client()
         try:
-            return await client.ft(self.schema.index.name).aggregate(*args, **kwargs)
+            raw = await client.ft(self.schema.index.name).aggregate(*args, **kwargs)
+            return to_aggregate_result(raw, request)
         except redis.exceptions.RedisError as e:
             if "CROSSSLOT" in str(e):
                 raise RedisSearchError(
@@ -3555,7 +3572,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
-        return _convert_and_drop_empty_rows(results.results, "hybrid")  # type: ignore[union-attr]
+        normalized = to_hybrid_result(results, query)
+        return _convert_and_drop_empty_rows(normalized.results, "hybrid")  # type: ignore[union-attr]
 
     async def batch_query(
         self, queries: list[BaseQuery], batch_size: int = 10
