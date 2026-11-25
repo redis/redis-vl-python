@@ -1,8 +1,14 @@
-"""Unit tests for AsyncRedisCluster cluster parameter stripping fix (issue #346)."""
+"""Unit tests for stripping the cluster parameter before redis-py sees it (issue #346)."""
+
+from unittest.mock import MagicMock, patch
 
 import pytest
+from redis import Redis
 
-from redisvl.redis.connection import _strip_cluster_from_url_and_kwargs
+from redisvl.redis.connection import (
+    RedisConnectionFactory,
+    _strip_cluster_from_url_and_kwargs,
+)
 
 
 class TestAsyncClusterParameterStripping:
@@ -81,3 +87,40 @@ class TestAsyncClusterParameterStripping:
 
         assert cleaned_url == "redis://localhost:7001"
         assert cleaned_kwargs == {}
+
+    @pytest.mark.parametrize(
+        "url, expected, db",
+        [
+            ("unix:///tmp/redis.sock", "unix:///tmp/redis.sock", 0),
+            (
+                "unix:///tmp/redis.sock?cluster=false&db=1",
+                "unix:///tmp/redis.sock?db=1",
+                1,
+            ),
+            (
+                "redis://localhost:6379/0?cluster=false#local&db=1",
+                "redis://localhost:6379/0#local&db=1",
+                0,
+            ),
+        ],
+    )
+    def test_only_the_cluster_parameter_is_removed(self, url, expected, db):
+        """The unix:/// scheme and the fragment survive, and so does the database."""
+        cleaned_url, _ = _strip_cluster_from_url_and_kwargs(url)
+
+        assert cleaned_url == expected
+        # The sync client rejects unix:/path, and selects the db it parses here.
+        pool = Redis.from_url(cleaned_url).connection_pool
+        assert pool.connection_kwargs.get("db", 0) == db
+
+
+def test_sync_connection_strips_cluster_parameter():
+    """Redis rejects 'cluster', so cluster=False must not reach it."""
+    with patch(
+        "redisvl.redis.connection.Redis.from_url", return_value=MagicMock()
+    ) as from_url:
+        RedisConnectionFactory.get_redis_connection(
+            "redis://localhost:6379?cluster=false", cluster=False
+        )
+
+    from_url.assert_called_once_with("redis://localhost:6379", protocol=2)
