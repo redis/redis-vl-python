@@ -7,9 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.schema import IndexSchema
 
+DistanceThreshold = Annotated[float, Field(strict=True, gt=0, le=2)]
+"""A route distance threshold: a real number in (0, 2]."""
+
 
 class Route(BaseModel):
     """Model representing a routing path with associated metadata and thresholds."""
+
+    model_config = ConfigDict(validate_assignment=True)
 
     name: str
     """The name of the route."""
@@ -17,8 +22,10 @@ class Route(BaseModel):
     """List of reference phrases for the route."""
     metadata: dict[str, Any] = Field(default={})
     """Metadata associated with the route."""
-    distance_threshold: Annotated[float, Field(strict=True, gt=0, le=2)] = 0.5
-    """Maximum distance for matching the route, inclusive."""
+    distance_threshold: DistanceThreshold = 0.5
+    """Maximum COSINE distance for matching the route, inclusive. It is compared
+    with the distance Redis reports, which on FLOAT16 and BFLOAT16 vectors can fall
+    a little outside [0, 2], so 2 is not exact at the edge."""
 
     @field_validator("name")
     @classmethod
