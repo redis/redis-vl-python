@@ -143,7 +143,8 @@ class BedrockVectorizer(BaseVectorizer):
                 better performance with repeated texts. Defaults to None.
 
         Raises:
-            ValueError: If only one of the access key / secret key is provided.
+            ValueError: If only one of the access key / secret key is provided,
+                or either one is an empty string.
             ImportError: If boto3 is not installed.
             ValueError: If an invalid dtype is provided.
         """
@@ -173,7 +174,8 @@ class BedrockVectorizer(BaseVectorizer):
 
         Raises:
             ImportError: If boto3 is not installed
-            ValueError: If only one of the access key / secret key is provided
+            ValueError: If only one of the access key / secret key is provided,
+                or either one is an empty string
         """
         try:
             import boto3  # type: ignore
@@ -200,13 +202,24 @@ class BedrockVectorizer(BaseVectorizer):
         for name in credential_names:
             from_config = api_config.get(name)
             from_kwargs = kwargs.pop(name, None)
-            if from_config and from_kwargs and from_config != from_kwargs:
+            if name == "aws_session_token":
+                # An empty token means "no token" (long-lived keys).
+                from_config = from_config or None
+                from_kwargs = from_kwargs or None
+            if None not in (from_config, from_kwargs) and from_config != from_kwargs:
                 raise ValueError(
                     f"Conflicting values for {name} in api_config and the "
                     "constructor arguments."
                 )
-            value = from_config or from_kwargs
-            if value:
+            value = from_kwargs if from_config is None else from_config
+            # An empty key must not fall through to the default chain, which
+            # could silently pick up unrelated credentials.
+            if value == "":
+                raise ValueError(
+                    f"{name} is empty. Omit it to use the default AWS "
+                    "credential chain."
+                )
+            if value is not None:
                 explicit[name] = value
 
         # Static keys must be supplied as a pair, and a session token only

@@ -65,6 +65,22 @@ def test_partial_static_keys_raise(boto3_mock):
         _make(api_config={"aws_access_key_id": "AKIA"})
 
 
+@pytest.mark.parametrize("source", ["api_config", "kwargs"])
+def test_empty_explicit_keys_raise(boto3_mock, monkeypatch, source):
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "env-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "env-secret")
+    empty = {"aws_access_key_id": "", "aws_secret_access_key": ""}
+    with pytest.raises(ValueError, match="is empty"):
+        _make(**({"api_config": empty} if source == "api_config" else empty))
+    boto3_mock.client.assert_not_called()
+
+    # Omitting the keys still leaves resolution to the default chain.
+    _make()
+    kwargs = boto3_mock.client.call_args.kwargs
+    assert "aws_access_key_id" not in kwargs
+    assert "aws_secret_access_key" not in kwargs
+
+
 def test_env_session_token_not_mixed_with_explicit_keys(boto3_mock, monkeypatch):
     monkeypatch.setenv("AWS_SESSION_TOKEN", "leftover")
     _make(
