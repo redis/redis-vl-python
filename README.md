@@ -326,12 +326,12 @@ Integrate with popular embedding providers to greatly simplify the process of ve
 
 - [AzureOpenAI](https://docs.redisvl.com/en/stable/api/vectorizer.html#azureopenaitextvectorizer)
 - [Cohere](https://docs.redisvl.com/en/stable/api/vectorizer.html#coheretextvectorizer)
-- [Custom](https://docs.redisvl.com/en/stable/api/vectorizer.html#customtextvectorizer)
-- [GCP VertexAI](https://docs.redisvl.com/en/stable/api/vectorizer.html#vertexaitextvectorizer)
+- [Custom](https://docs.redisvl.com/en/stable/api/vectorizer.html#customvectorizer)
+- [GCP VertexAI](https://docs.redisvl.com/en/stable/api/vectorizer.html#vertexaivectorizer)
 - [HuggingFace](https://docs.redisvl.com/en/stable/api/vectorizer.html#hftextvectorizer)
-- [Mistral](https://docs.redisvl.com/en/stable/api/vectorizer/html#mistralaitextvectorizer)
+- [Mistral](https://docs.redisvl.com/en/stable/api/vectorizer.html#mistralaitextvectorizer)
 - [OpenAI](https://docs.redisvl.com/en/stable/api/vectorizer.html#openaitextvectorizer)
-- [VoyageAI](https://docs.redisvl.com/en/stable/api/vectorizer/html#voyageaitextvectorizer)
+- [VoyageAI](https://docs.redisvl.com/en/stable/api/vectorizer.html#voyageaivectorizer)
 
 </details>
 
@@ -568,7 +568,7 @@ uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport sse --hos
 
 Use `--read-only` to expose search without upsert.
 
-> Read more about [using the CLI](https://docs.redisvl.com/en/latest/overview/cli.html) and [running RedisVL MCP](https://docs.redisvl.com/en/latest/user_guide/how_to_guides/mcp.html).
+> Read more about [using the CLI](https://docs.redisvl.com/en/latest/user_guide/cli.html) and [running RedisVL MCP](https://docs.redisvl.com/en/latest/user_guide/how_to_guides/mcp.html).
 
 ### MCP Server
 
