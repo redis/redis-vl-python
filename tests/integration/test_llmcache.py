@@ -20,7 +20,7 @@ pytestmark = pytest.mark.requires_hf
 
 @pytest.fixture(scope="session")
 def vectorizer():
-    return HFTextVectorizer("redis/langcache-embed-v1")
+    return HFTextVectorizer("redis/langcache-embed-v2")
 
 
 @pytest.fixture
@@ -897,9 +897,13 @@ def test_cache_filtering(cache_with_filters):
         response = f"test response {i}"
         cache_with_filters.store(prompt, response, filters={"label": tags[i]})
 
-    # test we can specify one specific tag
+    # test we can specify one specific tag. The threshold is loose so that only
+    # the filter, not the embedding model's distances, decides what comes back.
     results = cache_with_filters.check(
-        "test prompt 1", filter_expression=filter_1, num_results=5
+        "test prompt 1",
+        filter_expression=filter_1,
+        num_results=5,
+        distance_threshold=0.5,
     )
     assert len(results) == 1
     assert results[0]["prompt"] == "test prompt 0"
@@ -923,7 +927,10 @@ def test_cache_filtering(cache_with_filters):
     # test no results are returned if we pass a nonexistent tag
     bad_filter = Tag("label") == "bad tag"
     results = cache_with_filters.check(
-        "test prompt 1", filter_expression=bad_filter, num_results=5
+        "test prompt 1",
+        filter_expression=bad_filter,
+        num_results=5,
+        distance_threshold=0.6,
     )
     assert len(results) == 0
 
