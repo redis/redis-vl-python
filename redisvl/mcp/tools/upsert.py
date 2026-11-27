@@ -3,8 +3,14 @@ import inspect
 from copy import deepcopy
 from typing import Any
 
+from redisvl.exceptions import RedisVLError
 from redisvl.mcp.auth import ensure_write_scope
-from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
+from redisvl.mcp.errors import (
+    MCPErrorCode,
+    RedisVLMCPError,
+    map_exception,
+    with_partial_write_warning,
+)
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import StorageType
 from redisvl.schema.validation import validate_object
@@ -230,16 +236,26 @@ def _prepare_record_for_storage(
     vector_field_name = rt.binding.runtime.vector_field_name
     _validate_record(prepared, index=index, vector_field_name=vector_field_name)
 
-    if vector_field_name is None:
+    if index.schema.index.storage_type != StorageType.HASH:
         return prepared
 
-    vector_value = prepared.get(vector_field_name)
-
-    if index.schema.index.storage_type == StorageType.HASH:
-        if isinstance(vector_value, list):
-            prepared[vector_field_name] = array_to_buffer(
-                vector_value,
-                _vector_dtype(rt),
+    if vector_field_name is not None and isinstance(
+        prepared.get(vector_field_name), list
+    ):
+        prepared[vector_field_name] = array_to_buffer(
+            prepared[vector_field_name],
+            _vector_dtype(rt),
+        )
+    # A hash stores only scalars. Rejecting anything else here, before load,
+    # makes it the caller's invalid_request rather than a TypeError that load
+    # raises while it builds the write pipeline.
+    for field_name, value in prepared.items():
+        if not isinstance(value, (bytes, str, int, float)):
+            raise RedisVLMCPError(
+                f"field '{field_name}' must be a string or a number on a hash "
+                f"index, not {type(value).__name__}",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
             )
     return prepared
 
@@ -344,8 +360,19 @@ async def upsert_records(
             )
         except Exception as exc:
             mapped = map_exception(exc)
-            mapped.metadata["partial_write_possible"] = True
-            raise mapped from exc
+            # load raises its invalid_request errors before it writes anything,
+            # and run_guarded's own errors mean load never ran. Any other load
+            # failure, or a timeout, may have left records behind.
+            if mapped.code is MCPErrorCode.INVALID_REQUEST or not isinstance(
+                exc, (RedisVLError, TimeoutError)
+            ):
+                raise mapped from exc
+            warning = "some records may already have been written"
+            if id_field is None:
+                warning += (
+                    "; retrying without id_field writes them again under new keys"
+                )
+            raise with_partial_write_warning(mapped, warning) from exc
 
         return {
             "index": rt.binding_id,
