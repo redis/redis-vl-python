@@ -82,7 +82,8 @@ class HFCrossEncoderReranker(BaseReranker):
         Parameters:
             query (str): The user's search query.
             docs (Union[List[Dict[str, Any]], List[str]]): The list of documents to be ranked,
-                either as dictionaries or strings.
+                either as dictionaries or strings. A dictionary is scored on its
+                "content" value, or on its string form if it has no "content" key.
 
         Returns:
             Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
@@ -104,14 +105,8 @@ class HFCrossEncoderReranker(BaseReranker):
             return [] if not return_score else ([], [])
 
         if all(isinstance(doc, dict) for doc in docs):
-            texts = [
-                str(doc["content"])
-                for doc in docs
-                if isinstance(doc, dict) and "content" in doc
-            ]
-            doc_subset = [
-                doc for doc in docs if isinstance(doc, dict) and "content" in doc
-            ]
+            doc_subset = [doc for doc in docs if isinstance(doc, dict)]
+            texts = [str(doc.get("content", doc)) for doc in doc_subset]
         else:
             texts = [str(doc) for doc in docs]
             doc_subset = [{"content": doc} for doc in docs]
