@@ -336,20 +336,24 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
             'hello") | (@secret:{leaked} @v:"nothing',
             '(-@text_field:"hello ) | (@secret:{leaked} @v: nothing")',
         ),
-        # A value that neutralizes down to whitespace still renders as a phrase
-        # rather than collapsing to `*`. An empty phrase matches no document, so
-        # `==` fails closed; collapsing would invert that to matching every one,
-        # and `format_expression` drops a `*` operand, so it would also delete
-        # this clause from a surrounding AND.
-        ("__eq__", '"', '@text_field:(" ")'),
-        ("__ne__", '""', '(-@text_field:"  ")'),
-        ("__eq__", "   ", '@text_field:("   ")'),
-        # Everything else survives untouched, the backslash included: escaping is
-        # symmetric, so a document written with one indexes the joined term and
-        # only an equally escaped query finds it. Replacing any of these would ask
-        # for a term no document stored -- a silent zero-hit failure. These rows
-        # fail if a single extra character joins the pattern.
-        ("__eq__", "trailing\\", '@text_field:("trailing\\")'),
+        # Each character goes the way the indexer took it. A backslash is
+        # dropped before a letter or the end and kept before an escapable
+        # separator or another backslash; it never escapes a quote, and never
+        # sits right before the closing one.
+        ("__eq__", "trailing\\", '@text_field:("trailing")'),
+        ("__ne__", "C:\\Users\\bob", '(-@text_field:"C:Usersbob")'),
+        ("__eq__", "foo\\-bar", '@text_field:("foo\\-bar")'),
+        ("__eq__", "\\-", '@text_field:("\\-")'),
+        ("__eq__", 'say \\"hi', '@text_field:("say  hi")'),
+        ("__eq__", "back\\\\", '@text_field:("back\\\\ ")'),
+        # Control characters go, escaped or not, and so does an escaped tab. A
+        # bare `$` separates terms as the indexer did, though the parser would
+        # keep it inside one.
+        ("__eq__", "a\nb\\\x01c\\\td\x00", '@text_field:("abcd")'),
+        ("__eq__", "a\tb $1 \\$2", '@text_field:("a\tb  1 \\$2")'),
+        # Everything else survives untouched. Replacing any of it would ask for a
+        # term no document stored -- a silent zero-hit failure. This row fails if
+        # a single extra character joins the pattern.
         (
             "__eq__",
             "e-mail, 50% off (C++) @ user@x.com O'Brien 3.5",
@@ -373,10 +377,14 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
         "like_none",
         "eq_quote_neutralized",
         "ne_quote_neutralized",
-        "eq_quotes_only",
-        "ne_quotes_only",
-        "eq_whitespace_only",
-        "eq_backslash_untouched",
+        "eq_backslash_dropped_at_end",
+        "ne_backslash_dropped_before_letter",
+        "eq_backslash_kept_before_separator",
+        "eq_kept_pair_alone_is_a_term",
+        "eq_escaped_quote_split",
+        "eq_trailing_backslash_padded",
+        "eq_control_characters_dropped",
+        "eq_tab_kept_and_dollar_split",
         "eq_punctuation_preserved",
         "like_raw_by_design",
     ],
@@ -384,6 +392,17 @@ def test_numeric_refuses_an_unrenderable_value(call, expected_error):
 def test_text_filter(operation, value, expected):
     txt_f = getattr(Text("text_field"), operation)(value)
     assert str(txt_f) == expected
+
+
+@pytest.mark.parametrize("value", ['""', "   ", "\\", "$ -", "\t\x01"])
+def test_text_phrase_value_without_a_term_is_refused(value):
+    # Rendered, each would ask for no term, so `!=` would match every document.
+    field = Text("text_field")
+    with pytest.raises(ValueError, match="no searchable term"):
+        field != value
+
+    # Refused before it is stored, so the field still renders.
+    assert str(field) == "*"
 
 
 def test_text_subclass_inherits_containment_for_a_new_quoted_operator():

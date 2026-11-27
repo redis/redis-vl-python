@@ -737,29 +737,100 @@ class Num(FilterField):
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
 
-# A double quote is the only character that can terminate a quoted phrase, so it
-# is the only one that needs replacing. (A trailing backslash does not terminate
-# one either -- `@f:("x\")` parses as the term `x\`.)
-#
-# Replaced rather than escaped, because escaping is symmetric: a backslash joins
-# the separator into the term, so `@f:("say \"hi\" now")` asks for a term with a
-# quote in it, and RedisVL writes documents unescaped. On `==` that matches
-# nothing, and on `!=` the unmatchable phrase makes the negation match
-# everything. A space is what the tokenizer left at that position anyway.
-_PHRASE_UNSAFE = re.compile(r'"')
+# The characters a backslash may escape inside a quoted phrase: the term
+# separators, whose escape the query parser and the indexer both read as joining
+# the character into the term, and the backslash itself. The quote is left out
+# because escaping one is what moves a phrase's end, and the tab because the
+# indexer drops an escaped tab. The MCP filter backstop accepts a phrase only if
+# its escapes come from this set, so the two must change together.
+_PHRASE_ESCAPABLE = frozenset(" !#$%&'()*+,-./:;<=>?@[\\]^`{|}~")
+
+# Control characters, which the indexer drops from a term. The tab separates
+# terms instead, so it is left alone unless escaped.
+_PHRASE_DROPPED = frozenset(map(chr, [*range(0x09), *range(0x0A, 0x20), 0x7F]))
+
+# What the indexer drops together with the backslash escaping it.
+_PHRASE_UNESCAPED = _PHRASE_DROPPED | {"\t"}
+
+# What the indexer splits terms at, among the characters a rendered phrase body
+# can still hold unescaped.
+_TERM_SEPARATORS = (_PHRASE_ESCAPABLE - {"\\"}) | {"\t"}
+
+
+def _phrase_value(value: str) -> str:
+    """Return `value` as the body of a quoted phrase that ends where it appears to.
+
+    Each character goes the way the indexer took it, so the phrase asks for the
+    terms the document stored:
+
+    - A backslash before a character in `_PHRASE_ESCAPABLE` stays, since the
+      parser joins that pair into the term as the indexer did (`foo\\-bar`
+      indexes `foo-bar`).
+    - A control character goes, with any backslash before it, and so does an
+      escaped tab.
+    - Any other backslash goes, as the indexer dropped it where the parser
+      would keep it (`C:\\Users\\bob` indexes `usersbob`).
+    - A `"` or a bare `$` becomes a space: the indexer separated terms at each,
+      where the parser would end the phrase at a quote and keep a `$` inside
+      the term.
+
+    Some stored text stays out of reach. An escaped quote cannot be carried,
+    and the parser reads an escaped backslash differently from the indexer:
+    before `_` it drops it, and it reads a run of them as one.
+
+    A body ending in a backslash makes the parser pair the closing quote with a
+    later one, so a space follows it. (The membership tests rely on an empty
+    slice being in neither set.)
+
+    Raises:
+        ValueError: If `value` leaves no term, such as one of nothing but
+            separators, since the phrase would then match no document with
+            `==` and every document with `!=`.
+    """
+    body = []
+    position = 0
+    while position < len(value):
+        character = value[position]
+        if character == "\\":
+            following = value[position + 1 : position + 2]
+            if following in _PHRASE_ESCAPABLE:
+                body.append(character + following)
+            if following in _PHRASE_ESCAPABLE or following in _PHRASE_UNESCAPED:
+                position += 2
+                continue
+        elif character in '"$':
+            body.append(" ")
+        elif character not in _PHRASE_DROPPED:
+            body.append(character)
+        position += 1
+
+    rendered = "".join(body)
+    # A kept escape pair is a term of its own; otherwise a term needs a
+    # character the indexer does not separate at.
+    if "\\" not in rendered and all(c in _TERM_SEPARATORS for c in rendered):
+        raise ValueError(
+            f"Text value {value!r} leaves no searchable term to match as a phrase"
+        )
+    if rendered.endswith("\\"):
+        rendered += " "
+    return rendered
 
 
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index.
 
     Note:
-        ``==`` and ``!=`` match the value as a quoted phrase. Any ``"`` in the
-        value becomes a space first, so the value cannot close that phrase; a
-        quote already separates tokens at index time, so this matches the same
-        documents that escaping it never could. A value of nothing but quotes
-        therefore becomes an empty phrase, which ``==`` matches no document
-        against. ``%`` is the pattern operator and interpolates its value
-        untouched.
+        ``==`` and ``!=`` match the value as a literal phrase, read the way
+        the document's own text was indexed: a ``"`` separates terms, and a
+        ``\\`` joins what follows it into the term, so ``C:\\Users\\bob`` and
+        ``foo\\-bar`` each match a document holding that text. Stored text
+        with an escaped quote (``\\"``), or with an escaped backslash before
+        ``_`` or before another escaped backslash, cannot be matched this way.
+        A value that leaves no term, such as one of nothing but punctuation or
+        whitespace, raises ``ValueError``, since it could match no document
+        with ``==`` and would match every document with ``!=``. Stopwords are
+        not checked, as they depend on the index. ``%`` is the pattern
+        operator and interpolates its value untouched.
 
         An empty string raises ``ValueError``; pass ``None`` for no constraint.
     """
@@ -788,6 +859,8 @@ class Text(FilterField):
         val_type: type | tuple[type, ...],
         operator: FilterOperator,
     ):
+        """Refuse a value no filter can ask for before storing it, so that
+        rendering a stored value never raises."""
         if isinstance(val, str) and not val:
             # `@f:("")` is how RediSearch asks for an empty string, but after a
             # TAG clause the server checks it against that tag field's
@@ -800,6 +873,8 @@ class Text(FilterField):
                 f"{self.__class__.__name__} value must be a non-empty string; "
                 "pass None for no constraint"
             )
+        if isinstance(val, str) and operator not in self._RAW_VALUE_OPERATORS:
+            _phrase_value(val)
         super()._set_value(val, val_type, operator)
 
     @check_operator_misuse
@@ -809,6 +884,9 @@ class Text(FilterField):
 
         Args:
             other (str): The text value to filter on.
+
+        Raises:
+            ValueError: If the value leaves no searchable term.
 
         .. code-block:: python
 
@@ -828,6 +906,9 @@ class Text(FilterField):
 
         Args:
             other (str): The text value to filter on.
+
+        Raises:
+            ValueError: If the value leaves no searchable term.
 
         .. code-block:: python
 
@@ -875,10 +956,7 @@ class Text(FilterField):
 
         value = self._value
         if self._operator not in self._RAW_VALUE_OPERATORS:
-            # Substituting a space never empties the value, so the phrase always
-            # holds at least one character and never trips the `INDEXEMPTY`
-            # error that a literal `@field:("")` raises.
-            value = _PHRASE_UNSAFE.sub(" ", value)
+            value = _phrase_value(value)
 
         return self.OPERATOR_MAP[self._operator] % (
             self._field,

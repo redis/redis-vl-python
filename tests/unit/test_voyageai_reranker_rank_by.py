@@ -13,7 +13,9 @@ def reranker(monkeypatch):
     monkeypatch.setitem(sys.modules, "voyageai", fake)
     from redisvl.utils.rerank.voyageai import VoyageAIReranker
 
-    return VoyageAIReranker(model="rerank-2", api_config={"api_key": "k"}, rank_by=["text"])
+    return VoyageAIReranker(
+        model="rerank-2", api_config={"api_key": "k"}, rank_by=["text"]
+    )
 
 
 DOCS = [{"text": "alpha", "id": 1}, {"text": "beta", "id": 2}]

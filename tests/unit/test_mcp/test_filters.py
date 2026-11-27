@@ -115,6 +115,16 @@ def test_parse_filter_rejects_empty_logical_array():
     assert exc_info.value.code == MCPErrorCode.INVALID_FILTER
 
 
+def test_parse_filter_rejects_a_text_value_without_a_term():
+    # Through `in` as well, where a term-less item would silently match nothing.
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        parse_filter(
+            {"field": "content", "op": "in", "value": ["ok", "..."]}, _schema()
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_FILTER
+
+
 def test_parse_filter_rejects_malformed_payload():
     with pytest.raises(RedisVLMCPError) as exc_info:
         parse_filter({"field": "category", "value": "science"}, _schema())
@@ -300,6 +310,20 @@ def test_merge_locked_filter_ands_a_multi_value_tag_in_caller_filter():
         # Balanced parens, so only the phrase branch can refuse this: skipping to
         # end-of-string instead would swallow the injected union.
         ("unterminated phrase", '@content:"unterminated | @category:{secret}'),
+        # The phrase shapes `Text` never renders. In the first two the parser
+        # pairs the first phrase's closing quote with the second's opening one,
+        # so a scan that trusted it would read the union as phrase text. The
+        # escaped quote is closed off by a second one, so the quotes balance and
+        # only refusing the escape itself catches it.
+        (
+            "escaped quote",
+            '@content:("a\\") | @category:{secret} | @content:("b\\")',
+        ),
+        (
+            "escaped backslash before the closing quote",
+            '(@content:("a\\\\") | @content:(" | @category:{secret} "))',
+        ),
+        ("backslash escaping a letter", '(-@content:"C:\\Users\\bob")'),
     ],
 )
 def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
@@ -338,12 +362,11 @@ def test_merge_locked_filter_refuses_a_caller_rendering_that_could_escape(
             "unbalanced bracket in a value",
             {"field": "content", "op": "eq", "value": "a[b"},
         ),
-        # Reported by review: a value ending in a backslash sits immediately
-        # before the template's closing quote, and an escape-honouring phrase
-        # scan reads the pair as one and refuses the filter.
+        # Rendered raw, this value would be refused. It passes only because
+        # `Text` drops, keeps or spaces off each backslash as needed.
         (
-            "value ending in a backslash",
-            {"field": "content", "op": "eq", "value": "C:\\Users\\"},
+            "backslashes in a value",
+            {"field": "content", "op": "eq", "value": "C:\\Users foo\\-bar back\\\\"},
         ),
         (
             "compound with exclusive bound",
@@ -408,12 +431,6 @@ def test_merge_locked_filter_returns_each_side_unchanged_when_the_other_is_absen
         # end. Unbounded it reads this as a union hidden in the range and
         # refuses, and it costs the whole remaining string on every `[`.
         ("pipe after a range span", "(@rating:[4 5] | @category:{sports})"),
-        # RediSearch closes a phrase at `\"` rather than reading it as an escape,
-        # so the phrase scan must not honour the escape either. Honouring it
-        # reads these as unterminated and refuses an ordinary value ending in a
-        # backslash. Both templates, since each renders its own quote.
-        ("trailing backslash on eq", '@content:("trailing\\")'),
-        ("trailing backslash on ne", '(-@content:"C:\\Users\\")'),
     ],
 )
 def test_merge_locked_filter_accepts_a_legitimate_rendering(label, rendered):

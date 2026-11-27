@@ -521,6 +521,18 @@ def test_filters(index, query, sample_datetimes):
     t = Text("description") != 'high stress,"'
     search(query, index, t, 6)
 
+    # Backslashes with a phrase after them. Left raw, one makes the parser pair
+    # the first phrase's closing quote with the second's opening one, and the
+    # re-paired query silently matches nothing. The one inside `engi\neer` is
+    # dropped rather than splitting the term, or that phrase matches nothing.
+    t = (Text("job") == "engi\\neer\\") | (Text("job") == "doctor\\")
+    search(query, index, t, 4)
+
+    # A kept escape pair at the end of a phrase is spaced off its closing quote,
+    # which only Redis can confirm: unspaced, the next phrase is a syntax error.
+    t = (Text("job") == "engineer\\\\") | (Text("job") == "doctor")
+    search(query, index, t, 2)
+
     # `None` is no constraint; an empty string is refused (see the unit tests)
     t = Text("job") % None
     search(query, index, t, 7)
@@ -552,6 +564,50 @@ def test_filters(index, query, sample_datetimes):
         sample_datetimes["high"] - timedelta(seconds=1),
     )
     search(query, index, ts, 3)
+
+
+@pytest.fixture
+def phrase_index(client, worker_id):
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": f"phrase_index_{worker_id}",
+                "prefix": f"phrase_{worker_id}",
+                "storage_type": "hash",
+            },
+            "fields": [{"name": "body", "type": "text"}],
+        },
+        redis_client=client,
+    )
+    index.create(overwrite=True, drop=True)
+    yield index
+    index.delete(drop=True)
+
+
+@pytest.mark.parametrize(
+    "stored, neighbour",
+    [
+        # An escaped separator, which the indexer joins into one term.
+        ("foo\\-bar", "foo bar"),
+        # Escaped letters, whose backslashes the indexer drops.
+        ("C:\\Users\\bob", "C: Users bob"),
+        # A control character, which the indexer drops.
+        ("hello world\nnext", "hello world next"),
+        # A bare `$`, where the indexer splits terms and the parser does not.
+        ("price $100", "price100"),
+    ],
+)
+def test_text_phrase_matches_the_document_holding_it(phrase_index, stored, neighbour):
+    # The neighbour holds the terms a phrase gets if it misreads the one
+    # character that differs, so a misread finds it instead of the original.
+    phrase_index.load([{"body": stored}, {"body": neighbour}])
+
+    def bodies(expression):
+        query = FilterQuery(expression, return_fields=["body"])
+        return [doc["body"] for doc in phrase_index.query(query)]
+
+    assert bodies(Text("body") == stored) == [stored]
+    assert bodies(Text("body") != stored) == [neighbour]
 
 
 def test_manual_string_filters(index, query):
