@@ -137,6 +137,11 @@ def test_tag_equality_escapes_pipe_but_list_still_unions():
     assert str(Tag("category") % "elec*|*soft") == "@category:{elec*|*soft}"
 
 
+def test_tag_pattern_escapes_backtick_and_keeps_wildcards_live():
+    """`%` escapes a backtick, while `*`, `?` and the `|` union stay live."""
+    assert str(Tag("tag") % "a`*|b?") == "@tag:{a\\`*|b?}"
+
+
 def test_text_query_pipe_is_still_a_union():
     """Escaping `|` is scoped to tags; a text query joins its own terms with it."""
     from redisvl.query import TextQuery
