@@ -574,7 +574,7 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             try:
                 normalized["dims"] = int(raw_dims)
             except (ValueError, TypeError):
-                # Unparseable dims: fall through to the required-dims check
+                # Unparsable dims: fall through to the required-dims check
                 # below, which skips the field with a warning.
                 pass
         else:
@@ -890,31 +890,76 @@ class RedisConnectionFactory:
             TypeError: If a keyword that no longer exists is passed. ``url``
                 is now ``redis_url``.
         """
+        client = RedisConnectionFactory.build_async_redis_client(redis_url, **kwargs)
+        await _aidentify_client(client, kwargs.get("lib_name"))
+        return client
+
+    @staticmethod
+    def build_async_redis_client(
+        redis_url: str | None = None,
+        **kwargs,
+    ) -> AsyncRedisClient:
+        """Build an asynchronous Redis client from a URL, without connecting.
+
+        This is a plain function and stays one: unlike
+        :meth:`get_async_redis_connection`, it will not become a coroutine,
+        and it does not warn. Call it where there is no event loop to await
+        on, such as a synchronous constructor.
+
+        It reads the URL the same way as the other factory methods: a
+        ``redis+sentinel://`` URL gives a client for the master that Sentinel
+        reports; a cluster URL (``cluster=true``, several hosts, or a truthy
+        ``cluster`` keyword) gives an ``AsyncRedisCluster``; anything else
+        gives an ``AsyncRedis``. A ``cluster`` keyword is removed before the
+        client is built, and so is a ``cluster`` URL parameter outside
+        Sentinel URLs, because none of the async clients accepts it.
+        ``protocol`` defaults to 2 (RESP2).
+
+        The client makes no connection until its first command, so an
+        unreachable server is reported then, not here. When it connects,
+        redis-py identifies it as plain ``redis-py``, not as RedisVL. To
+        report RedisVL and your own library name, await
+        ``validate_async_redis(client, lib_name)`` on it once an event loop
+        is running; a ``lib_name`` keyword passed here is ignored, because
+        redis-py would otherwise warn that it is deprecated.
+
+        Args:
+            redis_url (Optional[str]): The URL of the Redis server. If not
+                provided, the environment variable REDIS_URL is used.
+            **kwargs: Additional keyword arguments to be passed to the async
+                Redis client constructor.
+
+        Returns:
+            AsyncRedisClient: An AsyncRedis or AsyncRedisCluster client,
+                depending on the URL.
+
+        Raises:
+            ValueError: If ``redis_url`` is not provided and the REDIS_URL
+                environment variable is not set.
+            TypeError: If a keyword that no longer exists is passed. ``url``
+                is now ``redis_url``.
+        """
         _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         url = redis_url or get_address_from_env()
         # Keep sync and async clients on the same backward-compatible default.
         kwargs.setdefault("protocol", 2)
+        # lib_name names a library wrapping RedisVL, and only CLIENT SETINFO
+        # (which this function cannot await) reports it. Passed on, redis-py
+        # 8.1+ warns that it is deprecated when the first connection opens.
+        kwargs.pop("lib_name", None)
 
-        client: AsyncRedisClient
         if url.startswith("redis+sentinel"):
-            client = RedisConnectionFactory._redis_sentinel_client(
+            # The Sentinel pool hands its kwargs to every connection, and an
+            # async connection rejects 'cluster' at the first command.
+            kwargs.pop("cluster", None)
+            return RedisConnectionFactory._redis_sentinel_client(
                 url, AsyncRedis, **kwargs
             )
-        elif is_cluster_url(url, **kwargs):
-            # Strip 'cluster' parameter as AsyncRedisCluster doesn't accept it
-            cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(
-                url, **kwargs
-            )
-            client = AsyncRedisCluster.from_url(cleaned_url, **cleaned_kwargs)
-        else:
-            # Also strip cluster parameter for AsyncRedis to avoid connection issues
-            cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(
-                url, **kwargs
-            )
-            client = AsyncRedis.from_url(cleaned_url, **cleaned_kwargs)
-
-        await _aidentify_client(client, kwargs.get("lib_name"))
-        return client
+        # Neither async client accepts 'cluster', so strip it on both paths.
+        cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(url, **kwargs)
+        if is_cluster_url(url, **kwargs):
+            return AsyncRedisCluster.from_url(cleaned_url, **cleaned_kwargs)
+        return AsyncRedis.from_url(cleaned_url, **cleaned_kwargs)
 
     @staticmethod
     def get_async_redis_connection(
@@ -925,13 +970,14 @@ class RedisConnectionFactory:
 
         Synchronous today; it will become a coroutine in a future major
         release, at which point callers will have to await it. It warns on
-        every call as notice of that change. It is not being removed, and
-        there is no replacement to migrate to.
+        every call as notice of that change. It is not being removed. A
+        caller that needs to stay synchronous, such as a constructor, can
+        call :meth:`build_async_redis_client` instead, which returns the same
+        client, does not warn, and will not change.
 
         Unlike the client the index builds for itself, the client returned
-        here has not been identified to the server with CLIENT SETINFO, so
-        it reports no library name and defers its first connection to the
-        first command. To avoid managing a client at all, pass ``redis_url``
+        here reports itself as plain redis-py rather than RedisVL, and
+        defers its first connection to the first command. To avoid managing a client at all, pass ``redis_url``
         to :class:`~redisvl.index.AsyncSearchIndex` and let it build one.
 
         Args:
@@ -954,32 +1000,17 @@ class RedisConnectionFactory:
             DeprecationWarning: Always, as notice of the coming signature
                 change. This function is not being removed.
         """
+        # Reject first, so a stale keyword raises without also warning.
         _reject_removed_kwargs(kwargs, _REMOVED_FACTORY_KWARGS)
         warn(
             "get_async_redis_connection will become a coroutine in a future "
-            "major release and will then need to be awaited.",
+            "major release and will then need to be awaited. To keep a "
+            "synchronous call, use "
+            "RedisConnectionFactory.build_async_redis_client instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        url = redis_url or get_address_from_env()
-        kwargs.setdefault("protocol", 2)
-
-        if url.startswith("redis+sentinel"):
-            return RedisConnectionFactory._redis_sentinel_client(
-                url, AsyncRedis, **kwargs
-            )
-        elif is_cluster_url(url, **kwargs):
-            # Strip 'cluster' parameter as AsyncRedisCluster doesn't accept it
-            cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(
-                url, **kwargs
-            )
-            return AsyncRedisCluster.from_url(cleaned_url, **cleaned_kwargs)
-        else:
-            # Also strip cluster parameter for AsyncRedis to avoid connection issues
-            cleaned_url, cleaned_kwargs = _strip_cluster_from_url_and_kwargs(
-                url, **kwargs
-            )
-            return AsyncRedis.from_url(cleaned_url, **cleaned_kwargs)
+        return RedisConnectionFactory.build_async_redis_client(redis_url, **kwargs)
 
     @staticmethod
     def get_redis_cluster_connection(
