@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
-from tenacity.retry import retry_if_not_exception_type
+from tenacity.retry import retry_if_exception
 
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
@@ -22,6 +22,34 @@ else:
     _PILLOW_INSTALLED = True
 
 
+def _credential_errors() -> tuple[type[Exception], ...]:
+    from botocore.exceptions import (
+        NoCredentialsError,
+        PartialCredentialsError,
+        SSOTokenLoadError,
+        TokenRetrievalError,
+        UnauthorizedSSOTokenError,
+    )
+
+    return (
+        NoCredentialsError,
+        PartialCredentialsError,
+        SSOTokenLoadError,
+        TokenRetrievalError,
+        UnauthorizedSSOTokenError,
+    )
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Do not retry programming errors or credential and login failures."""
+    if isinstance(exc, TypeError):
+        return False
+    try:
+        return not isinstance(exc, _credential_errors())
+    except ImportError:
+        return True
+
+
 class BedrockVectorizer(BaseVectorizer):
     """The BedrockVectorizer class utilizes Amazon Bedrock's API to generate
     embeddings for text or image data.
@@ -31,6 +59,7 @@ class BedrockVectorizer(BaseVectorizer):
     directly in the `api_config` dictionary or through environment variables:
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
+    - AWS_SESSION_TOKEN (optional, for temporary credentials)
     - AWS_REGION (defaults to us-east-1)
 
     The vectorizer supports synchronous operations with batch processing and
@@ -104,8 +133,9 @@ class BedrockVectorizer(BaseVectorizer):
         Args:
             model (str): The Bedrock model ID to use. Defaults to amazon.titan-embed-text-v2:0
             api_config (Optional[Dict[str, str]]): AWS credentials and config.
-                Can include: aws_access_key_id, aws_secret_access_key, aws_region
-                If not provided, will use environment variables.
+                Can include: aws_access_key_id, aws_secret_access_key,
+                aws_session_token, aws_region. If not provided, will use
+                environment variables, then boto3's default credential chain.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
@@ -113,7 +143,8 @@ class BedrockVectorizer(BaseVectorizer):
                 better performance with repeated texts. Defaults to None.
 
         Raises:
-            ValueError: If credentials are not provided in config or environment.
+            ValueError: If only one of the access key / secret key is provided,
+                or either one is an empty string.
             ImportError: If boto3 is not installed.
             ValueError: If an invalid dtype is provided.
         """
@@ -143,7 +174,8 @@ class BedrockVectorizer(BaseVectorizer):
 
         Raises:
             ImportError: If boto3 is not installed
-            ValueError: If AWS credentials are not provided
+            ValueError: If only one of the access key / secret key is provided,
+                or either one is an empty string
         """
         try:
             import boto3  # type: ignore
@@ -156,28 +188,62 @@ class BedrockVectorizer(BaseVectorizer):
         if api_config is None:
             api_config = {}
 
-        aws_access_key_id = api_config.get(
-            "aws_access_key_id", os.getenv("AWS_ACCESS_KEY_ID")
-        )
-        aws_secret_access_key = api_config.get(
-            "aws_secret_access_key", os.getenv("AWS_SECRET_ACCESS_KEY")
-        )
         aws_region = api_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
 
-        if not aws_access_key_id or not aws_secret_access_key:
+        # Explicit credentials come from api_config and/or constructor kwargs.
+        # Environment credentials are deliberately not copied here: when the
+        # caller supplies none, boto3 resolves them itself (including refresh).
+        credential_names = (
+            "aws_access_key_id",
+            "aws_secret_access_key",
+            "aws_session_token",
+        )
+        explicit: dict[str, Any] = {}
+        for name in credential_names:
+            from_config = api_config.get(name)
+            from_kwargs = kwargs.pop(name, None)
+            if name == "aws_session_token":
+                # An empty token means "no token" (long-lived keys).
+                from_config = from_config or None
+                from_kwargs = from_kwargs or None
+            if None not in (from_config, from_kwargs) and from_config != from_kwargs:
+                raise ValueError(
+                    f"Conflicting values for {name} in api_config and the "
+                    "constructor arguments."
+                )
+            value = from_kwargs if from_config is None else from_config
+            # An empty key must not fall through to the default chain, which
+            # could silently pick up unrelated credentials.
+            if value == "":
+                raise ValueError(
+                    f"{name} is empty. Omit it to use the default AWS "
+                    "credential chain."
+                )
+            if value is not None:
+                explicit[name] = value
+
+        # Static keys must be supplied as a pair, and a session token only
+        # makes sense together with them. When no explicit credentials are
+        # given, fall back to boto3's default chain (env, SSO, IAM roles...).
+        has_key = "aws_access_key_id" in explicit
+        has_secret = "aws_secret_access_key" in explicit
+        if has_key != has_secret:
             raise ValueError(
-                "AWS credentials required. Provide via api_config or environment variables "
-                "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+                "Both aws_access_key_id and aws_secret_access_key must be provided "
+                "together, or neither to use the default AWS credential chain."
+            )
+        if "aws_session_token" in explicit and not has_key:
+            raise ValueError(
+                "aws_session_token requires aws_access_key_id and "
+                "aws_secret_access_key to be provided as well."
             )
 
+        client_kwargs: dict[str, Any] = {"region_name": aws_region}
+        client_kwargs.update(explicit)
+        client_kwargs.update(kwargs)
+
         # Store client as a regular attribute instead of PrivateAttr
-        self._client = boto3.client(
-            "bedrock-runtime",
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            region_name=aws_region,
-            **kwargs,
-        )
+        self._client = boto3.client("bedrock-runtime", **client_kwargs)
 
     def _set_model_dims(self) -> int:
         """
@@ -195,6 +261,8 @@ class BedrockVectorizer(BaseVectorizer):
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the Bedrock API: {str(ke)}")
+        except _credential_errors():
+            raise
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
@@ -202,7 +270,7 @@ class BedrockVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(TypeError),
+        retry=retry_if_exception(_is_retryable),
     )
     def _embed(self, content: Any, **kwargs) -> list[float]:
         """
@@ -234,13 +302,15 @@ class BedrockVectorizer(BaseVectorizer):
             if "Malformed input request" in str(e) and "inputImage" in body:
                 raise ValueError("Attempted to embed image with text model.") from e
             raise ValueError(f"Embedding text failed: {e}")
+        except _credential_errors():
+            raise
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(TypeError),
+        retry=retry_if_exception(_is_retryable),
     )
     def _embed_many(
         self, contents: list[Any], batch_size: int = 10, **kwargs
@@ -296,6 +366,8 @@ class BedrockVectorizer(BaseVectorizer):
                 embeddings.extend(batch_embeddings)
 
             return embeddings
+        except _credential_errors():
+            raise
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
