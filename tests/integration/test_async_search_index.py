@@ -253,8 +253,8 @@ async def test_search_index_drop_key(async_index):
 
     dropped = await async_index.drop_keys(keys[0])
     assert dropped == 1
-    assert not await async_index.fetch(keys[0])
-    assert await async_index.fetch(keys[1]) is not None
+    assert await async_index.fetch("1") is None
+    assert await async_index.fetch("2") is not None
 
 
 @pytest.mark.asyncio
@@ -269,9 +269,9 @@ async def test_search_index_drop_keys(async_index):
 
     dropped = await async_index.drop_keys(keys[0:2])
     assert dropped == 2
-    assert not await async_index.fetch(keys[0])
-    assert not await async_index.fetch(keys[1])
-    assert await async_index.fetch(keys[2]) is not None
+    assert await async_index.fetch("1") is None
+    assert await async_index.fetch("2") is None
+    assert await async_index.fetch("3") is not None
 
     assert await async_index.exists()
 
@@ -289,15 +289,15 @@ async def test_search_index_drop_documents(async_index):
     # Test dropping a single document by ID
     dropped = await async_index.drop_documents("1")
     assert dropped == 1
-    assert not await async_index.fetch("1")
+    assert await async_index.fetch("1") is None
     assert await async_index.fetch("2") is not None
     assert await async_index.fetch("3") is not None
 
     # Test dropping multiple documents by ID
     dropped = await async_index.drop_documents(["2", "3"])
     assert dropped == 2
-    assert not await async_index.fetch("2")
-    assert not await async_index.fetch("3")
+    assert await async_index.fetch("2") is None
+    assert await async_index.fetch("3") is None
 
     # Test dropping with an empty list
     dropped = await async_index.drop_documents([])
@@ -322,7 +322,7 @@ async def test_search_index_load_and_fetch(async_index):
 
     await async_index.delete(drop=True)
     assert not await async_index.exists()
-    assert not await async_index.fetch("1")
+    assert await async_index.fetch("1") is None
 
 
 @pytest.mark.asyncio
