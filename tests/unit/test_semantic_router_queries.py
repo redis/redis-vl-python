@@ -17,7 +17,7 @@ def test_reference_id_query_is_scoped_to_the_id():
 
 @pytest.mark.parametrize("empty", ["", None], ids=["empty_string", "none"])
 def test_empty_reference_id_is_rejected_rather_than_matching_everything(empty):
-    # `Tag("reference_id") == ""` renders as `*`. Callers read the first row of
+    # `Tag("reference_id") == None` renders as `*`. Callers read the first row of
     # each query's results, so a match-all here returns -- and, from
     # delete_route_references, deletes -- a reference nobody named.
     with pytest.raises(ValueError, match="non-empty"):
